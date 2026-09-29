@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:">
+  <title>pgsql-erd</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="toolbar">
+    <div class="group">
+      <button data-cmd="new" title="New diagram (Ctrl+N)">New</button>
+      <button data-cmd="open" title="Open .pgerd (Ctrl+O)">Open</button>
+      <button data-cmd="save" title="Save (Ctrl+S)">Save</button>
+    </div>
+    <div class="group">
+      <button data-cmd="add-table" title="Add table (Ctrl+Alt+T)">+ Table</button>
+      <button data-cmd="add-link" title="Add relationship (Ctrl+Alt+R)">+ Relationship</button>
+      <button data-cmd="delete" title="Delete selection (Del)">Delete</button>
+    </div>
+    <div class="group">
+      <button data-cmd="undo" title="Undo (Ctrl+Z)">Undo</button>
+      <button data-cmd="redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
+    </div>
+    <div class="group">
+      <button data-cmd="zoom-out" title="Zoom out (Ctrl+-)">−</button>
+      <span id="zoom-label" class="zoom-label">100%</span>
+      <button data-cmd="zoom-in" title="Zoom in (Ctrl+=)">+</button>
+      <button data-cmd="fit" title="Fit to window (Ctrl+0)">Fit</button>
+      <button data-cmd="auto-layout" title="Auto layout (Ctrl+L)">Auto layout</button>
+    </div>
+    <div class="group">
+      <button data-cmd="toggle-sql" title="Show SQL preview (Ctrl+Alt+P)">SQL</button>
+      <button data-cmd="export-sql" title="Export SQL DDL">Export SQL</button>
+      <button data-cmd="export-svg" title="Export SVG image">SVG</button>
+      <button data-cmd="export-png" title="Export PNG image">PNG</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <section class="canvas-wrap">
+      <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="grid" patternUnits="userSpaceOnUse" width="15" height="15">
+            <circle cx="1" cy="1" r="1" class="grid-dot"></circle>
+          </pattern>
+        </defs>
+        <rect id="grid-bg" width="100%" height="100%" fill="url(#grid)"></rect>
+        <g id="viewport">
+          <g id="links-layer"></g>
+          <g id="tables-layer"></g>
+        </g>
+      </svg>
+      <div id="empty-hint" class="empty-hint">
+        <h2>No tables yet</h2>
+        <p>Open a pgAdmin <code>.pgerd</code> file, drop one here, or add a table.</p>
+        <div>
+          <button data-cmd="open">Open file…</button>
+          <button data-cmd="add-table">Add table</button>
+        </div>
+      </div>
+      <section id="sql-panel" class="sql-panel" hidden>
+        <div class="sql-head">
+          <strong>SQL preview</strong>
+          <span>
+            <button id="sql-copy">Copy</button>
+            <button data-cmd="toggle-sql">Close</button>
+          </span>
+        </div>
+        <pre id="sql-text"></pre>
+      </section>
+    </section>
+    <aside id="panel" class="panel"></aside>
+  </main>
+
+  <footer class="statusbar">
+    <span id="status-file">Untitled</span>
+    <span id="status-msg"></span>
+    <span id="status-count"></span>
+  </footer>
+
+  <dialog id="link-dialog">
+    <form method="dialog" id="link-form">
+      <h3>New relationship</h3>
+      <p class="muted">Adds a foreign key from the <em>referencing</em> (many) table to the <em>referenced</em> (one) table.</p>
+      <div class="grid2">
+        <label>Referencing table<select name="localTable" required></select></label>
+        <label>Column<select name="localCol" required></select></label>
+        <label>Referenced table<select name="refTable" required></select></label>
+        <label>Column<select name="refCol" required></select></label>
+        <label>Type
+          <select name="type">
+            <option value="onetomany">One to many</option>
+            <option value="onetoone">One to one</option>
+          </select>
+        </label>
+        <label>Constraint name<input name="fkName" placeholder="(auto)"></label>
+      </div>
+      <menu>
+        <button value="cancel" formnovalidate>Cancel</button>
+        <button value="ok" class="primary">Create</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <datalist id="pg-types"></datalist>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
