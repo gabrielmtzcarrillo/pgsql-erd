@@ -150,13 +150,53 @@ export function setupWorkbench(ctx) {
     el.title = el.textContent;
   }
 
+  // The last run of each saved script, kept per project on this machine
+  // (not in the project folder, so runs don't show up as file changes).
+  let runs = {};
+  const runsKey = () => `pgsql-erd.script-runs:${project.dir}`;
+  function loadRuns() {
+    try {
+      runs = project.dir ? JSON.parse(localStorage.getItem(runsKey()) || '{}') : {};
+    } catch {
+      runs = {};
+    }
+    for (const s of scripts) if (runs[s.path]) s.lastStatus = statusOf(runs[s.path]);
+  }
+  const statusOf = (run) => (run.status === 'error' ? 'failed' : run.validations && run.passed < run.validations ? 'warn' : 'passed');
+  function recordRun(path, r) {
+    if (!path || !project.dir) return;
+    const passed = r.validations.filter((v) => v.status === 'passed').length;
+    runs[path] = {
+      status: r.error ? 'error' : 'ok',
+      mode: r.mode,
+      validations: r.validations.length,
+      passed,
+      errors: r.validations.reduce((n, v) => n + v.errors, 0),
+      rowsRead: r.rowsRead,
+      inserts: r.inserts,
+      updates: r.updates,
+      deletes: r.deletes,
+      at: Date.now(),
+    };
+    try {
+      localStorage.setItem(runsKey(), JSON.stringify(runs));
+    } catch {
+      // not remembered
+    }
+    scriptsChanged();
+  }
+  // The diagram shows saved scripts; tell it when they or their runs change.
+  const scriptsChanged = () => ctx.events.dispatchEvent(new Event('scripts'));
+
   async function reloadList() {
     try {
       scripts = await call(host.scripts.list);
     } catch {
       scripts = [];
     }
+    loadRuns();
     renderList();
+    scriptsChanged();
   }
 
   function renderList() {
@@ -458,6 +498,8 @@ export function setupWorkbench(ctx) {
     lastResult = r;
     const entry = scripts.find((s) => s.path === current.path);
     if (entry) entry.lastStatus = r.error ? 'failed' : r.success ? 'passed' : 'warn';
+    // Runs of the saved version only: an edited script isn't what the file says.
+    if (current.path && !isDirty()) recordRun(current.path, r);
     renderResult(r);
     renderList();
     listeners.forEach((l) => l('result', r));
@@ -706,8 +748,10 @@ export function setupWorkbench(ctx) {
       project = { dir: null, settings: null };
       scripts = [];
     }
+    loadRuns();
     renderProject();
     renderList();
+    scriptsChanged();
     listeners.forEach((l) => l('project', project));
   });
   ctx.events.addEventListener('schema', () => refreshTypes());
@@ -726,6 +770,18 @@ export function setupWorkbench(ctx) {
 
   const api = {
     open: () => setOpen(),
+    scripts: () => scripts,
+    runs: () => runs,
+    // Open a saved script in the Scripts tab.
+    async openScript(path) {
+      setOpen();
+      await ensureEditor();
+      await openScript(path);
+    },
+    async runScript(path, mode) {
+      await api.openScript(path);
+      if (current.path === path) await run(mode);
+    },
     showTab,
     schema: () => schema,
     project: () => project,

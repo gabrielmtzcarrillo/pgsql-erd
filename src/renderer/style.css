@@ -731,3 +731,16 @@ dialog.medium { width: min(760px, 94vw); }
 .fp-actions { display: flex; justify-content: flex-end; gap: 6px; padding-top: 4px; }
 .db-list.short { height: 320px; margin-top: 8px; }
 #data-pages { display: contents; }
+
+/* Scripts drawn in the diagram */
+.erd-script { cursor: move; }
+.erd-script.selected .s-body { stroke: var(--erd-accent); stroke-width: 2; stroke-dasharray: none; }
+.erd-script-link.related .sl-line { stroke: var(--erd-accent); stroke-width: 2; }
+.erd-script-link.related .sl-end { fill: var(--erd-accent); }
+.erd-script-link.related .sl-label { fill: var(--erd-accent); }
+.erd-overlay-btn { position: absolute; left: 12px; bottom: 12px; z-index: 3; font-size: 12px; padding: 4px 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
+.erd-overlay-btn[hidden] { display: none; }
+.erd-overlay-btn.active { background: var(--accent-soft); }
+.flag.pass { color: #1a7f37; border-color: currentColor; }
+.flag.fail { color: var(--danger); border-color: currentColor; }
+.canvas-wrap:has(#sql-panel:not([hidden])) .erd-overlay-btn { bottom: calc(38% + 12px); }

@@ -124,9 +124,12 @@
         <rect id="grid-bg" width="100%" height="100%" fill="url(#grid)"></rect>
         <g id="viewport">
           <g id="links-layer"></g>
+          <g id="script-links-layer"></g>
           <g id="tables-layer"></g>
+          <g id="scripts-layer"></g>
         </g>
       </svg>
+      <button type="button" id="erd-scripts-toggle" class="erd-overlay-btn" data-icon="toggle-workbench" hidden>Show scripts</button>
       <div id="empty-hint" class="empty-hint">
         <h2>No tables yet</h2>
         <p>Open a pgAdmin <code>.pgerd</code> file, drop one here (or an Excel/CSV file), or add a table.</p>
