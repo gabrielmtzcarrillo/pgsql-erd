@@ -190,6 +190,7 @@ function applyView() {
   viewport.setAttribute('transform', `translate(${offsetX},${offsetY}) scale(${zoom})`);
   renderGrid(offsetX, offsetY, zoom, gridSize || 15);
   $('#zoom-label').textContent = `${Math.round(zoom * 100)}%`;
+  $('#zoom-slider').value = zoomToSlider(zoom);
 }
 
 // The grid is drawn in screen space so lines stay 1px at every zoom level.
@@ -903,12 +904,25 @@ linkDialog.addEventListener('close', () => {
 
 // ---------------------------------------------------------------- view
 
+const ZOOM_MIN = 0.1, ZOOM_MAX = 3;
+
+// The status bar zoom slider works like Word's: 100% sits in the middle,
+// the left half runs linearly down to the minimum and the right half up to
+// the maximum. The slider's range is 0..1000.
+function zoomToSlider(z) {
+  return z <= 1 ? 500 * (z - ZOOM_MIN) / (1 - ZOOM_MIN) : 500 + 500 * (z - 1) / (ZOOM_MAX - 1);
+}
+
+function sliderToZoom(n) {
+  return n <= 500 ? ZOOM_MIN + (n / 500) * (1 - ZOOM_MIN) : 1 + ((n - 500) / 500) * (ZOOM_MAX - 1);
+}
+
 function setZoom(zoom, cx, cy) {
   const v = state.model.view;
   const r = svg.getBoundingClientRect();
   cx ??= r.width / 2;
   cy ??= r.height / 2;
-  const z = Math.min(3, Math.max(0.1, zoom));
+  const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
   v.offsetX = cx - ((cx - v.offsetX) * z) / v.zoom;
   v.offsetY = cy - ((cy - v.offsetY) * z) / v.zoom;
   v.zoom = z;
@@ -1319,6 +1333,18 @@ function runCommand(name) {
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-cmd]');
   if (btn) runCommand(btn.dataset.cmd);
+});
+
+$('#zoom-slider').addEventListener('input', (e) => {
+  const n = Number(e.target.value);
+  // Snap to 100% near the middle, as Word does.
+  setZoom(Math.abs(n - 500) <= 10 ? 1 : Math.round(sliderToZoom(n) * 100) / 100);
+});
+$('#zoom-slider').addEventListener('change', (e) => e.target.blur());
+
+// The view controls in the status bar only apply to the diagram.
+tabs.onShow((name) => {
+  $('#status-view').hidden = name !== 'erd';
 });
 
 $('#grid-size').addEventListener('change', (e) => {
