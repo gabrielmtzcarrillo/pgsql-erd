@@ -12,7 +12,7 @@ filters, and an AI assistant that works with Ollama, vLLM, OpenAI and other Open
 
 **Ribbon and tabs:** commands are grouped Office-style (File, History, Diagram, View, Grid, Database,
 Scripts, SQL & Export) with two-tone colour icons; the native menus use the same icons. Below the ribbon,
-tabs switch between the **Diagram**, **Scripts**, **Query** and **Assistant**, followed by one tab per
+tabs switch between the **Diagram**, **Scripts**, **Query**, **Graph** and **Assistant**, followed by one tab per
 table whose data you are browsing.
 
 ![Ribbon](docs/screenshots/ribbon.png)
