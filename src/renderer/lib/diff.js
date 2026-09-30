@@ -8,6 +8,7 @@ import {
   addForeignKeySQL, foreignKeyPairs, uniqueConstraints,
 } from './sql.js';
 import { tableKey } from './catalog.js';
+import { usesPgvector, CREATE_VECTOR_EXTENSION, VECTOR_EXTENSION } from '../../shared/pgvector.js';
 
 const ALIASES = {
   int: 'integer', int4: 'integer', int8: 'bigint', int2: 'smallint',
@@ -116,6 +117,9 @@ function foreignKeys(model, t) {
  * @param opts.destructive  emit DROP COLUMN (otherwise they are commented out)
  * @param opts.dropTables   emit DROP TABLE for tables missing from the diagram
  * @param opts.schemas      schemas to compare (default: the diagram's schemas)
+ * db.extensions (names of installed extensions) decides whether pgvector
+ * has to be created for vector columns; without it, pgvector counts as
+ * installed when a database table already has a vector column.
  */
 export function diffModels(db, erd, opts = {}) {
   const { destructive = false, dropTables = false } = opts;
@@ -130,7 +134,7 @@ export function diffModels(db, erd, opts = {}) {
   const erdAll = new Set(erd.tables.map(tableKey));
 
   const phases = {
-    dropFk: [], dropConstraint: [], dropColumn: [], dropTable: [], createSchema: [],
+    dropFk: [], dropConstraint: [], dropColumn: [], dropTable: [], createSchema: [], createExtension: [],
     createTable: [], column: [], addConstraint: [], addFk: [], comment: [],
   };
   const changes = [];
@@ -150,6 +154,15 @@ export function diffModels(db, erd, opts = {}) {
         sql: `CREATE SCHEMA IF NOT EXISTS ${quoteIdent(s)};`,
       });
     }
+  }
+
+  // pgvector, before any table or column uses its types.
+  const hasPgvector = db.extensions ? db.extensions.includes(VECTOR_EXTENSION) : usesPgvector(db.tables);
+  if (!hasPgvector && usesPgvector([...erdTables.values()])) {
+    add('createExtension', {
+      kind: 'create-extension', table: 'extensions', summary: 'Create extension vector (pgvector)',
+      sql: CREATE_VECTOR_EXTENSION,
+    });
   }
 
   // New tables.
@@ -348,7 +361,7 @@ export function diffModels(db, erd, opts = {}) {
     }
   }
 
-  const order = ['dropFk', 'dropConstraint', 'dropColumn', 'dropTable', 'createSchema', 'createTable', 'column', 'addConstraint', 'addFk', 'comment'];
+  const order = ['dropFk', 'dropConstraint', 'dropColumn', 'dropTable', 'createSchema', 'createExtension', 'createTable', 'column', 'addConstraint', 'addFk', 'comment'];
   const ordered = order.flatMap((p) => phases[p]);
   return { changes: ordered, sql: migrationSQL(ordered) };
 }

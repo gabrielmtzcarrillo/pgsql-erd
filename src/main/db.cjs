@@ -110,6 +110,11 @@ async function introspect(conn) {
        WHERE ${SYSTEM_SCHEMAS}
        GROUP BY 1, 2
        ORDER BY 1, 2`);
+    const extensions = await c.query(`
+      SELECT e.extname AS name, e.extversion AS version, n.nspname AS schema
+        FROM pg_extension e
+        JOIN pg_namespace n ON n.oid = e.extnamespace
+       ORDER BY 1`);
 
     return {
       version,
@@ -120,6 +125,7 @@ async function introspect(conn) {
       checks: checks.rows,
       indexes: indexes.rows,
       enums: enums.rows,
+      extensions: extensions.rows,
     };
   });
 }

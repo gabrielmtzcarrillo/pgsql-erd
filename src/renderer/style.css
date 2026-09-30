@@ -325,6 +325,11 @@ textarea { resize: vertical; width: 100%; }
 .flag.def { max-width: 110px; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, Menlo, Consolas, monospace; }
 .sb-chevron { color: var(--muted); font-size: 11px; width: 10px; flex: none; }
 .sb-col-editor { padding: 6px 10px 10px; border-top: 1px solid var(--border); }
+.sb-vector p { margin: 4px 0; }
+.sb-vector-sql {
+  display: block; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; cursor: copy;
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; white-space: pre-wrap; word-break: break-all;
+}
 
 .panel .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .muted { color: var(--muted); }

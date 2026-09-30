@@ -19,7 +19,7 @@ const TYPES = new Set(
   `bigint bigserial bit boolean bool box bytea char character cidr circle date decimal double float float4
   float8 inet int int2 int4 int8 integer interval json jsonb line lseg macaddr macaddr8 money numeric path
   point polygon precision real regclass serial serial2 serial4 serial8 smallint smallserial text time
-  timestamp timestamptz timetz tsquery tsvector uuid varbit varchar varying xml zone`.split(/\s+/)
+  timestamp timestamptz timetz tsquery tsvector uuid varbit varchar varying xml zone vector halfvec sparsevec`.split(/\s+/)
 );
 
 const RULES = [

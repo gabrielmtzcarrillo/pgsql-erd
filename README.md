@@ -108,6 +108,25 @@ PostgreSQL 10+ server:
     option. Otherwise they appear as comments at the end of the script.
   - Renamed tables or columns can't be detected: they show up as a drop plus an add.
 
+## pgvector
+
+[pgvector](https://github.com/pgvector/pgvector) columns (`vector`, `halfvec`, `sparsevec`) are supported
+throughout:
+
+- **Diagram:** the types are in the column type list, and their length is the number of dimensions
+  (`vector(1536)`). The column editor shows the HNSW index for cosine search, ready to copy. Vectors
+  with more than 2,000 dimensions get a `halfvec` expression index, which works up to 4,000.
+- **SQL export and migrations** add `CREATE EXTENSION IF NOT EXISTS vector;` when the diagram uses vector
+  types. Compare / Sync only adds it when the database doesn't have the extension yet.
+- **Scripts:** `vector` and `halfvec` values are read as `number[]` and can be written as `number[]`,
+  `Float32Array` or pgvector text (`'[1,2,3]'`). `sparsevec` values are strings (`'{1:0.5,3:1}/5'`), and
+  you can write them as dense arrays. `where({ embedding: [1, 2, 3] })` compares with one vector.
+  `seed.row()` / `seed.fill()` generate random unit vectors, and `seed.check()` checks the dimensions.
+- **Query analyzer:** a nearest-neighbour query (`ORDER BY embedding <=> $1 LIMIT n`) that sorts every
+  row gets a suggestion for an HNSW index with the operator class for its operator (`<->`, `<=>`, `<#>`,
+  `<+>`). It also points out an existing vector index built for a different operator.
+- **Data tabs** show long vectors shortened as `[0.1,0.2,…] (1536 dims)`; hover over a cell to see the full value.
+
 ## Workbench tabs
 
 ### Scripts

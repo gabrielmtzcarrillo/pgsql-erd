@@ -5,6 +5,7 @@
 // text to type-check scripts before they run.
 
 import { allTables } from './schema-model.js';
+import { vectorKind } from './pgvector.js';
 
 const NUMBER = new Set(['smallint', 'integer', 'int', 'int2', 'int4', 'real', 'double precision', 'float4', 'float8', 'serial', 'smallserial', 'oid']);
 // node-postgres returns these as strings to avoid losing precision.
@@ -38,6 +39,13 @@ function enumLookup(schema) {
 // TypeScript type for a column, as read (row) or as written (insert).
 export function tsType(col, enums = new Map(), mode = 'row') {
   const base = col.baseType;
+  // pgvector: the runtime reads vector / halfvec as number arrays and
+  // accepts arrays or pgvector text ('[1,2,3]', sparsevec '{1:1,3:2}/3').
+  const vec = !col.isArray && vectorKind(base);
+  if (vec) {
+    if (vec === 'sparsevec') return mode === 'row' ? 'string' : 'string | number[]';
+    return mode === 'row' ? 'number[]' : 'number[] | string';
+  }
   let t;
   if (NUMBER.has(base)) t = 'number';
   else if (BIG.has(base)) t = mode === 'row' ? 'string' : 'string | number | bigint';

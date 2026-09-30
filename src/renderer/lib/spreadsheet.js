@@ -398,6 +398,7 @@ const KNOWN_TYPES = new Set([
   'timestamp without time zone', 'timestamp with time zone', 'time without time zone', 'time with time zone',
   'interval', 'money', 'inet', 'cidr', 'macaddr', 'macaddr8', 'xml', 'point', 'line', 'lseg', 'box', 'path',
   'polygon', 'circle', 'tsvector', 'tsquery', 'oid', 'citext', 'hstore', 'geometry', 'geography',
+  'vector', 'halfvec', 'sparsevec',
 ]);
 const isKnownType = (raw) => KNOWN_TYPES.has(normalizeType(raw).type.replace(/(\[\])+$/, ''));
 

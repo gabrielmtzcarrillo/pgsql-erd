@@ -46,7 +46,11 @@ export function describeTable(t, { constraints = true } = {}) {
   if (constraints) {
     for (const u of t.uniques) lines.push(`  UNIQUE (${u.columns.join(', ')})`);
     for (const c of t.checks) lines.push(`  CHECK ${c.expression}${c.name ? ` -- ${c.name}` : ''}`);
-    for (const i of t.indexes) lines.push(`  INDEX ${i.name}${i.unique ? ' UNIQUE' : ''} (${i.columns.join(', ')})`);
+    for (const i of t.indexes) {
+      // Vector (HNSW / IVFFlat) indexes: the method and operator class decide which distance operator they serve.
+      const using = String(i.definition ?? '').match(/\bUSING\s+(hnsw|ivfflat)\s+(.*)$/i);
+      lines.push(`  INDEX ${i.name}${i.unique ? ' UNIQUE' : ''} ${using ? `USING ${using[1].toLowerCase()} ${using[2]}` : `(${i.columns.join(', ')})`}`);
+    }
   }
   return lines.join('\n');
 }
@@ -108,6 +112,7 @@ Scripts are TypeScript with top-level await and these globals (no imports, no No
 - seed.row(table, overrides), seed.fill(table, count, overrides) to generate rows with valid foreign keys; seed.check(table, row).
 - ai.structured({ table, prompt }) or ai.structured({ schema, prompt }) returns validated JSON from the model; ai.chat(prompt).
 Column values: bigint/numeric are strings, timestamps are Date, json is plain values.
+pgvector columns (vector, halfvec) are number[] and accept number[] on insert/update; sparsevec is text like '{1:0.5,3:1}/5'. For similarity search use db.query with the distance operators <-> (L2), <=> (cosine), <#> (negative inner product), <+> (L1), e.g. SELECT * FROM items ORDER BY embedding <=> $1 LIMIT 5, passing the vector as '[1,2,3]' text.
 
 Rules:
 - Write complete scripts in a single \`\`\`ts code block. Prefer the typed table API over raw SQL.
