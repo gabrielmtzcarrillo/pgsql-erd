@@ -52,6 +52,10 @@ function json(res, obj, status = 200) {
   res.end(JSON.stringify(obj));
 }
 
+// One NDJSON line. Built by concatenation: CodeQL's extractor fails to parse
+// deeply nested object literals inside a template substitution.
+const ndjson = (obj) => JSON.stringify(obj) + '\n';
+
 const ollamaReply = (message) => (_b, res) => json(res, { model: 'qwen3:8b', message: { role: 'assistant', ...message }, done: true, prompt_eval_count: 5, eval_count: 7 });
 const openaiReply = (message) => (_b, res) => json(res, { model: 'a-model', choices: [{ message: { role: 'assistant', ...message } }], usage: { prompt_tokens: 3, completion_tokens: 4 } });
 
@@ -71,9 +75,9 @@ test('ollama: streams NDJSON tokens and tool calls', async () => {
   const p = new OllamaProvider({ id: 'o', type: 'ollama', baseUrl: base });
   queue.push((_b, res) => {
     res.writeHead(200, { 'content-type': 'application/x-ndjson' });
-    res.write(`${JSON.stringify({ message: { content: 'Hel' } })}\n`);
-    res.write(`${JSON.stringify({ message: { content: 'lo', tool_calls: [{ function: { name: 'get_table', arguments: { name: 'x' } } }] } })}\n`);
-    res.end(`${JSON.stringify({ message: { content: '' }, done: true, eval_count: 2 })}\n`);
+    res.write(ndjson({ message: { content: 'Hel' } }));
+    res.write(ndjson({ message: { content: 'lo', tool_calls: [{ function: { name: 'get_table', arguments: { name: 'x' } } }] } }));
+    res.end(ndjson({ message: { content: '' }, done: true, eval_count: 2 }));
   });
   const tokens = [];
   const r = await p.stream({ model: 'm', messages: [], tools: [{ name: 'get_table', description: 'd', parameters: {} }] }, (t) => tokens.push(t));
