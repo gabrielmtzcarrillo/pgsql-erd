@@ -21,7 +21,7 @@ pgAdmin's ERD tool and this app.
 - Undo/redo, and a prompt about unsaved changes when you close the window.
 - Save back to `.pgerd`. Properties this app doesn't edit (tablespace, check constraints, and so
   on) are kept as they were.
-- Live SQL preview, and export to PostgreSQL DDL (`CREATE TABLE`, primary keys, unique
+- Live SQL preview with syntax highlighting, and export to PostgreSQL DDL (`CREATE TABLE`, primary keys, unique
   constraints, foreign keys, comments), SVG or PNG.
 - Follows the system's light or dark theme.
 
@@ -82,6 +82,7 @@ src/renderer/lib/layout.js table geometry, relationship routing, auto layout
 src/renderer/lib/catalog.js catalog rows -> diagram model
 src/renderer/lib/diff.js  database vs diagram comparison and migration SQL
 src/renderer/lib/sync.js  import / update diagram tables from the database
+src/renderer/lib/highlight.js SQL syntax highlighting
 samples/shop.pgerd        example diagram
 tests/                    node:test suites
 ```

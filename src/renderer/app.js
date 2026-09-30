@@ -8,6 +8,7 @@ import {
 } from './lib/layout.js';
 import { DIAGRAM_CSS, LIGHT_VARS, DARK_VARS, FONT, FONT_BOLD } from './lib/svgstyle.js';
 import { setupDatabase } from './dbui.js';
+import { highlightSQL } from './lib/highlight.js';
 
 const host = window.erdHost;
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -233,7 +234,7 @@ function render() {
   $('[data-cmd="undo"]').disabled = !state.undo.length;
   $('[data-cmd="redo"]').disabled = !state.redo.length;
   $('[data-cmd="delete"]').disabled = !state.selection;
-  if (state.showSql) $('#sql-text').textContent = generateSQL(state.model);
+  if (state.showSql) highlightSQL($('#sql-text'), generateSQL(state.model));
 }
 
 // ---------------------------------------------------------------- properties panel

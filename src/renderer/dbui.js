@@ -5,6 +5,7 @@ import { modelFromCatalog, tableKey } from './lib/catalog.js';
 import { diffModels } from './lib/diff.js';
 import { mergeFromDb } from './lib/sync.js';
 import { autoLayout, contentBounds } from './lib/layout.js';
+import { highlightSQL } from './lib/highlight.js';
 
 const STORAGE_KEY = 'pgsql-erd.connection';
 const $ = (sel) => document.querySelector(sel);
@@ -284,7 +285,7 @@ export function setupDatabase(ctx) {
     compareList.replaceChildren(
       ...(items.length ? items : [h('div', { class: 'db-empty' }, 'No differences: the database matches the diagram.')])
     );
-    compareSql.textContent = result.sql;
+    highlightSQL(compareSql, result.sql);
     const active = result.changes.filter((c) => !c.skipped).length;
     const skipped = result.changes.length - active;
     setStatus(

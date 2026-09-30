@@ -10,6 +10,15 @@
   --accent-soft: rgba(10, 132, 255, 0.12);
   --danger: #cf222e;
   --input-bg: #ffffff;
+  --sql-kw: #8250df;
+  --sql-type: #0550ae;
+  --sql-str: #0a3069;
+  --sql-num: #0550ae;
+  --sql-com: #6e7781;
+  --sql-ident: #953800;
+  --sql-fn: #6639ba;
+  --sql-op: #cf222e;
+  --sql-punct: #57606a;
   color-scheme: light;
 }
 
@@ -26,6 +35,15 @@
     --accent-soft: rgba(74, 163, 255, 0.16);
     --danger: #ff6b6b;
     --input-bg: #16181d;
+    --sql-kw: #ff7b72;
+    --sql-type: #79c0ff;
+    --sql-str: #a5d6ff;
+    --sql-num: #79c0ff;
+    --sql-com: #8b949e;
+    --sql-ident: #ffa657;
+    --sql-fn: #d2a8ff;
+    --sql-op: #ff7b72;
+    --sql-punct: #8b949e;
     color-scheme: dark;
   }
 }
@@ -256,3 +274,14 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
 .chg.skipped { opacity: 0.5; text-decoration: line-through; }
 .chg-table { padding: 6px 10px 2px; font-weight: 600; font-size: 12.5px; }
 .db-empty { padding: 20px; color: var(--muted); text-align: center; }
+
+/* SQL syntax highlighting */
+.sql-kw { color: var(--sql-kw); font-weight: 600; }
+.sql-type { color: var(--sql-type); }
+.sql-str { color: var(--sql-str); }
+.sql-num { color: var(--sql-num); }
+.sql-com { color: var(--sql-com); font-style: italic; }
+.sql-ident { color: var(--sql-ident); }
+.sql-fn { color: var(--sql-fn); }
+.sql-op { color: var(--sql-op); }
+.sql-punct { color: var(--sql-punct); }
