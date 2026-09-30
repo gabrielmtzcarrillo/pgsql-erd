@@ -98,8 +98,11 @@ npm run dist
 On Windows, with Node.js 20+ installed, run from the repository root:
 
 ```bat
-scripts\build-windows.cmd
+scripts\build-windows.bat
 ```
+
+It is a plain batch file, so it runs from Command Prompt or by double-clicking, without changing the
+PowerShell execution policy.
 
 This installs dependencies, runs the tests and writes to `dist\`:
 
@@ -109,8 +112,9 @@ This installs dependencies, runs the tests and writes to `dist\`:
 | `pgsql-erd-<version>-portable.exe` | Single executable that runs without installing |
 | `win-unpacked\pgsql-erd.exe` | The unpacked app the other two are made from |
 
-Options (also accepted by `scripts\build-windows.ps1` in PowerShell): `-Target installer|portable|dir|all`,
-`-SkipTests`, `-SkipInstall`, `-Clean`. The same builds are available as npm scripts:
+To build only one target, pass `installer`, `portable` or `dir` (default `all`), e.g.
+`scripts\build-windows.bat portable`. Options: `--skip-tests`, `--skip-install`, `--clean` (delete
+`dist\` first). The same builds are available as npm scripts:
 `npm run dist:win` (installer + portable), `dist:win:installer`, `dist:win:portable` and `dist:win:dir`.
 
 The executables are unsigned, so Windows SmartScreen warns the first time they run. Building them on
