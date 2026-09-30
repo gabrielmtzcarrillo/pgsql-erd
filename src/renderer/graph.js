@@ -10,6 +10,8 @@
 
 import { vertexCaption, formatAgValue, formatProperties, graphElements, isGraphName, isLabelName } from '../shared/age.js';
 import { decorateButtons } from './icons.js';
+import { tr, trn, formatNumber } from '../shared/i18n.js';
+import { envName } from './dbui.js';
 
 const $ = (sel) => document.querySelector(sel);
 const GRAPH_KEY = 'pgsql-erd.graph';
@@ -89,9 +91,9 @@ export function setupGraph(ctx) {
     try {
       v = JSON.parse(s);
     } catch (err) {
-      throw new Error(`Properties are not valid JSON: ${err.message}`);
+      throw new Error(tr('Properties are not valid JSON: {message}', { message: err.message }));
     }
-    if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('Properties must be a JSON object, e.g. {"since": 2020}.');
+    if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error(tr('Properties must be a JSON object, e.g. {"since": 2020}.'));
     return v;
   }
   const propsText = (p) => (p && Object.keys(p).length ? JSON.stringify(p, null, 2) : '');
@@ -104,8 +106,8 @@ export function setupGraph(ctx) {
       const info = db.info();
       const choice = await host.confirm({
         message: confirm,
-        detail: `${info?.description ?? ''} (${info?.profile.environment ?? ''})\n\nThis is committed immediately.`,
-        buttons: ['OK', 'Cancel'],
+        detail: `${info?.description ?? ''} (${envName(info?.profile.environment ?? '')})\n\n${tr('This is committed immediately.')}`,
+        buttons: [tr('OK'), tr('Cancel')],
       });
       if (choice !== 0) return null;
     }
@@ -184,45 +186,45 @@ export function setupGraph(ctx) {
     const nodes = [];
     if (!db.connected()) {
       nodes.push(h('div', { class: 'gr-note' }, [
-        h('p', {}, 'Connect to a database to manage its Apache AGE graphs.'),
-        h('button', { type: 'button', class: 'primary', onclick: () => db.openConnect(() => refresh()) }, 'Connect…'),
+        h('p', {}, tr('Connect to a database to manage its Apache AGE graphs.')),
+        h('button', { type: 'button', class: 'primary', onclick: () => db.openConnect(() => refresh()) }, tr('Connect…')),
       ]));
     } else if (st.error) {
       nodes.push(h('div', { class: 'gr-note error' }, st.error));
     } else if (st.info && !st.info.version) {
       nodes.push(h('div', { class: 'gr-note' }, st.info.available
         ? [
-            h('p', {}, 'Apache AGE is available on this server but not installed in this database.'),
-            h('button', { type: 'button', class: 'primary', onclick: () => change('install', {}, { confirm: 'Install the Apache AGE extension (CREATE EXTENSION age)?' }) }, 'Install AGE'),
+            h('p', {}, tr('Apache AGE is available on this server but not installed in this database.')),
+            h('button', { type: 'button', class: 'primary', onclick: () => change('install', {}, { confirm: tr('Install the Apache AGE extension (CREATE EXTENSION age)?') }) }, tr('Install AGE')),
           ]
         : [
-            h('p', {}, 'Apache AGE is not installed on this PostgreSQL server.'),
-            h('p', { class: 'muted small' }, 'Install it from age.apache.org (or your package manager, e.g. postgresql-16-age), then reload.'),
+            h('p', {}, tr('Apache AGE is not installed on this PostgreSQL server.')),
+            h('p', { class: 'muted small' }, tr('Install it from age.apache.org (or your package manager, e.g. postgresql-16-age), then reload.')),
           ]));
     } else if (st.info) {
-      if (st.sideForm?.kind === 'graph') nodes.push(sideForm('New graph name', (name) => {
-        if (!isGraphName(name)) throw new Error('Graph names have 3–63 letters, digits or _, starting with a letter.');
+      if (st.sideForm?.kind === 'graph') nodes.push(sideForm(tr('New graph name'), (name) => {
+        if (!isGraphName(name)) throw new Error(tr('Graph names have 3–63 letters, digits or _, starting with a letter.'));
         return change('create-graph', { graph: name }, { done: () => (st.graph = name) });
       }));
-      if (!st.info.graphs.length && !st.sideForm) nodes.push(h('div', { class: 'gr-note' }, [h('p', {}, 'No graphs yet.'), h('button', { type: 'button', onclick: () => openSideForm('graph') }, 'Create a graph')]));
+      if (!st.info.graphs.length && !st.sideForm) nodes.push(h('div', { class: 'gr-note' }, [h('p', {}, tr('No graphs yet.')), h('button', { type: 'button', onclick: () => openSideForm('graph') }, tr('Create a graph'))]));
       for (const g of st.info.graphs) {
         const active = g.name === st.graph;
         const vCount = g.vertexLabels.reduce((n, l) => n + l.count, 0);
         const eCount = g.edgeLabels.reduce((n, l) => n + l.count, 0);
-        nodes.push(h('div', { class: `wb-item gr-graph${active ? ' active' : ''}`, onclick: () => selectGraph(g.name), title: `${vCount} vertices · ${eCount} relationships` }, [
+        nodes.push(h('div', { class: `wb-item gr-graph${active ? ' active' : ''}`, onclick: () => selectGraph(g.name), title: `${trn(vCount, '{n} vertex', '{n} vertices')} · ${trn(eCount, '{n} relationship', '{n} relationships')}` }, [
           h('span', { class: 'grow' }, g.name),
           h('span', { class: 'muted small' }, `${vCount} · ${eCount}`),
           h('button', {
-            type: 'button', class: 'wb-del', title: 'Drop graph',
+            type: 'button', class: 'wb-del', title: tr('Drop graph'),
             onclick: (e) => {
               e.stopPropagation();
-              change('drop-graph', { graph: g.name }, { confirm: `Drop graph ${g.name} with all its vertices and relationships?` });
+              change('drop-graph', { graph: g.name }, { confirm: tr('Drop graph {name} with all its vertices and relationships?', { name: g.name }) });
             },
           }, '×'),
         ]));
         if (active) {
-          nodes.push(labelGroup('Vertex labels', 'v', g.vertexLabels));
-          nodes.push(labelGroup('Relationship types', 'e', g.edgeLabels));
+          nodes.push(labelGroup(tr('Vertex labels'), 'v', g.vertexLabels));
+          nodes.push(labelGroup(tr('Relationship types'), 'e', g.edgeLabels));
         }
       }
     }
@@ -233,7 +235,7 @@ export function setupGraph(ctx) {
   function labelGroup(title, kind, labels) {
     const items = labels.map((l) =>
       h('div', {
-        class: 'wb-item gr-label', title: kind === 'e' ? 'Show these relationships' : 'Show these vertices',
+        class: 'wb-item gr-label', title: kind === 'e' ? tr('Show these relationships') : tr('Show these vertices'),
         onclick: () => {
           if (kind === 'e') Object.assign(st.edges, { label: l.name, around: null, offset: 0 });
           else Object.assign(st.vertices, { label: l.name, offset: 0 });
@@ -242,12 +244,16 @@ export function setupGraph(ctx) {
       }, [
         h('span', { class: 'gr-swatch', style: `background:${kind === 'e' ? 'var(--muted)' : colorOf(l.name)}` }),
         h('span', { class: 'grow' }, l.name),
-        h('span', { class: 'muted small' }, l.count.toLocaleString()),
+        h('span', { class: 'muted small' }, formatNumber(l.count)),
         h('button', {
-          type: 'button', class: 'wb-del', title: 'Drop label',
+          type: 'button', class: 'wb-del', title: tr('Drop label'),
           onclick: (e) => {
             e.stopPropagation();
-            change('drop-label', { label: l.name }, { confirm: `Drop ${kind === 'e' ? 'relationship type' : 'vertex label'} ${l.name} and its ${l.count.toLocaleString()} ${kind === 'e' ? 'relationships' : 'vertices'}?` });
+            const args = { name: l.name, n: formatNumber(l.count) };
+            const confirm = kind === 'e'
+              ? tr('Drop relationship type {name} and its {n} relationships?', args)
+              : tr('Drop vertex label {name} and its {n} vertices?', args);
+            change('drop-label', { label: l.name }, { confirm });
           },
         }, '×'),
       ])
@@ -255,15 +261,15 @@ export function setupGraph(ctx) {
     return h('div', { class: 'gr-group' }, [
       h('div', { class: 'wb-group gr-group-head' }, [
         h('span', { class: 'grow' }, title),
-        h('button', { type: 'button', class: 'gr-mini', title: `New ${kind === 'e' ? 'relationship type' : 'vertex label'}`, onclick: () => openSideForm(kind) }, '+'),
+        h('button', { type: 'button', class: 'gr-mini', title: kind === 'e' ? tr('New relationship type') : tr('New vertex label'), onclick: () => openSideForm(kind) }, '+'),
       ]),
       st.sideForm?.kind === kind
-        ? sideForm(kind === 'e' ? 'Relationship type, e.g. KNOWS' : 'Vertex label, e.g. Person', (name) => {
-            if (!isLabelName(name)) throw new Error('Label names use letters, digits and _, starting with a letter.');
+        ? sideForm(kind === 'e' ? tr('Relationship type, e.g. KNOWS') : tr('Vertex label, e.g. Person'), (name) => {
+            if (!isLabelName(name)) throw new Error(tr('Label names use letters, digits and _, starting with a letter.'));
             return change('create-label', { kind, label: name });
           })
         : null,
-      ...(items.length ? items : [h('div', { class: 'gr-empty-item muted small' }, 'None yet')]),
+      ...(items.length ? items : [h('div', { class: 'gr-empty-item muted small' }, tr('None yet'))]),
     ]);
   }
 
@@ -294,8 +300,8 @@ export function setupGraph(ctx) {
     });
     return h('div', { class: 'gr-side-form' }, [
       input,
-      h('button', { type: 'button', class: 'primary', onclick: go }, 'Create'),
-      h('button', { type: 'button', onclick: () => ((st.sideForm = null), renderSide()) }, 'Cancel'),
+      h('button', { type: 'button', class: 'primary', onclick: go }, tr('Create')),
+      h('button', { type: 'button', onclick: () => ((st.sideForm = null), renderSide()) }, tr('Cancel')),
       err,
     ]);
   }
@@ -316,8 +322,8 @@ export function setupGraph(ctx) {
   function renderPane() {
     const pane = page.querySelector(`[data-gpane="${st.pane}"]`);
     let body;
-    if (!db.connected() || !st.info?.version) body = [h('div', { class: 'db-empty' }, 'Apache AGE graphs appear here once you connect to a database with AGE installed.')];
-    else if (!st.graph) body = [h('div', { class: 'db-empty' }, 'Create a graph in the sidebar to start.')];
+    if (!db.connected() || !st.info?.version) body = [h('div', { class: 'db-empty' }, tr('Apache AGE graphs appear here once you connect to a database with AGE installed.'))];
+    else if (!st.graph) body = [h('div', { class: 'db-empty' }, tr('Create a graph in the sidebar to start.'))];
     else if (st.pane === 'edges') body = edgesPane();
     else if (st.pane === 'vertices') body = verticesPane();
     else if (st.pane === 'explore') body = explorePane();
@@ -332,15 +338,15 @@ export function setupGraph(ctx) {
     const from = d.total ? view.offset + 1 : 0;
     const to = view.offset + d.rows.length;
     return h('span', { class: 'gr-pager' }, [
-      h('span', { class: 'muted small' }, `${from.toLocaleString()}–${to.toLocaleString()} of ${d.total.toLocaleString()}`),
+      h('span', { class: 'muted small' }, tr('{from}–{to} of {total}', { from: formatNumber(from), to: formatNumber(to), total: formatNumber(d.total) })),
       h('button', { type: 'button', disabled: view.offset === 0, onclick: () => ((view.offset = Math.max(0, view.offset - PAGE)), reload()) }, '‹'),
       h('button', { type: 'button', disabled: to >= d.total, onclick: () => ((view.offset += PAGE), reload()) }, '›'),
     ]);
   }
 
   function labelSelect(kind, value, onchange) {
-    const sel = h('select', { title: kind === 'e' ? 'Relationship type' : 'Vertex label', onchange: (e) => onchange(e.target.value) }, [
-      h('option', { value: '' }, kind === 'e' ? 'All types' : 'All labels'),
+    const sel = h('select', { title: kind === 'e' ? tr('Relationship type') : tr('Vertex label'), onchange: (e) => onchange(e.target.value) }, [
+      h('option', { value: '' }, kind === 'e' ? tr('All types') : tr('All labels')),
       ...labelsOf(kind).map((l) => h('option', { value: l }, l)),
     ]);
     sel.value = value;
@@ -408,11 +414,11 @@ export function setupGraph(ctx) {
     const e = st.edges;
     const reload = () => reloadPane();
     const toolbar = h('div', { class: 'gr-toolbar' }, [
-      h('button', { type: 'button', class: 'primary', 'data-icon': 'add-link', onclick: () => openEdgeForm() }, 'New relationship'),
+      h('button', { type: 'button', class: 'primary', 'data-icon': 'add-link', onclick: () => openEdgeForm() }, tr('New relationship')),
       labelSelect('e', e.label, (v) => ((e.label = v), (e.offset = 0), reload())),
-      searchBox(e.search, 'Search properties and labels', (v) => ((e.search = v), (e.offset = 0), reload())),
-      e.around ? h('span', { class: 'gr-filter-chip' }, ['Around ', vertexChip(e.around), h('button', { type: 'button', title: 'Show all relationships', onclick: () => ((e.around = null), (e.offset = 0), reload()) }, '×')]) : null,
-      h('button', { type: 'button', 'data-icon': 'refresh', title: 'Reload', onclick: () => refresh({ keepPane: true }) }),
+      searchBox(e.search, tr('Search properties and labels'), (v) => ((e.search = v), (e.offset = 0), reload())),
+      e.around ? h('span', { class: 'gr-filter-chip' }, [`${tr('Around')} `, vertexChip(e.around), h('button', { type: 'button', title: tr('Show all relationships'), onclick: () => ((e.around = null), (e.offset = 0), reload()) }, '×')]) : null,
+      h('button', { type: 'button', 'data-icon': 'refresh', title: tr('Reload'), onclick: () => refresh({ keepPane: true }) }),
       h('span', { class: 'grow' }),
       pager(e, reload),
     ]);
@@ -426,21 +432,21 @@ export function setupGraph(ctx) {
         h('td', { class: 'gr-props' }, editing ? ta : formatProperties(edge.properties)),
         h('td', { class: 'gr-actions' }, editing
           ? [
-              h('button', { type: 'button', class: 'primary', onclick: () => saveProps('edge', edge.id, ta.value, () => (e.editing = null)) }, 'Save'),
-              h('button', { type: 'button', onclick: () => ((e.editing = null), renderPane()) }, 'Cancel'),
+              h('button', { type: 'button', class: 'primary', onclick: () => saveProps('edge', edge.id, ta.value, () => (e.editing = null)) }, tr('Save')),
+              h('button', { type: 'button', onclick: () => ((e.editing = null), renderPane()) }, tr('Cancel')),
             ]
           : [
-              h('button', { type: 'button', title: 'Edit properties', onclick: () => ((e.editing = edge.id), renderPane()) }, 'Edit'),
-              h('button', { type: 'button', class: 'danger', title: 'Delete relationship', onclick: () => change('delete-edge', { id: edge.id }, { confirm: `Delete relationship ${vertexCaption(start)} —${edge.label}→ ${vertexCaption(end)}?` }) }, 'Delete'),
+              h('button', { type: 'button', title: tr('Edit properties'), onclick: () => ((e.editing = edge.id), renderPane()) }, tr('Edit')),
+              h('button', { type: 'button', class: 'danger', title: tr('Delete relationship'), onclick: () => change('delete-edge', { id: edge.id }, { confirm: tr('Delete relationship {rel}?', { rel: `${vertexCaption(start)} —${edge.label}→ ${vertexCaption(end)}` }) }) }, tr('Delete')),
             ]),
       ]);
     });
     const table = h('table', { class: 'dt-grid gr-table' }, [
-      h('thead', {}, h('tr', {}, ['From', 'Relationship', 'To', 'Properties', ''].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, [tr('From'), tr('Relationship'), tr('To'), tr('Properties'), ''].map((t) => h('th', {}, t)))),
       h('tbody', {}, rows),
     ]);
     const empty = e.data && !e.data.rows.length
-      ? h('div', { class: 'db-empty' }, e.search || e.label || e.around ? 'No relationships match.' : 'No relationships yet. Use “New relationship” to connect two vertices.')
+      ? h('div', { class: 'db-empty' }, e.search || e.label || e.around ? tr('No relationships match.') : tr('No relationships yet. Use “New relationship” to connect two vertices.'))
       : null;
     return [toolbar, e.form ? edgeForm() : null, h('div', { class: 'gr-scroll' }, [table, empty])];
   }
@@ -454,24 +460,24 @@ export function setupGraph(ctx) {
 
   function edgeForm() {
     const f = st.edges.form;
-    const from = vertexPicker('From vertex — type to search', f.from);
-    const to = vertexPicker('To vertex — type to search', f.to);
+    const from = vertexPicker(tr('From vertex — type to search'), f.from);
+    const to = vertexPicker(tr('To vertex — type to search'), f.to);
     const types = labelList('e');
-    const type = h('input', { type: 'text', value: f.label, list: types.id, placeholder: 'Type, e.g. KNOWS', spellcheck: false, class: 'gr-type-input' });
-    const props = h('textarea', { rows: 2, placeholder: 'Properties (JSON), e.g. {"since": 2020}', spellcheck: false }, f.props);
+    const type = h('input', { type: 'text', value: f.label, list: types.id, placeholder: tr('Type, e.g. KNOWS'), spellcheck: false, class: 'gr-type-input' });
+    const props = h('textarea', { rows: 2, placeholder: tr('Properties (JSON), e.g. {"since": 2020}'), spellcheck: false }, f.props);
     const err = h('div', { class: 'gr-form-error' });
     const create = async () => {
       err.textContent = '';
       try {
         const a = from.get();
         const b = to.get();
-        if (!a || !b) throw new Error('Pick both vertices from the suggestions (or type their #id).');
-        if (!isLabelName(type.value.trim())) throw new Error('Type a relationship type: letters, digits and _, starting with a letter.');
+        if (!a || !b) throw new Error(tr('Pick both vertices from the suggestions (or type their #id).'));
+        if (!isLabelName(type.value.trim())) throw new Error(tr('Type a relationship type: letters, digits and _, starting with a letter.'));
         const properties = parseProps(props.value);
         Object.assign(f, { from: a, to: b, label: type.value.trim(), props: props.value });
         await change('create-edge', { from: a.id, to: b.id, label: f.label, properties }, {
           done: () => {
-            status(`Relationship ${f.label} created`);
+            status(tr('Relationship {type} created', { type: f.label }));
             st.edges.form = null;
           },
         });
@@ -480,14 +486,14 @@ export function setupGraph(ctx) {
       }
     };
     return h('div', { class: 'gr-form' }, [
-      h('div', { class: 'gr-form-title' }, 'New relationship'),
+      h('div', { class: 'gr-form-title' }, tr('New relationship')),
       h('div', { class: 'gr-form-row' }, [
         from.el,
         h('span', { class: 'gr-arrow' }, '—'),
         type, types.el,
         h('span', { class: 'gr-arrow' }, '→'),
         to.el,
-        h('button', { type: 'button', title: 'Swap direction', onclick: () => {
+        h('button', { type: 'button', title: tr('Swap direction'), onclick: () => {
           const a = from.get();
           from.set(to.get());
           to.set(a);
@@ -497,8 +503,8 @@ export function setupGraph(ctx) {
       h('div', { class: 'gr-form-row end' }, [
         err,
         h('span', { class: 'grow' }),
-        h('button', { type: 'button', onclick: () => ((st.edges.form = null), renderPane()) }, 'Cancel'),
-        h('button', { type: 'button', class: 'primary', onclick: create }, 'Create relationship'),
+        h('button', { type: 'button', onclick: () => ((st.edges.form = null), renderPane()) }, tr('Cancel')),
+        h('button', { type: 'button', class: 'primary', onclick: create }, tr('Create relationship')),
       ]),
     ]);
   }
@@ -518,10 +524,10 @@ export function setupGraph(ctx) {
     const v = st.vertices;
     const reload = () => reloadPane();
     const toolbar = h('div', { class: 'gr-toolbar' }, [
-      h('button', { type: 'button', class: 'primary', 'data-icon': 'plus', onclick: () => ((v.form = { label: v.label || labelsOf('v')[0] || '', props: '' }), renderPane()) }, 'New vertex'),
+      h('button', { type: 'button', class: 'primary', 'data-icon': 'plus', onclick: () => ((v.form = { label: v.label || labelsOf('v')[0] || '', props: '' }), renderPane()) }, tr('New vertex')),
       labelSelect('v', v.label, (x) => ((v.label = x), (v.offset = 0), reload())),
-      searchBox(v.search, 'Search properties, labels or #id', (x) => ((v.search = x), (v.offset = 0), reload())),
-      h('button', { type: 'button', 'data-icon': 'refresh', title: 'Reload', onclick: () => refresh({ keepPane: true }) }),
+      searchBox(v.search, tr('Search properties, labels or #id'), (x) => ((v.search = x), (v.offset = 0), reload())),
+      h('button', { type: 'button', 'data-icon': 'refresh', title: tr('Reload'), onclick: () => refresh({ keepPane: true }) }),
       h('span', { class: 'grow' }),
       pager(v, reload),
     ]);
@@ -531,46 +537,50 @@ export function setupGraph(ctx) {
       return h('tr', {}, [
         h('td', {}, vertexChip(vertex, () => focusVertex(vertex))),
         h('td', { class: 'gr-props' }, editing ? ta : formatProperties(vertex.properties)),
-        h('td', { class: 'num' }, h('a', { href: '#', title: 'Show its relationships', onclick: (e) => {
+        h('td', { class: 'num' }, h('a', { href: '#', title: tr('Show its relationships'), onclick: (e) => {
           e.preventDefault();
           Object.assign(st.edges, { around: vertex, label: '', offset: 0 });
           showPane('edges');
-        } }, degree.toLocaleString())),
+        } }, formatNumber(degree))),
         h('td', { class: 'gr-actions' }, editing
           ? [
-              h('button', { type: 'button', class: 'primary', onclick: () => saveProps('vertex', vertex.id, ta.value, () => (v.editing = null)) }, 'Save'),
-              h('button', { type: 'button', onclick: () => ((v.editing = null), renderPane()) }, 'Cancel'),
+              h('button', { type: 'button', class: 'primary', onclick: () => saveProps('vertex', vertex.id, ta.value, () => (v.editing = null)) }, tr('Save')),
+              h('button', { type: 'button', onclick: () => ((v.editing = null), renderPane()) }, tr('Cancel')),
             ]
           : [
-              h('button', { type: 'button', title: 'New relationship from this vertex', onclick: () => openEdgeForm(vertex) }, 'Connect'),
-              h('button', { type: 'button', title: 'Show in the explorer', onclick: () => focusVertex(vertex) }, 'Explore'),
-              h('button', { type: 'button', title: 'Edit properties', onclick: () => ((v.editing = vertex.id), renderPane()) }, 'Edit'),
-              h('button', { type: 'button', class: 'danger', title: 'Delete the vertex and its relationships', onclick: () => change('delete-vertex', { id: vertex.id }, { confirm: `Delete ${vertexCaption(vertex)} (${vertex.label})${degree ? ` and its ${degree} relationship${degree === 1 ? '' : 's'}` : ''}?` }) }, 'Delete'),
+              h('button', { type: 'button', title: tr('New relationship from this vertex'), onclick: () => openEdgeForm(vertex) }, tr('Connect')),
+              h('button', { type: 'button', title: tr('Show in the explorer'), onclick: () => focusVertex(vertex) }, tr('Explore')),
+              h('button', { type: 'button', title: tr('Edit properties'), onclick: () => ((v.editing = vertex.id), renderPane()) }, tr('Edit')),
+              h('button', { type: 'button', class: 'danger', title: tr('Delete the vertex and its relationships'), onclick: () => change('delete-vertex', { id: vertex.id }, {
+                confirm: degree
+                  ? trn(degree, 'Delete {vertex} and its {n} relationship?', 'Delete {vertex} and its {n} relationships?', { vertex: `${vertexCaption(vertex)} (${vertex.label})` })
+                  : tr('Delete {vertex}?', { vertex: `${vertexCaption(vertex)} (${vertex.label})` }),
+              }) }, tr('Delete')),
             ]),
       ]);
     });
     const table = h('table', { class: 'dt-grid gr-table' }, [
-      h('thead', {}, h('tr', {}, ['Vertex', 'Properties', 'Relationships', ''].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, [tr('Vertex'), tr('Properties'), tr('Relationships'), ''].map((t) => h('th', {}, t)))),
       h('tbody', {}, rows),
     ]);
-    const empty = v.data && !v.data.rows.length ? h('div', { class: 'db-empty' }, v.search || v.label ? 'No vertices match.' : 'No vertices yet. Use “New vertex” to add one.') : null;
+    const empty = v.data && !v.data.rows.length ? h('div', { class: 'db-empty' }, v.search || v.label ? tr('No vertices match.') : tr('No vertices yet. Use “New vertex” to add one.')) : null;
     return [toolbar, v.form ? vertexForm() : null, h('div', { class: 'gr-scroll' }, [table, empty])];
   }
 
   function vertexForm() {
     const f = st.vertices.form;
     const labels = labelList('v');
-    const label = h('input', { type: 'text', value: f.label, list: labels.id, placeholder: 'Label, e.g. Person', spellcheck: false, class: 'gr-type-input' });
-    const props = h('textarea', { rows: 3, placeholder: 'Properties (JSON), e.g. {"name": "Ann"}', spellcheck: false }, f.props);
+    const label = h('input', { type: 'text', value: f.label, list: labels.id, placeholder: tr('Label, e.g. Person'), spellcheck: false, class: 'gr-type-input' });
+    const props = h('textarea', { rows: 3, placeholder: tr('Properties (JSON), e.g. {"name": "Ann"}'), spellcheck: false }, f.props);
     const err = h('div', { class: 'gr-form-error' });
     const create = async () => {
       err.textContent = '';
       try {
-        if (!isLabelName(label.value.trim())) throw new Error('Type a label: letters, digits and _, starting with a letter.');
+        if (!isLabelName(label.value.trim())) throw new Error(tr('Type a label: letters, digits and _, starting with a letter.'));
         Object.assign(f, { label: label.value.trim(), props: props.value });
         await change('create-vertex', { label: f.label, properties: parseProps(props.value) }, {
           done: (vx) => {
-            status(`Vertex ${vertexCaption(vx)} created`);
+            status(tr('Vertex {name} created', { name: vertexCaption(vx) }));
             st.vertices.form = null;
           },
         });
@@ -579,14 +589,14 @@ export function setupGraph(ctx) {
       }
     };
     return h('div', { class: 'gr-form' }, [
-      h('div', { class: 'gr-form-title' }, 'New vertex'),
+      h('div', { class: 'gr-form-title' }, tr('New vertex')),
       h('div', { class: 'gr-form-row' }, [label, labels.el]),
       props,
       h('div', { class: 'gr-form-row end' }, [
         err,
         h('span', { class: 'grow' }),
-        h('button', { type: 'button', onclick: () => ((st.vertices.form = null), renderPane()) }, 'Cancel'),
-        h('button', { type: 'button', class: 'primary', onclick: create }, 'Create vertex'),
+        h('button', { type: 'button', onclick: () => ((st.vertices.form = null), renderPane()) }, tr('Cancel')),
+        h('button', { type: 'button', class: 'primary', onclick: create }, tr('Create vertex')),
       ]),
     ]);
   }
@@ -635,7 +645,7 @@ export function setupGraph(ctx) {
       const r = await call(host.age.edges, { graph: st.graph, around: id, limit: 200 });
       const near = st.explore.nodes.get(id);
       addToExplorer(r.rows.flatMap((x) => [x.start, x.end]), r.rows.map((x) => x.edge), near);
-      if (r.total > r.rows.length) setStatus(`Showing ${r.rows.length} of ${r.total.toLocaleString()} relationships of this vertex`);
+      if (r.total > r.rows.length) setStatus(tr('Showing {n} of {total} relationships of this vertex', { n: r.rows.length, total: formatNumber(r.total) }));
       renderPane();
     } catch (err) {
       setStatus(err.message, 'error');
@@ -653,9 +663,9 @@ export function setupGraph(ctx) {
 
   function explorePane() {
     const x = st.explore;
-    const picker = vertexPicker('Find a vertex…');
+    const picker = vertexPicker(tr('Find a vertex…'));
     const toolbar = h('div', { class: 'gr-toolbar' }, [
-      h('select', { title: 'Load a sample of the graph', onchange: async (e) => {
+      h('select', { title: tr('Load a sample of the graph'), onchange: async (e) => {
         const n = Number(e.target.value);
         e.target.value = '';
         if (!n) return;
@@ -665,11 +675,11 @@ export function setupGraph(ctx) {
           setStatus(err.message, 'error');
         }
         renderPane();
-      } }, [h('option', { value: '' }, 'Load sample…'), ...[50, 100, 250, 500].map((n) => h('option', { value: String(n) }, `${n} relationships`))]),
+      } }, [h('option', { value: '' }, tr('Load sample…')), ...[50, 100, 250, 500].map((n) => h('option', { value: String(n) }, trn(n, '{n} relationship', '{n} relationships')))]),
       picker.el,
-      h('button', { type: 'button', title: 'Add the vertex and its relationships', onclick: () => picker.get() && focusVertex(picker.get()) }, 'Add'),
-      h('button', { type: 'button', 'data-icon': 'fit', title: 'Fit to view', onclick: () => fitView() }),
-      h('button', { type: 'button', title: 'Remove everything from the view', onclick: () => (clearExplorer(), renderPane()) }, 'Clear'),
+      h('button', { type: 'button', title: tr('Add the vertex and its relationships'), onclick: () => picker.get() && focusVertex(picker.get()) }, tr('Add')),
+      h('button', { type: 'button', 'data-icon': 'fit', title: tr('Fit to view'), onclick: () => fitView() }),
+      h('button', { type: 'button', title: tr('Remove everything from the view'), onclick: () => (clearExplorer(), renderPane()) }, tr('Clear')),
       h('span', { class: 'grow' }),
       h('span', { class: 'muted small gr-hint' }, explorerHint()),
     ]);
@@ -684,8 +694,8 @@ export function setupGraph(ctx) {
   function explorerHint() {
     const x = st.explore;
     return x.connectFrom
-      ? `Click the vertex to connect ${vertexCaption(x.nodes.get(x.connectFrom)?.v)} to (Esc cancels)`
-      : `${x.nodes.size} vertices · ${x.links.size} relationships · double-click expands · Shift+click connects`;
+      ? tr('Click the vertex to connect {name} to (Esc cancels)', { name: vertexCaption(x.nodes.get(x.connectFrom)?.v) })
+      : `${trn(x.nodes.size, '{n} vertex', '{n} vertices')} · ${trn(x.links.size, '{n} relationship', '{n} relationships')} · ${tr('double-click expands · Shift+click connects')}`;
   }
 
   // Selection changes update the explorer in place (re-drawing would restart the layout).
@@ -715,7 +725,7 @@ export function setupGraph(ctx) {
   function detailPanel() {
     const x = st.explore;
     const sel = x.selected;
-    if (!sel) return h('aside', { class: 'gr-detail muted small' }, 'Select a vertex or relationship to see its properties.');
+    if (!sel) return h('aside', { class: 'gr-detail muted small' }, tr('Select a vertex or relationship to see its properties.'));
     if (sel.type === 'vertex') {
       const n = x.nodes.get(sel.id);
       if (!n) return h('aside', { class: 'gr-detail' });
@@ -724,16 +734,16 @@ export function setupGraph(ctx) {
       return h('aside', { class: 'gr-detail' }, [
         vertexChip(v),
         h('div', { class: 'muted small' }, `#${v.id}`),
-        h('div', { class: 'wb-section-title' }, 'Properties'),
+        h('div', { class: 'wb-section-title' }, tr('Properties')),
         ta,
         h('div', { class: 'gr-form-row' }, [
-          h('button', { type: 'button', class: 'primary', onclick: () => saveProps('vertex', v.id, ta.value, (r) => r && (n.v = r)) }, 'Save'),
-          h('button', { type: 'button', onclick: () => expand(v.id) }, 'Expand'),
-          h('button', { type: 'button', title: 'Then click the target vertex', onclick: () => ((x.connectFrom = v.id), updateSelection()) }, 'Connect…'),
+          h('button', { type: 'button', class: 'primary', onclick: () => saveProps('vertex', v.id, ta.value, (r) => r && (n.v = r)) }, tr('Save')),
+          h('button', { type: 'button', onclick: () => expand(v.id) }, tr('Expand')),
+          h('button', { type: 'button', title: tr('Then click the target vertex'), onclick: () => ((x.connectFrom = v.id), updateSelection()) }, tr('Connect…')),
         ]),
         h('div', { class: 'gr-form-row' }, [
-          h('button', { type: 'button', title: 'Remove from the view (the vertex stays in the graph)', onclick: () => (hideVertex(v.id), renderPane()) }, 'Hide'),
-          h('button', { type: 'button', class: 'danger', onclick: () => change('delete-vertex', { id: v.id }, { confirm: `Delete ${vertexCaption(v)} (${v.label}) and its relationships?`, done: () => hideVertex(v.id) }) }, 'Delete'),
+          h('button', { type: 'button', title: tr('Remove from the view (the vertex stays in the graph)'), onclick: () => (hideVertex(v.id), renderPane()) }, tr('Hide')),
+          h('button', { type: 'button', class: 'danger', onclick: () => change('delete-vertex', { id: v.id }, { confirm: tr('Delete {vertex} and its relationships?', { vertex: `${vertexCaption(v)} (${v.label})` }), done: () => hideVertex(v.id) }) }, tr('Delete')),
         ]),
       ]);
     }
@@ -742,17 +752,17 @@ export function setupGraph(ctx) {
       const b = x.nodes.get(sel.to)?.v;
       if (!a || !b) return h('aside', { class: 'gr-detail' });
       const types = labelList('e');
-      const type = h('input', { type: 'text', list: types.id, placeholder: 'Type, e.g. KNOWS', value: labelsOf('e')[0] ?? '', spellcheck: false });
-      const props = h('textarea', { rows: 3, placeholder: 'Properties (JSON)', spellcheck: false });
+      const type = h('input', { type: 'text', list: types.id, placeholder: tr('Type, e.g. KNOWS'), value: labelsOf('e')[0] ?? '', spellcheck: false });
+      const props = h('textarea', { rows: 3, placeholder: tr('Properties (JSON)'), spellcheck: false });
       const err = h('div', { class: 'gr-form-error' });
       return h('aside', { class: 'gr-detail' }, [
-        h('div', { class: 'gr-form-title' }, 'New relationship'),
+        h('div', { class: 'gr-form-title' }, tr('New relationship')),
         vertexChip(a), h('div', { class: 'gr-arrow' }, '↓'), vertexChip(b),
         type, types.el, props, err,
         h('div', { class: 'gr-form-row' }, [
           h('button', { type: 'button', class: 'primary', onclick: async () => {
             try {
-              if (!isLabelName(type.value.trim())) throw new Error('Type a relationship type.');
+              if (!isLabelName(type.value.trim())) throw new Error(tr('Type a relationship type.'));
               await change('create-edge', { from: a.id, to: b.id, label: type.value.trim(), properties: parseProps(props.value) }, {
                 done: (edge) => {
                   x.links.set(edge.id, edge);
@@ -763,8 +773,8 @@ export function setupGraph(ctx) {
             } catch (e) {
               err.textContent = e.message;
             }
-          } }, 'Create'),
-          h('button', { type: 'button', onclick: () => ((x.selected = { type: 'vertex', id: a.id }), updateSelection()) }, 'Cancel'),
+          } }, tr('Create')),
+          h('button', { type: 'button', onclick: () => ((x.selected = { type: 'vertex', id: a.id }), updateSelection()) }, tr('Cancel')),
         ]),
       ]);
     }
@@ -775,11 +785,11 @@ export function setupGraph(ctx) {
       h('div', { class: 'gr-form-title' }, e.label),
       vertexChip(x.nodes.get(e.start).v), h('div', { class: 'gr-arrow' }, '↓'), vertexChip(x.nodes.get(e.end).v),
       h('div', { class: 'muted small' }, `#${e.id}`),
-      h('div', { class: 'wb-section-title' }, 'Properties'),
+      h('div', { class: 'wb-section-title' }, tr('Properties')),
       ta,
       h('div', { class: 'gr-form-row' }, [
-        h('button', { type: 'button', class: 'primary', onclick: () => saveProps('edge', e.id, ta.value, (r) => r && x.links.set(r.id, r)) }, 'Save'),
-        h('button', { type: 'button', class: 'danger', onclick: () => change('delete-edge', { id: e.id }, { confirm: `Delete this ${e.label} relationship?`, done: () => (x.links.delete(e.id), (x.selected = null)) }) }, 'Delete'),
+        h('button', { type: 'button', class: 'primary', onclick: () => saveProps('edge', e.id, ta.value, (r) => r && x.links.set(r.id, r)) }, tr('Save')),
+        h('button', { type: 'button', class: 'danger', onclick: () => change('delete-edge', { id: e.id }, { confirm: tr('Delete this {type} relationship?', { type: e.label }), done: () => (x.links.delete(e.id), (x.selected = null)) }) }, tr('Delete')),
       ]),
     ]);
   }
@@ -1004,21 +1014,21 @@ export function setupGraph(ctx) {
     const ta = h('textarea', { class: 'gr-cypher', spellcheck: false, rows: 8 }, c.text);
     ta.addEventListener('input', debounce(() => ((c.text = ta.value), save(CYPHER_KEY, ta.value)), 300));
     const allow = h('input', { type: 'checkbox', checked: !!c.allow, onchange: (e) => (c.allow = e.target.checked) });
-    const cols = h('input', { type: 'text', value: c.columns, placeholder: 'auto', spellcheck: false, class: 'gr-cols', title: 'Result columns for AS (…): detected from RETURN; list them here for RETURN * or when detection fails' });
+    const cols = h('input', { type: 'text', value: c.columns, placeholder: tr('auto'), spellcheck: false, class: 'gr-cols', title: tr('Result columns for AS (…): detected from RETURN; list them here for RETURN * or when detection fails') });
     cols.addEventListener('input', () => (c.columns = cols.value));
     const run = async () => {
       c.text = ta.value;
       save(CYPHER_KEY, c.text);
       c.error = null;
-      setStatus('Running…');
+      setStatus(tr('Running…'));
       try {
         c.result = await call(host.age.cypher, { graph: st.graph, query: c.text, columns: c.columns, allowChanges: !!c.allow });
-        setStatus(`${c.result.rowCount} row${c.result.rowCount === 1 ? '' : 's'} · ${(c.result.durationMs / 1000).toFixed(3)} s${c.result.committed ? ' · committed' : ''}`);
+        setStatus(`${trn(c.result.rowCount, '{n} row', '{n} rows')} · ${(c.result.durationMs / 1000).toFixed(3)} s${c.result.committed ? ` · ${tr('committed')}` : ''}`);
         if (c.result.committed) await refresh({ keepPane: true });
       } catch (err) {
         c.result = null;
         c.error = err.message;
-        setStatus('Error', 'error');
+        setStatus(tr('Error'), 'error');
       }
       renderPane();
     };
@@ -1031,16 +1041,16 @@ export function setupGraph(ctx) {
     const r = c.result;
     const found = r ? graphElements(r.rows) : null;
     const toolbar = h('div', { class: 'gr-toolbar' }, [
-      h('button', { type: 'button', class: 'primary', 'data-icon': 'script-run', title: 'Run (Ctrl+Enter)', onclick: run }, 'Run'),
-      h('label', { class: 'check', title: 'Allow queries that change the graph (CREATE, MERGE, SET, DELETE, REMOVE). They are committed when they succeed.' }, [allow, ' Allow changes']),
-      h('label', { class: 'gr-cols-label' }, ['Columns ', cols]),
+      h('button', { type: 'button', class: 'primary', 'data-icon': 'script-run', title: tr('Run (Ctrl+Enter)'), onclick: run }, tr('Run')),
+      h('label', { class: 'check', title: tr('Allow queries that change the graph (CREATE, MERGE, SET, DELETE, REMOVE). They are committed when they succeed.') }, [allow, ` ${tr('Allow changes')}`]),
+      h('label', { class: 'gr-cols-label' }, [`${tr('Columns')} `, cols]),
       h('span', { class: 'grow' }),
       found && (found.vertices.length || found.edges.length)
-        ? h('button', { type: 'button', title: 'Show the vertices and relationships of the result in the explorer', onclick: () => {
+        ? h('button', { type: 'button', title: tr('Show the vertices and relationships of the result in the explorer'), onclick: () => {
             clearExplorer();
             addToExplorer(found.vertices, found.edges);
             showPane('explore');
-          } }, `Show in explorer (${found.vertices.length} · ${found.edges.length})`)
+          } }, `${tr('Show in explorer')} (${found.vertices.length} · ${found.edges.length})`)
         : null,
     ]);
     const out = c.error
@@ -1056,8 +1066,8 @@ export function setupGraph(ctx) {
               }),
             ]))),
           ])
-        : h('p', { class: 'muted small' }, `Runs on graph ${st.graph}. Reads use a read-only transaction; tick “Allow changes” for CREATE / MERGE / SET / DELETE.`);
-    return [toolbar, ta, h('div', { class: 'gr-scroll' }, [out, r?.truncated ? h('p', { class: 'wb-note' }, `Only the first ${r.rows.length} rows are shown.`) : null])];
+        : h('p', { class: 'muted small' }, tr('Runs on graph {graph}. Reads use a read-only transaction; tick “Allow changes” for CREATE / MERGE / SET / DELETE.', { graph: st.graph }));
+    return [toolbar, ta, h('div', { class: 'gr-scroll' }, [out, r?.truncated ? h('p', { class: 'wb-note' }, tr('Only the first {n} rows are shown.', { n: r.rows.length })) : null])];
   }
 
   // ------------------------------------------------------------ wiring

@@ -11,6 +11,8 @@ import {
 } from '../shared/permissions.js';
 import { createEditor } from './lib/monaco.js';
 import { decorateButtons } from './icons.js';
+import { tr, trn, formatDate } from '../shared/i18n.js';
+import { envName } from './dbui.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -128,14 +130,16 @@ export function setupWorkbench(ctx) {
     const el = $('#wb-problems');
     const warnings = problems.warnings + (editor?.isMonaco ? lint.length : 0);
     if (!problems.errors && !warnings) {
-      el.textContent = current.source.trim() ? `✓ No problems · typings from the ${schema.source} schema` : '';
+      el.textContent = current.source.trim()
+        ? `✓ ${schema.source === 'database' ? tr('No problems · typings from the database schema') : tr('No problems · typings from the diagram schema')}`
+        : '';
       el.className = 'wb-problems ok';
       return;
     }
     const first = problems.first ?? (lint[0] && { message: lint[0].message, startLineNumber: lint[0].line });
     el.replaceChildren(
-      h('span', {}, `${problems.errors} error${problems.errors === 1 ? '' : 's'}, ${warnings} warning${warnings === 1 ? '' : 's'}`),
-      first ? h('a', { href: '#', onclick: (e) => (e.preventDefault(), editor.revealLine(first.startLineNumber, first.startColumn)) }, ` — line ${first.startLineNumber}: ${first.message}`) : ''
+      h('span', {}, `${trn(problems.errors, '{n} error', '{n} errors')}, ${trn(warnings, '{n} warning', '{n} warnings')}`),
+      first ? h('a', { href: '#', onclick: (e) => (e.preventDefault(), editor.revealLine(first.startLineNumber, first.startColumn)) }, ` — ${tr('line {n}', { n: first.startLineNumber })}: ${first.message}`) : ''
     );
     el.className = `wb-problems ${problems.errors ? 'error' : 'warn'}`;
   }
@@ -146,7 +150,7 @@ export function setupWorkbench(ctx) {
     const el = $('#wb-project');
     el.textContent = project.dir
       ? `${project.dir}/scripts`
-      : 'Save the diagram to keep scripts in a scripts/ folder next to it.';
+      : tr('Save the diagram to keep scripts in a scripts/ folder next to it.');
     el.title = el.textContent;
   }
 
@@ -203,7 +207,7 @@ export function setupWorkbench(ctx) {
     const q = $('#wb-filter').value.trim().toLowerCase();
     const items = [];
     const draft = !current.path;
-    if (draft) items.push(h('div', { class: 'wb-item active draft' }, [h('span', { class: 'grow' }, `${current.name} (unsaved)`)]));
+    if (draft) items.push(h('div', { class: 'wb-item active draft' }, [h('span', { class: 'grow' }, `${current.name} ${tr('(unsaved)')}`)]));
     const byType = new Map();
     for (const s of scripts) {
       if (q && !`${s.name} ${s.type} ${s.description}`.toLowerCase().includes(q)) continue;
@@ -211,19 +215,19 @@ export function setupWorkbench(ctx) {
       byType.get(s.type).push(s);
     }
     for (const [type, list] of byType) {
-      items.push(h('div', { class: 'wb-group' }, SCRIPT_TYPES[type]?.label ?? type));
+      items.push(h('div', { class: 'wb-group' }, tr(SCRIPT_TYPES[type]?.label ?? type)));
       for (const s of list) {
         const active = s.path === current.path;
         items.push(
           h('div', { class: `wb-item${active ? ' active' : ''}`, title: `${s.path}${s.description ? `\n${s.description}` : ''}`, onclick: () => openScript(s.path) }, [
             h('span', { class: 'grow' }, `${s.name}${active && isDirty() ? ' •' : ''}`),
             s.lastStatus ? h('span', { class: `wb-dot ${s.lastStatus}` }) : null,
-            h('button', { type: 'button', class: 'wb-del', title: 'Delete script', onclick: (e) => (e.stopPropagation(), removeScript(s)) }, '×'),
+            h('button', { type: 'button', class: 'wb-del', title: tr('Delete script'), onclick: (e) => (e.stopPropagation(), removeScript(s)) }, '×'),
           ])
         );
       }
     }
-    if (!items.length) items.push(h('div', { class: 'db-empty' }, project.dir ? 'No scripts yet.' : 'No project folder.'));
+    if (!items.length) items.push(h('div', { class: 'db-empty' }, project.dir ? tr('No scripts yet.') : tr('No project folder.')));
     $('#wb-list').replaceChildren(...items);
   }
   $('#wb-filter').addEventListener('input', renderList);
@@ -231,8 +235,8 @@ export function setupWorkbench(ctx) {
   async function confirmDiscardScript() {
     if (!isDirty()) return true;
     const choice = await host.confirm({
-      message: `Save changes to ${current.name}?`,
-      buttons: ['Save', "Don't Save", 'Cancel'],
+      message: tr('Save changes to {name}?', { name: current.name }),
+      buttons: [tr('Save'), tr("Don't Save"), tr('Cancel')],
     });
     if (choice === 2) return false;
     if (choice === 0) return save();
@@ -246,7 +250,7 @@ export function setupWorkbench(ctx) {
       const s = await call(host.scripts.read, path);
       load({ ...s, saved: s.source });
     } catch (err) {
-      status(`Could not open ${path}: ${err.message}`);
+      status(tr('Could not open {file}: {message}', { file: path, message: err.message }));
     }
   }
 
@@ -263,7 +267,11 @@ export function setupWorkbench(ctx) {
   }
 
   async function removeScript(s) {
-    const choice = await host.confirm({ message: `Delete ${s.path}?`, detail: 'The file is removed from the project folder.', buttons: ['Delete', 'Cancel'] });
+    const choice = await host.confirm({
+      message: tr('Delete {file}?', { file: s.path }),
+      detail: tr('The file is removed from the project folder.'),
+      buttons: [tr('Delete'), tr('Cancel')],
+    });
     if (choice !== 0) return;
     try {
       await call(host.scripts.remove, s.path);
@@ -279,8 +287,8 @@ export function setupWorkbench(ctx) {
   const typeSelect = $('#wb-type');
   const profileSelect = $('#wb-profile');
   const nameInput = $('#wb-name');
-  typeSelect.replaceChildren(...Object.entries(SCRIPT_TYPES).map(([k, v]) => h('option', { value: k }, v.label)));
-  profileSelect.replaceChildren(...Object.entries(SCRIPT_PROFILES).map(([k, v]) => h('option', { value: k }, v.label)));
+  typeSelect.replaceChildren(...Object.entries(SCRIPT_TYPES).map(([k, v]) => h('option', { value: k }, tr(v.label))));
+  profileSelect.replaceChildren(...Object.entries(SCRIPT_PROFILES).map(([k, v]) => h('option', { value: k }, tr(v.label))));
 
   function renderToolbar() {
     nameInput.value = current.name;
@@ -288,7 +296,7 @@ export function setupWorkbench(ctx) {
     profileSelect.value = current.profile;
     const custom = Object.keys(current.overrides ?? {}).length > 0;
     $('#wb-perms').classList.toggle('active', custom);
-    $('#wb-perms').title = `Permissions: ${describePermissions(resolveScriptPermissions(current.profile, current.overrides))}${custom ? ' (customised)' : ''}`;
+    $('#wb-perms').title = `${tr('Permissions:')} ${describePermissions(resolveScriptPermissions(current.profile, current.overrides))}${custom ? ` ${tr('(customised)')}` : ''}`;
   }
 
   // Name, type or permission changes also need saving.
@@ -318,15 +326,15 @@ export function setupWorkbench(ctx) {
   function updateState() {
     const el = $('#wb-state');
     const dirty = isDirty();
-    el.textContent = running ? (running.mode === 'run' ? 'Running…' : 'Dry run…') : dirty ? 'Unsaved' : current.path ? 'Saved' : '';
+    el.textContent = running ? (running.mode === 'run' ? tr('Running…') : tr('Dry run…')) : dirty ? tr('Unsaved') : current.path ? tr('Saved') : '';
     el.className = `wb-state${running ? ' running' : dirty ? ' dirty' : ''}`;
     for (const b of document.querySelectorAll('[data-cmd="script-run"], [data-cmd="script-dry-run"]')) b.disabled = !!running;
     for (const b of document.querySelectorAll('[data-cmd="script-stop"]')) b.disabled = !running;
   }
 
   function describePermissions(p) {
-    const on = SCRIPT_PERMISSION_KEYS.filter((k) => p[k]).map((k) => SCRIPT_PERMISSION_LABELS[k]);
-    return on.join(', ') || 'none';
+    const on = SCRIPT_PERMISSION_KEYS.filter((k) => p[k]).map((k) => tr(SCRIPT_PERMISSION_LABELS[k]));
+    return on.join(', ') || tr('none');
   }
 
   // Permissions dialog
@@ -345,16 +353,21 @@ export function setupWorkbench(ctx) {
           renderPerms();
         });
         const blocked = p[k] && !eff[k];
-        return h('label', { class: `check${blocked ? ' blocked' : ''}`, title: blocked ? 'Not allowed by the connection policy' : '' }, [
+        return h('label', { class: `check${blocked ? ' blocked' : ''}`, title: blocked ? tr('Not allowed by the connection policy') : '' }, [
           cb,
-          h('span', {}, SCRIPT_PERMISSION_LABELS[k]),
-          blocked ? h('span', { class: 'tag' }, 'blocked by connection') : null,
+          h('span', {}, tr(SCRIPT_PERMISSION_LABELS[k])),
+          blocked ? h('span', { class: 'tag' }, tr('blocked by connection')) : null,
         ]);
       })
     );
     $('#script-perms-policy').textContent = policy
-      ? `Connection "${db.info().profile.name}" (${db.info().profile.environment}): writes ${policy.allowWrites ? 'allowed' : 'blocked'}, DDL ${policy.allowDDL ? 'allowed' : 'blocked'}.`
-      : 'Not connected.';
+      ? tr('Connection "{name}" ({env}): writes {writes}, DDL {ddl}.', {
+          name: db.info().profile.name,
+          env: envName(db.info().profile.environment),
+          writes: policy.allowWrites ? tr('allowed') : tr('blocked'),
+          ddl: policy.allowDDL ? tr('allowed') : tr('blocked'),
+        })
+      : tr('Not connected.');
   }
   $('#wb-perms').addEventListener('click', () => {
     permsDraft = { ...current.overrides };
@@ -376,8 +389,8 @@ export function setupWorkbench(ctx) {
 
   const newDialog = $('#script-new-dialog');
   const newForm = $('#script-new-form');
-  newForm.elements.type.replaceChildren(...Object.entries(SCRIPT_TYPES).map(([k, v]) => h('option', { value: k }, v.label)));
-  newForm.elements.profile.replaceChildren(...Object.entries(SCRIPT_PROFILES).map(([k, v]) => h('option', { value: k }, v.label)));
+  newForm.elements.type.replaceChildren(...Object.entries(SCRIPT_TYPES).map(([k, v]) => h('option', { value: k }, tr(v.label))));
+  newForm.elements.profile.replaceChildren(...Object.entries(SCRIPT_PROFILES).map(([k, v]) => h('option', { value: k }, tr(v.label))));
   newForm.elements.type.addEventListener('change', () => (newForm.elements.profile.value = SCRIPT_TYPES[newForm.elements.type.value].profile));
 
   async function openNewDialog(type = 'validator') {
@@ -409,9 +422,9 @@ export function setupWorkbench(ctx) {
   async function ensureProject() {
     if (project.dir) return true;
     const choice = await host.confirm({
-      message: 'Save the diagram first?',
-      detail: 'Scripts are saved in a scripts/ folder next to the diagram file.',
-      buttons: ['Save Diagram…', 'Cancel'],
+      message: tr('Save the diagram first?'),
+      detail: tr('Scripts are saved in a scripts/ folder next to the diagram file.'),
+      buttons: [tr('Save Diagram…'), tr('Cancel')],
     });
     if (choice !== 0) return false;
     return !!(await ctx.saveDiagram()) && !!project.dir;
@@ -437,10 +450,10 @@ export function setupWorkbench(ctx) {
       renderToolbar();
       updateState();
       await reloadList();
-      status(`Saved ${path}`);
+      status(tr('Saved {file}', { file: path }));
       return true;
     } catch (err) {
-      status(`Could not save: ${err.message}`);
+      status(tr('Could not save: {message}', { message: err.message }));
       return false;
     }
   }
@@ -453,7 +466,7 @@ export function setupWorkbench(ctx) {
   async function run(mode, { ignoreTypeErrors = false } = {}) {
     if (running) return;
     await ensureEditor();
-    if (!current.source.trim()) return status('The script is empty.');
+    if (!current.source.trim()) return status(tr('The script is empty.'));
     if (!db.connected()) return db.openConnect(() => run(mode));
     setOpen();
     showTab('results');
@@ -487,9 +500,9 @@ export function setupWorkbench(ctx) {
       renderTypeErrors(r);
       const errs = r.diagnostics.filter((d) => d.severity === 'error');
       const choice = await host.confirm({
-        message: `The script has ${errs.length} type error${errs.length === 1 ? '' : 's'}.`,
-        detail: `${errs.slice(0, 5).map((d) => `Line ${d.line}: ${d.message}`).join('\n')}\n\nRun it anyway?`,
-        buttons: ['Run Anyway', 'Cancel'],
+        message: trn(errs.length, 'The script has {n} type error.', 'The script has {n} type errors.'),
+        detail: `${errs.slice(0, 5).map((d) => `${tr('Line {n}', { n: d.line })}: ${d.message}`).join('\n')}\n\n${tr('Run it anyway?')}`,
+        buttons: [tr('Run Anyway'), tr('Cancel')],
       });
       if (choice === 0) return run(mode, { ignoreTypeErrors: true });
       return;
@@ -514,42 +527,42 @@ export function setupWorkbench(ctx) {
       live.output.textContent += `${e.text}\n`;
     } else if (e.type === 'message') {
       live.count++;
-      live.status.textContent = `${running.mode === 'run' ? 'Running' : 'Dry run'}… ${live.count} message${live.count === 1 ? '' : 's'}`;
+      live.status.textContent = `${running.mode === 'run' ? tr('Running…') : tr('Dry run…')} ${trn(live.count, '{n} message', '{n} messages')}`;
     }
   });
 
   function startLive(mode) {
     const output = h('pre', { class: 'wb-output', hidden: true });
-    const st = h('div', { class: 'wb-result-head running' }, mode === 'run' ? 'Running…' : 'Dry run…');
+    const st = h('div', { class: 'wb-result-head running' }, mode === 'run' ? tr('Running…') : tr('Dry run…'));
     live = { output, status: st, count: 0 };
     results.replaceChildren(st, output);
   }
 
   function renderError(message) {
     live = null;
-    results.replaceChildren(h('div', { class: 'wb-result-head failed' }, 'Could not run the script'), h('pre', { class: 'wb-error' }, message));
+    results.replaceChildren(h('div', { class: 'wb-result-head failed' }, tr('Could not run the script')), h('pre', { class: 'wb-error' }, message));
   }
 
   function renderTypeErrors(r) {
     live = null;
     results.replaceChildren(
-      h('div', { class: 'wb-result-head failed' }, 'Type errors — not run'),
+      h('div', { class: 'wb-result-head failed' }, tr('Type errors — not run')),
       h(
         'div',
         { class: 'wb-list-plain' },
         r.diagnostics.map((d) =>
-          h('div', { class: `wb-msg ${d.severity}`, onclick: () => editor.revealLine(d.line, d.column) }, [h('span', { class: 'wb-loc' }, `line ${d.line}`), h('span', {}, d.message)])
+          h('div', { class: `wb-msg ${d.severity}`, onclick: () => editor.revealLine(d.line, d.column) }, [h('span', { class: 'wb-loc' }, tr('line {n}', { n: d.line })), h('span', {}, d.message)])
         )
       )
     );
   }
 
   const STATUS_TEXT = {
-    'rolled back': 'Dry run — rolled back',
-    completed: 'Completed (read only)',
-    pending: 'Waiting for commit',
-    committed: 'Committed',
-    failed: 'Failed — rolled back',
+    'rolled back': tr('Dry run — rolled back'),
+    completed: tr('Completed (read only)'),
+    pending: tr('Waiting for commit'),
+    committed: tr('Committed'),
+    failed: tr('Failed — rolled back'),
   };
 
   function renderResult(r) {
@@ -558,7 +571,7 @@ export function setupWorkbench(ctx) {
     const nodes = [
       h('div', { class: `wb-result-head ${statusClass}` }, [
         h('strong', {}, STATUS_TEXT[r.status] ?? r.status),
-        h('span', { class: 'muted' }, ` · ${(r.durationMs / 1000).toFixed(2)} s · ${r.environment}`),
+        h('span', { class: 'muted' }, ` · ${(r.durationMs / 1000).toFixed(2)} s · ${envName(r.environment)}`),
       ]),
     ];
     if (r.error) nodes.push(h('pre', { class: 'wb-error' }, r.error));
@@ -567,22 +580,22 @@ export function setupWorkbench(ctx) {
         count('INSERT', r.inserts, 'add'),
         count('UPDATE', r.updates, 'alter'),
         count('DELETE', r.deletes, 'drop'),
-        count('rows read', r.rowsRead, ''),
+        count(tr('rows read'), r.rowsRead, ''),
       ])
     );
     if (r.affectedTables.length) nodes.push(changesTable(r.affectedTables));
     if (r.restricted?.length)
-      nodes.push(h('p', { class: 'wb-note' }, `Not allowed on this connection: ${r.restricted.map((k) => SCRIPT_PERMISSION_LABELS[k]).join(', ')}.`));
+      nodes.push(h('p', { class: 'wb-note' }, tr('Not allowed on this connection: {list}.', { list: r.restricted.map((k) => tr(SCRIPT_PERMISSION_LABELS[k])).join(', ') })));
     if (r.validations.length) {
       const passed = r.validations.filter((v) => v.status === 'passed').length;
-      nodes.push(h('div', { class: 'wb-section-title' }, `Validations — ${passed}/${r.validations.length} passed`));
+      nodes.push(h('div', { class: 'wb-section-title' }, tr('Validations — {passed}/{total} passed', { passed, total: r.validations.length })));
       for (const v of r.validations) {
         const msgs = r.messages.filter((m) => m.validation === v.name);
         const item = h('details', { class: `wb-validation ${v.status}`, open: v.status !== 'passed' && msgs.length <= 50 }, [
           h('summary', {}, [
             h('span', { class: 'wb-mark' }, v.status === 'passed' ? '✓' : '✗'),
             h('span', { class: 'grow' }, v.name),
-            h('span', { class: 'muted' }, v.errors ? `${v.errors} error${v.errors === 1 ? '' : 's'}` : v.warnings ? `${v.warnings} warnings` : ''),
+            h('span', { class: 'muted' }, v.errors ? trn(v.errors, '{n} error', '{n} errors') : v.warnings ? trn(v.warnings, '{n} warning', '{n} warnings') : ''),
           ]),
           ...msgs.map(messageRow),
         ]);
@@ -591,12 +604,12 @@ export function setupWorkbench(ctx) {
     }
     const loose = r.messages.filter((m) => !m.validation);
     if (loose.length) {
-      nodes.push(h('div', { class: 'wb-section-title' }, 'Messages'));
+      nodes.push(h('div', { class: 'wb-section-title' }, tr('Messages')));
       nodes.push(...loose.map(messageRow));
     }
-    if (r.messagesDropped) nodes.push(h('p', { class: 'wb-note' }, `${r.messagesDropped} more messages not shown.`));
+    if (r.messagesDropped) nodes.push(h('p', { class: 'wb-note' }, trn(r.messagesDropped, '{n} more message not shown.', '{n} more messages not shown.')));
     if (r.output.length) {
-      nodes.push(h('div', { class: 'wb-section-title' }, 'Output'));
+      nodes.push(h('div', { class: 'wb-section-title' }, tr('Output')));
       nodes.push(h('pre', { class: 'wb-output' }, r.output.join('\n')));
     }
     nodes.push(h('div', { id: 'wb-row-view' }));
@@ -612,7 +625,7 @@ export function setupWorkbench(ctx) {
       'table',
       { class: 'wb-changes' },
       tables.map((t) =>
-        h('tr', { onclick: () => ctx.focusTable(t.table), title: 'Show in the diagram' }, [
+        h('tr', { onclick: () => ctx.focusTable(t.table), title: tr('Show in the diagram') }, [
           h('td', {}, t.table),
           h('td', { class: 'add' }, t.insert ? `+${t.insert}` : ''),
           h('td', { class: 'alter' }, t.update ? `~${t.update}` : ''),
@@ -628,7 +641,7 @@ export function setupWorkbench(ctx) {
       'div',
       {
         class: `wb-msg ${m.level}${m.table ? ' link' : ''}`,
-        title: m.table ? 'Show the table in the diagram and the row below' : '',
+        title: m.table ? tr('Show the table in the diagram and the row below') : '',
         onclick: () => m.table && openError(m),
       },
       [where ? h('span', { class: 'wb-loc' }, where) : null, h('span', {}, m.message)]
@@ -649,10 +662,10 @@ export function setupWorkbench(ctx) {
       view.replaceChildren(rowActions(m, found));
       return;
     }
-    view.replaceChildren(h('p', { class: 'muted small' }, 'Loading row…'));
+    view.replaceChildren(h('p', { class: 'muted small' }, tr('Loading row…')));
     try {
       const r = await call(host.db.row, { table: m.table, key: m.row });
-      if (!r.row) return view.replaceChildren(h('p', { class: 'wb-note' }, `${r.table} ${r.key} = ${m.row} no longer exists.`));
+      if (!r.row) return view.replaceChildren(h('p', { class: 'wb-note' }, tr('{table} {key} = {row} no longer exists.', { table: r.table, key: r.key, row: m.row })));
       view.replaceChildren(
         h('div', { class: 'wb-section-title' }, `${r.table} · ${r.key} = ${m.row}`),
         rowActions(m, found, r.key),
@@ -672,17 +685,24 @@ export function setupWorkbench(ctx) {
   function rowActions(m, inDiagram, key) {
     return h('div', { class: 'wb-row-actions' }, [
       inDiagram
-        ? h('button', { type: 'button', onclick: () => ctx.focusTable(m.table) }, 'Show in diagram')
-        : h('span', { class: 'muted small' }, 'Not in the diagram'),
-      h('button', { type: 'button', onclick: () => ctx.openData(m.table, key ? { filters: { [key]: { values: [String(m.row)] } } } : {}) }, 'Open in data tab'),
+        ? h('button', { type: 'button', onclick: () => ctx.focusTable(m.table) }, tr('Show in diagram'))
+        : h('span', { class: 'muted small' }, tr('Not in the diagram')),
+      h('button', { type: 'button', onclick: () => ctx.openData(m.table, key ? { filters: { [key]: { values: [String(m.row)] } } } : {}) }, tr('Open in data tab')),
     ]);
   }
 
   // Pending commit: show the changes and ask.
   const previewDialog = $('#run-preview-dialog');
   function review(r) {
-    $('#run-preview-title').textContent = `Commit changes from ${r.script}?`;
-    $('#run-preview-summary').textContent = `${r.inserts} inserted, ${r.updates} updated, ${r.deletes} deleted${r.schemaChanged ? ', schema changed' : ''} on ${db.info()?.description ?? 'the database'} (${r.environment}).`;
+    $('#run-preview-title').textContent = tr('Commit changes from {script}?', { script: r.script });
+    $('#run-preview-summary').textContent = tr('{inserts} inserted, {updates} updated, {deletes} deleted{schema} on {db} ({env}).', {
+      inserts: r.inserts,
+      updates: r.updates,
+      deletes: r.deletes,
+      schema: r.schemaChanged ? tr(', schema changed') : '',
+      db: db.info()?.description ?? tr('the database'),
+      env: envName(r.environment),
+    });
     $('#run-preview-body').replaceChildren(changesTable(r.affectedTables));
     previewDialog.returnValue = '';
     previewDialog.showModal();
@@ -694,7 +714,7 @@ export function setupWorkbench(ctx) {
           try {
             const res = await call(commit ? host.scripts.commit : host.scripts.discard, r.runId);
             r.status = res.status === 'committed' ? 'committed' : 'rolled back';
-            status(commit ? `Committed ${r.inserts + r.updates + r.deletes} row changes` : 'Changes discarded');
+            status(commit ? trn(r.inserts + r.updates + r.deletes, 'Committed {n} row change', 'Committed {n} row changes') : tr('Changes discarded'));
             if (commit && (res.schemaChanged || r.schemaChanged)) ctx.refreshSchema?.();
           } catch (err) {
             r.status = 'failed';
@@ -718,12 +738,12 @@ export function setupWorkbench(ctx) {
         ...(entries.length
           ? entries.map((e) =>
               h('div', { class: `wb-audit ${/row-data/.test(e.event) ? 'data' : ''}` }, [
-                h('span', { class: 'muted' }, new Date(e.time).toLocaleString()),
+                h('span', { class: 'muted' }, formatDate(e.time)),
                 h('strong', {}, e.event),
                 h('span', {}, auditDetail(e)),
               ])
             )
-          : [h('div', { class: 'db-empty' }, 'No activity yet.')])
+          : [h('div', { class: 'db-empty' }, tr('No activity yet.'))])
       );
     } catch (err) {
       el.textContent = err.message;
@@ -732,7 +752,7 @@ export function setupWorkbench(ctx) {
 
   function auditDetail(e) {
     if (e.script) return `${e.script} · ${e.status ?? ''}${e.inserts !== undefined ? ` · +${e.inserts} ~${e.updates} −${e.deletes}` : ''}`;
-    if (e.provider) return `${e.provider}${e.model ? ` / ${e.model}` : ''}${e.local === false ? ' (remote)' : ''}${e.tables?.length ? ` · ${e.tables.join(', ')}` : ''}`;
+    if (e.provider) return `${e.provider}${e.model ? ` / ${e.model}` : ''}${e.local === false ? ` ${tr('(remote)')}` : ''}${e.tables?.length ? ` · ${e.tables.join(', ')}` : ''}`;
     if (e.target) return `${e.target}${e.environment ? ` · ${e.environment}` : ''}`;
     return e.path ?? e.dir ?? '';
   }

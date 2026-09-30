@@ -1,8 +1,10 @@
 // pgvector (https://github.com/pgvector/pgvector) support shared by the
 // diagram, migrations, the script runtime and the query analyzer: vector
 // type detection, value encoding and decoding, distance operators and the
-// index SQL that makes nearest-neighbour queries fast. No imports, so both
-// the renderer and the main process can load it.
+// index SQL that makes nearest-neighbour queries fast. Loaded by both the
+// renderer and the main process, so it only imports other shared modules.
+
+import { tr } from './i18n.js';
 
 export const VECTOR_EXTENSION = 'vector';
 export const CREATE_VECTOR_EXTENSION = 'CREATE EXTENSION IF NOT EXISTS vector;';
@@ -12,7 +14,8 @@ export const VECTOR_TYPES = ['vector', 'halfvec', 'sparsevec'];
 // elements); larger vectors can be indexed as halfvec, up to 4,000.
 const INDEX_MAX_DIMS = { vector: 2000, halfvec: 4000 };
 
-// Distance operators, cheapest first as pgvector's docs list them.
+// Distance operators, cheapest first as pgvector's docs list them. Labels
+// are English; translate them with tr() where they are shown.
 export const VECTOR_DISTANCES = [
   { metric: 'l2', operator: '<->', label: 'L2 (Euclidean) distance' },
   { metric: 'cosine', operator: '<=>', label: 'cosine distance' },
@@ -78,7 +81,7 @@ export function abbreviateVector(text, keep = 6) {
   if (!m) return s;
   const parts = m[1].split(',');
   if (parts.length <= keep) return s;
-  return `[${parts.slice(0, keep).join(',')},…] (${parts.length} dims)`;
+  return `[${parts.slice(0, keep).join(',')},…] ${tr('({n} dims)', { n: parts.length })}`;
 }
 
 const quote = (s) => `"${String(s).replace(/"/g, '""')}"`;
@@ -111,7 +114,12 @@ export function vectorIndexSQL(table, column, { metric = 'cosine', method = 'hns
     if (kind !== 'vector' || dims > INDEX_MAX_DIMS.halfvec) return null;
     expr = `(${quote(column.name)}::halfvec(${dims}))`;
     opsKind = 'halfvec';
-    note = `${dims} dimensions is above the ${INDEX_MAX_DIMS.vector} that ${method} indexes for vector, so this indexes it as halfvec; ORDER BY ${column.name}::halfvec(${dims}) ${distanceOf(metric).operator} … to use it.`;
+    note = tr('{dims} dimensions is above the {max} that {method} indexes for vector, so this indexes it as halfvec; ORDER BY {expr} … to use it.', {
+      dims,
+      max: INDEX_MAX_DIMS.vector,
+      method,
+      expr: `${column.name}::halfvec(${dims}) ${distanceOf(metric).operator}`,
+    });
   }
   const ops = vectorOpclass(opsKind, metric, method);
   if (!ops) return null;

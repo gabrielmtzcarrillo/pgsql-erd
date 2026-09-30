@@ -10,6 +10,7 @@ import {
   RELATION, SCRIPT_HEADER, SCRIPT_ROW, SCRIPT_TYPE_LABEL, route, linkedTables, placeScripts, scriptLines, scriptSize,
 } from './lib/scriptnodes.js';
 import { iconElement } from './icons.js';
+import { tr, trn, formatNumber, formatDate } from '../shared/i18n.js';
 
 const $ = (sel) => document.querySelector(sel);
 const SHOW_KEY = 'pgsql-erd.show-scripts';
@@ -51,7 +52,8 @@ export function setupErdScripts(ctx) {
         const links = linkedTables(script, tables);
         const run = runs[script.path] ?? null;
         const lines = scriptLines(script, run);
-        return { script, run, links, lines, size: scriptSize(lines, ctx.measure(script.name, true)) };
+        const lineWidth = Math.max(0, ...lines.map((l) => ctx.measure(l.text, l.cls.includes('s-status'))));
+        return { script, run, links, lines, size: scriptSize(lines, ctx.measure(script.name, true), lineWidth) };
       })
       .filter((n) => n.links.length);
     const placed = placeScripts(
@@ -96,8 +98,8 @@ export function setupErdScripts(ctx) {
     g.append(icon);
     g.append(el('text', { class: 's-title', x: 30, y: 20 }, clip(n.script.name, 48)));
     n.lines.forEach((line, i) => g.append(el('text', { class: line.cls, x: 10, y: SCRIPT_HEADER + 15 + i * SCRIPT_ROW }, line.text)));
-    const when = n.run?.at ? `\nLast run ${new Date(n.run.at).toLocaleString()}` : '';
-    g.append(el('title', {}, `${n.script.path}${n.script.description ? `\n${n.script.description}` : ''}${when}\nDouble-click to open`));
+    const when = n.run?.at ? `\n${tr('Last run {when}', { when: formatDate(n.run.at) })}` : '';
+    g.append(el('title', {}, `${n.script.path}${n.script.description ? `\n${n.script.description}` : ''}${when}\n${tr('Double-click to open')}`));
     return g;
   }
 
@@ -115,7 +117,7 @@ export function setupErdScripts(ctx) {
       const table = state.model.tables.find((x) => tableKey(x) === key);
       const related =
         (selected?.type === 'script' && selected.id === n.script.path) || (selected?.type === 'table' && selected.id === table?.id);
-      const label = RELATION[n.script.type] ?? 'uses';
+      const label = RELATION[n.script.type] ?? tr('uses');
       const w = label.length * 6.2 + 10;
       const lb = { x: c.mid.x - w / 2, y: c.mid.y - 8, width: w, height: 16 };
       for (let i = 0; i < 6 && placed.some((p) => lb.x < p.x + p.width && p.x < lb.x + lb.width && lb.y < p.y + p.height + 2 && p.y < lb.y + lb.height + 2); i++)
@@ -155,8 +157,8 @@ export function setupErdScripts(ctx) {
     const count = projectDir ? workbench.scripts().filter((s) => linkedTables(s, diagramTables()).length).length : 0;
     toggle.hidden = count === 0;
     toggle.classList.toggle('active', show);
-    toggle.querySelector('.label').textContent = show ? `Hide scripts (${count})` : `Show scripts (${count})`;
-    toggle.title = show ? 'Hide the scripts from the diagram' : 'Show the project\'s scripts as entities linked to the tables they use';
+    toggle.querySelector('.label').textContent = show ? tr('Hide scripts ({n})', { n: count }) : tr('Show scripts ({n})', { n: count });
+    toggle.title = show ? tr('Hide the scripts from the diagram') : tr("Show the project's scripts as entities linked to the tables they use");
   }
   toggle.addEventListener('click', () => setShown(!show));
 
@@ -169,7 +171,7 @@ export function setupErdScripts(ctx) {
     }
     if (!v && state.selection?.type === 'script') ctx.select(null);
     ctx.render();
-    if (v && !projectDir) status('Save the diagram and add scripts to show them here.');
+    if (v && !projectDir) status(tr('Save the diagram and add scripts to show them here.'));
   }
 
   // ------------------------------------------------------------ positions
@@ -231,29 +233,29 @@ export function setupErdScripts(ctx) {
     const s = n.script;
     const run = n.run;
     const facts = [
-      ['Type', SCRIPT_TYPE_LABEL[s.type] ?? s.type],
-      ['File', s.path],
-      ['Permissions', s.profile],
+      [tr('Type'), SCRIPT_TYPE_LABEL[s.type] ?? s.type],
+      [tr('File'), s.path],
+      [tr('Permissions'), s.profile],
     ];
     if (run) {
-      facts.push(['Last run', `${new Date(run.at).toLocaleString()}${run.mode === 'dry-run' ? ' (dry run)' : ''}`]);
-      if (run.validations) facts.push(['Validations', `${run.passed} of ${run.validations} passed`]);
-      facts.push(['Rows read', run.rowsRead.toLocaleString()]);
-      if (run.inserts + run.updates + run.deletes) facts.push(['Changes', `+${run.inserts} ~${run.updates} −${run.deletes}`]);
+      facts.push([tr('Last run'), `${formatDate(run.at)}${run.mode === 'dry-run' ? ` ${tr('(dry run)')}` : ''}`]);
+      if (run.validations) facts.push([tr('Validations'), tr('{passed} of {total} passed', { passed: run.passed, total: run.validations })]);
+      facts.push([tr('Rows read'), formatNumber(run.rowsRead)]);
+      if (run.inserts + run.updates + run.deletes) facts.push([tr('Changes'), `+${run.inserts} ~${run.updates} −${run.deletes}`]);
     }
     return [
       h('div', { class: 'sb-pad' }, [
         s.description ? h('p', { class: 'muted small' }, s.description) : null,
         h('dl', { class: 'sb-facts' }, facts.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
-        h('div', { class: 'sb-sub' }, `${RELATION[s.type] ?? 'uses'} ${n.links.length} table${n.links.length === 1 ? '' : 's'}`),
+        h('div', { class: 'sb-sub' }, `${RELATION[s.type] ?? tr('uses')} ${trn(n.links.length, '{n} table', '{n} tables')}`),
         h(
           'ul',
           { class: 'list' },
           n.links.map((k) => h('li', { class: 'clickable', onclick: () => ctx.focusTable(k) }, [h('code', {}, k)]))
         ),
         h('div', { class: 'actions' }, [
-          h('button', { icon: 'toggle-workbench', onclick: () => workbench.openScript(s.path) }, 'Open script'),
-          h('button', { icon: 'script-dry-run', onclick: () => workbench.runScript(s.path, 'dry-run') }, s.type === 'validator' ? 'Run validator' : 'Dry run'),
+          h('button', { icon: 'toggle-workbench', onclick: () => workbench.openScript(s.path) }, tr('Open script')),
+          h('button', { icon: 'script-dry-run', onclick: () => workbench.runScript(s.path, 'dry-run') }, s.type === 'validator' ? tr('Run validator') : tr('Dry run')),
         ]),
       ]),
     ];
@@ -268,7 +270,7 @@ export function setupErdScripts(ctx) {
     return workbench
       .scripts()
       .filter((s) => linkedTables(s, tables).includes(key))
-      .map((s) => ({ script: s, run: runs[s.path] ?? null, relation: RELATION[s.type] ?? 'uses' }));
+      .map((s) => ({ script: s, run: runs[s.path] ?? null, relation: RELATION[s.type] ?? tr('uses') }));
   }
 
   return {

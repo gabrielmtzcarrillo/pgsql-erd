@@ -50,8 +50,8 @@
     </div>
     <div class="group">
       <div class="group-items">
-        <button data-cmd="toggle-grid" title="Show grid (Ctrl+Alt+G)">Grid</button>
-        <button data-cmd="toggle-snap" title="Snap tables to the grid (Ctrl+Shift+G). Hold Alt while dragging to invert.">Snap</button>
+        <button data-cmd="toggle-grid" title="Show grid (Ctrl+Alt+G)" data-i18n="ribbon: Grid">Grid</button>
+        <button data-cmd="toggle-snap" title="Snap tables to the grid (Ctrl+Shift+G). Hold Alt while dragging to invert." data-i18n="ribbon: Snap">Snap</button>
         <label class="ribbon-field">
           <select id="grid-size" title="Grid size (px)">
             <option value="5">5</option>
@@ -72,7 +72,7 @@
       <div class="group-items">
         <button data-cmd="db-connect" id="db-button" title="Connect to a PostgreSQL database">Connect</button>
         <div class="stack">
-          <button data-cmd="db-refresh" title="Read the database schema again (Ctrl+Alt+F5)">Refresh</button>
+          <button data-cmd="db-refresh" title="Read the database schema again (Ctrl+Alt+F5)" data-i18n="ribbon: Refresh">Refresh</button>
           <button data-cmd="db-import" title="Import tables from the database (Ctrl+Alt+I)">Import</button>
           <button data-cmd="db-compare" title="Compare with the database and generate migration SQL (Ctrl+Alt+D)">Compare</button>
         </div>
@@ -81,7 +81,7 @@
     </div>
     <div class="group">
       <div class="group-items">
-        <button data-cmd="script-new" title="New script (Ctrl+Alt+N)">New script</button>
+        <button data-cmd="script-new" title="New script (Ctrl+Alt+N)" data-i18n="ribbon: New script">New script</button>
         <div class="stack">
           <button data-cmd="script-dry-run" title="Run in a transaction that is rolled back (F6)">Dry run</button>
           <button data-cmd="script-run" title="Run, then review changes before they are committed (F5)">Run</button>
@@ -133,7 +133,7 @@
       <button type="button" id="erd-scripts-toggle" class="erd-overlay-btn" data-icon="toggle-workbench" hidden>Show scripts</button>
       <div id="empty-hint" class="empty-hint">
         <h2>No tables yet</h2>
-        <p>Open a pgAdmin <code>.pgerd</code> file, drop one here (or an Excel/CSV file), or add a table.</p>
+        <p data-i18n>Open a pgAdmin <code>.pgerd</code> file, drop one here (or an Excel/CSV file), or add a table.</p>
         <div>
           <button data-cmd="open">Open file…</button>
           <button data-cmd="import-spreadsheet">Import Excel…</button>
@@ -287,7 +287,7 @@
   <dialog id="link-dialog">
     <form method="dialog" id="link-form">
       <h3>New relationship</h3>
-      <p class="muted">Adds a foreign key from the <em>referencing</em> (many) table to the <em>referenced</em> (one) table.</p>
+      <p class="muted" data-i18n>Adds a foreign key from the <em>referencing</em> (many) table to the <em>referenced</em> (one) table.</p>
       <div class="grid2">
         <label>Referencing table<select name="localTable" required></select></label>
         <label>Column<select name="localCol" required></select></label>
@@ -489,7 +489,7 @@
   <dialog id="xl-import-dialog" class="wide">
     <form method="dialog">
       <h3>Import tables from Excel / CSV</h3>
-      <p class="muted">Each sheet becomes a table. A sheet whose first row has <em>Column</em> and <em>Type</em> headers
+      <p class="muted" data-i18n>Each sheet becomes a table. A sheet whose first row has <em>Column</em> and <em>Type</em> headers
         (optionally <em>Table, Length, Scale, Nullable, PK, Unique, Default, References, Comment</em>) is read as column
         definitions, one row per column. Any other sheet is read as data: the first row names the columns and their types
         are inferred from the values. Tables already in the diagram are updated; their position, color and note are kept.</p>

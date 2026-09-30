@@ -9,6 +9,7 @@ import {
 } from './sql.js';
 import { tableKey } from './catalog.js';
 import { usesPgvector, CREATE_VECTOR_EXTENSION, VECTOR_EXTENSION } from '../../shared/pgvector.js';
+import { tr, trn } from '../../shared/i18n.js';
 
 const ALIASES = {
   int: 'integer', int4: 'integer', int8: 'bigint', int2: 'smallint',
@@ -150,7 +151,7 @@ export function diffModels(db, erd, opts = {}) {
   for (const s of new Set([...erdTables.values()].map((t) => t.schema || 'public'))) {
     if (!dbSchemas.has(s)) {
       add('createSchema', {
-        kind: 'create-schema', table: s, summary: `Create schema ${s}`,
+        kind: 'create-schema', table: s, summary: tr('Create schema {name}', { name: s }),
         sql: `CREATE SCHEMA IF NOT EXISTS ${quoteIdent(s)};`,
       });
     }
@@ -160,7 +161,7 @@ export function diffModels(db, erd, opts = {}) {
   const hasPgvector = db.extensions ? db.extensions.includes(VECTOR_EXTENSION) : usesPgvector(db.tables);
   if (!hasPgvector && usesPgvector([...erdTables.values()])) {
     add('createExtension', {
-      kind: 'create-extension', table: 'extensions', summary: 'Create extension vector (pgvector)',
+      kind: 'create-extension', table: 'extensions', summary: tr('Create extension vector (pgvector)'),
       sql: CREATE_VECTOR_EXTENSION,
     });
   }
@@ -169,7 +170,7 @@ export function diffModels(db, erd, opts = {}) {
   for (const [key, t] of erdTables) {
     if (dbTables.has(key)) continue;
     add('createTable', {
-      kind: 'create-table', table: key, summary: `Create table ${key} (${t.columns.length} columns)`,
+      kind: 'create-table', table: key, summary: `${tr('Create table {name}', { name: key })} (${trn(t.columns.length, '{n} column', '{n} columns')})`,
       sql: createTableSQL(t),
     });
   }
@@ -178,7 +179,7 @@ export function diffModels(db, erd, opts = {}) {
   for (const [key, t] of dbTables) {
     if (erdTables.has(key)) continue;
     add('dropTable', {
-      kind: 'drop-table', table: key, summary: `Drop table ${key} (not in diagram)`,
+      kind: 'drop-table', table: key, summary: tr('Drop table {name} (not in diagram)', { name: key }),
       sql: `DROP TABLE IF EXISTS ${qualifiedName(t)};`, destructive: true,
     });
   }
@@ -200,8 +201,8 @@ export function diffModels(db, erd, opts = {}) {
       if (!dc) {
         const notNullNoDefault = (c.notNull || c.pk) && !hasDefault(c) && !isSerial(c) && !identityOf(c);
         add('column', {
-          kind: 'add-column', table: key, summary: `Add column ${c.name} ${formatType(c)}` +
-            (notNullNoDefault ? ' (NOT NULL without default: fails if the table has rows)' : ''),
+          kind: 'add-column', table: key, summary: tr('Add column {name}', { name: `${c.name} ${formatType(c)}` }) +
+            (notNullNoDefault ? ` ${tr('(NOT NULL without default: fails if the table has rows)')}` : ''),
           sql: alter(`ADD COLUMN ${columnDDL({ ...c, pk: false })}`),
         });
         continue;
@@ -209,7 +210,7 @@ export function diffModels(db, erd, opts = {}) {
       if (normalizeType(c) !== normalizeType(dc)) {
         const t = alterType(c);
         add('column', {
-          kind: 'alter-type', table: key, summary: `Change ${c.name} type ${formatType(dc)} → ${t}`,
+          kind: 'alter-type', table: key, summary: tr('Change {name} type {from} → {to}', { name: c.name, from: formatType(dc), to: t }),
           sql: alter(`ALTER COLUMN ${col} TYPE ${t} USING ${col}::${t}`),
         });
       }
@@ -219,7 +220,7 @@ export function diffModels(db, erd, opts = {}) {
           normalizeDefault(c.default) !== normalizeDefault(dc.default)) {
         add('column', {
           kind: 'alter-default', table: key,
-          summary: hasDefault(c) ? `Set default of ${c.name} to ${c.default}` : `Drop default of ${c.name}`,
+          summary: hasDefault(c) ? tr('Set default of {name} to {value}', { name: c.name, value: c.default }) : tr('Drop default of {name}', { name: c.name }),
           sql: alter(hasDefault(c) ? `ALTER COLUMN ${col} SET DEFAULT ${c.default}` : `ALTER COLUMN ${col} DROP DEFAULT`),
         });
       }
@@ -230,13 +231,13 @@ export function diffModels(db, erd, opts = {}) {
           sql = `ALTER COLUMN ${col} ADD GENERATED ${ei === 'a' ? 'ALWAYS' : 'BY DEFAULT'} AS IDENTITY`;
           if (hasDefault(dc)) sql = `ALTER COLUMN ${col} DROP DEFAULT,\n    ${sql}`;
         } else sql = `ALTER COLUMN ${col} SET GENERATED ${ei === 'a' ? 'ALWAYS' : 'BY DEFAULT'}`;
-        add('column', { kind: 'alter-identity', table: key, summary: `Change identity of ${c.name}`, sql: alter(sql) });
+        add('column', { kind: 'alter-identity', table: key, summary: tr('Change identity of {name}', { name: c.name }), sql: alter(sql) });
       }
       const enn = !!(c.notNull || c.pk);
       const dnn = !!(dc.notNull || dc.pk);
       if (enn !== dnn) {
         add('column', {
-          kind: 'alter-null', table: key, summary: `${enn ? 'Set' : 'Drop'} NOT NULL on ${c.name}`,
+          kind: 'alter-null', table: key, summary: enn ? tr('Set NOT NULL on {name}', { name: c.name }) : tr('Drop NOT NULL on {name}', { name: c.name }),
           sql: alter(`ALTER COLUMN ${col} ${enn ? 'SET' : 'DROP'} NOT NULL`),
         });
       }
@@ -244,7 +245,7 @@ export function diffModels(db, erd, opts = {}) {
 
     for (const name of missingCols) {
       add('dropColumn', {
-        kind: 'drop-column', table: key, summary: `Drop column ${name} (not in diagram)`,
+        kind: 'drop-column', table: key, summary: tr('Drop column {name} (not in diagram)', { name }),
         sql: alter(`DROP COLUMN IF EXISTS ${quoteIdent(name)}`), destructive: true,
       });
     }
@@ -256,14 +257,14 @@ export function diffModels(db, erd, opts = {}) {
       const dName = d.rawData?.primary_key?.[0]?.name;
       if (dpk.length && dName) {
         add('dropConstraint', {
-          kind: 'drop-pk', table: key, columns: dpk, summary: `Drop primary key (${dpk.join(', ')})`,
+          kind: 'drop-pk', table: key, columns: dpk, summary: tr('Drop primary key ({columns})', { columns: dpk.join(', ') }),
           sql: alter(`DROP CONSTRAINT IF EXISTS ${quoteIdent(dName)}`), destructive: touchesMissing(dpk),
         });
       }
       if (epk.length) {
         const eName = e.rawData?.primary_key?.[0]?.name;
         add('addConstraint', {
-          kind: 'add-pk', table: key, summary: `Add primary key (${epk.join(', ')})`,
+          kind: 'add-pk', table: key, summary: tr('Add primary key ({columns})', { columns: epk.join(', ') }),
           sql: alter(`ADD ${eName ? `CONSTRAINT ${quoteIdent(eName)} ` : ''}PRIMARY KEY (${epk.map(quoteIdent).join(', ')})`),
         });
       }
@@ -275,14 +276,14 @@ export function diffModels(db, erd, opts = {}) {
     for (const u of du) {
       if (eu.some((x) => sameSet(x.columns, u.columns)) || !u.name) continue;
       add('dropConstraint', {
-        kind: 'drop-unique', table: key, columns: u.columns, summary: `Drop unique constraint ${u.name} (${u.columns.join(', ')})`,
+        kind: 'drop-unique', table: key, columns: u.columns, summary: tr('Drop unique constraint {name} ({columns})', { name: u.name, columns: u.columns.join(', ') }),
         sql: alter(`DROP CONSTRAINT IF EXISTS ${quoteIdent(u.name)}`), destructive: touchesMissing(u.columns),
       });
     }
     for (const u of eu) {
       if (du.some((x) => sameSet(x.columns, u.columns))) continue;
       add('addConstraint', {
-        kind: 'add-unique', table: key, summary: `Add unique constraint (${u.columns.join(', ')})`,
+        kind: 'add-unique', table: key, summary: tr('Add unique constraint ({columns})', { columns: u.columns.join(', ') }),
         sql: alter(`ADD ${u.name ? `CONSTRAINT ${quoteIdent(u.name)} ` : ''}UNIQUE (${u.columns.map(quoteIdent).join(', ')})`),
       });
     }
@@ -296,7 +297,7 @@ export function diffModels(db, erd, opts = {}) {
       if (match && match.actions === fk.actions) continue;
       add('dropFk', {
         kind: 'drop-fk', table: key, fkSig: fk.sig,
-        summary: `Drop foreign key ${fk.name} (${fk.cols.join(', ')}) → ${tableKey(fk.ref)}` + (match ? ' (actions changed)' : ''),
+        summary: tr('Drop foreign key {name}', { name: `${fk.name} (${fk.cols.join(', ')}) → ${tableKey(fk.ref)}` }) + (match ? ` ${tr('(actions changed)')}` : ''),
         sql: alter(`DROP CONSTRAINT IF EXISTS ${quoteIdent(fk.name)}`),
         destructive: !match && touchesMissing(fk.cols),
       });
@@ -304,7 +305,7 @@ export function diffModels(db, erd, opts = {}) {
 
     if ((e.description ?? '') !== (d.description ?? '')) {
       add('comment', {
-        kind: 'comment', table: key, summary: 'Change table comment',
+        kind: 'comment', table: key, summary: tr('Change table comment'),
         sql: `COMMENT ON TABLE ${tn}\n    IS ${e.description ? quoteLiteral(e.description) : 'NULL'};`,
       });
     }
@@ -319,7 +320,7 @@ export function diffModels(db, erd, opts = {}) {
       if (match && match.actions === fk.actions) continue;
       add('addFk', {
         kind: 'add-fk', table: key, fkSig: fk.sig,
-        summary: `Add foreign key (${fk.cols.join(', ')}) → ${tableKey(fk.ref)}(${fk.refCols.join(', ')})`,
+        summary: tr('Add foreign key {name}', { name: `(${fk.cols.join(', ')}) → ${tableKey(fk.ref)}(${fk.refCols.join(', ')})` }),
         sql: addForeignKeySQL(erd, e, fk.links),
       });
     }
@@ -340,7 +341,7 @@ export function diffModels(db, erd, opts = {}) {
       droppedFks.add(fk.sig);
       add('dropFk', {
         kind: 'drop-fk', table: key, fkSig: fk.sig,
-        summary: `Drop foreign key ${fk.name} → ${tableKey(fk.ref)} (re-created after key change)`,
+        summary: `${tr('Drop foreign key {name}', { name: `${fk.name} → ${tableKey(fk.ref)}` })} ${tr('(re-created after key change)')}`,
         sql: `ALTER TABLE IF EXISTS ${qualifiedName(d)}\n    DROP CONSTRAINT IF EXISTS ${quoteIdent(fk.name)};`,
       });
       const e = erdTables.get(key);
@@ -348,13 +349,13 @@ export function diffModels(db, erd, opts = {}) {
       if (!e) {
         // Not part of the comparison: restore it exactly as it was.
         add('addFk', {
-          kind: 'add-fk', table: key, summary: `Re-create foreign key ${fk.name} → ${tableKey(fk.ref)}`,
+          kind: 'add-fk', table: key, summary: tr('Re-create foreign key {name}', { name: `${fk.name} → ${tableKey(fk.ref)}` }),
           sql: addForeignKeySQL(db, d, fk.links),
         });
       } else if (kept && !phases.addFk.some((c) => c.fkSig === fk.sig && c.table === key)) {
         add('addFk', {
           kind: 'add-fk', table: key, fkSig: fk.sig,
-          summary: `Re-create foreign key (${kept.cols.join(', ')}) → ${tableKey(kept.ref)}(${kept.refCols.join(', ')})`,
+          summary: tr('Re-create foreign key {name}', { name: `(${kept.cols.join(', ')}) → ${tableKey(kept.ref)}(${kept.refCols.join(', ')})` }),
           sql: addForeignKeySQL(erd, e, kept.links),
         });
       }
@@ -369,12 +370,12 @@ export function diffModels(db, erd, opts = {}) {
 export function migrationSQL(changes) {
   const active = changes.filter((c) => !c.skipped);
   const skipped = changes.filter((c) => c.skipped);
-  if (!changes.length) return '-- The database already matches the diagram.\n';
-  const out = ['-- Migration generated by pgsql-erd', 'BEGIN;', ''];
+  if (!changes.length) return `-- ${tr('The database already matches the diagram.')}\n`;
+  const out = [`-- ${tr('Migration generated by pgsql-erd')}`, 'BEGIN;', ''];
   for (const c of active) out.push(`-- ${c.summary}`, c.sql, '');
   out.push('COMMIT;');
   if (skipped.length) {
-    out.push('', '-- Skipped destructive changes (enable them to include):');
+    out.push('', `-- ${tr('Skipped destructive changes (enable them to include):')}`);
     for (const c of skipped) out.push(...c.sql.split('\n').map((l) => `-- ${l}`));
   }
   return out.join('\n') + '\n';

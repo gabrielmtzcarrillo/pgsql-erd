@@ -2,7 +2,11 @@
 
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
+// The main process passes the language as --pgsql-erd-locale=<code>.
+const locale = process.argv.find((a) => a.startsWith('--pgsql-erd-locale='))?.split('=')[1] ?? 'en';
+
 contextBridge.exposeInMainWorld('erdHost', {
+  locale,
   openDialog: () => ipcRenderer.invoke('open-dialog'),
   openSpreadsheet: () => ipcRenderer.invoke('open-spreadsheet'),
   saveFile: (opts) => ipcRenderer.invoke('save-file', opts),

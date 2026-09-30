@@ -2,6 +2,7 @@
 // tabs (one per table) are added and closed as needed.
 
 import { iconElement } from './icons.js';
+import { tr } from '../shared/i18n.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -48,7 +49,7 @@ export function setupTabs({ h }) {
     const btn = h('button', { type: 'button', class: 'closable', 'data-main-tab': id, title: tooltip ?? title }, [
       icon ? iconElement(icon, 'btn-icon') : null,
       h('span', { class: 'tab-title' }, title),
-      h('span', { class: 'tab-close', title: 'Close' }, '×'),
+      h('span', { class: 'tab-close', title: tr('Close') }, '×'),
     ]);
     $('#data-tabs').append(btn);
     closers.set(id, onClose);

@@ -4,6 +4,7 @@
 // Rows are read by the main process in read-only transactions.
 
 import { vectorKind, abbreviateVector } from '../shared/pgvector.js';
+import { tr, trn, formatNumber } from '../shared/i18n.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -11,25 +12,25 @@ const NUMERIC = /^(smallint|integer|bigint|int[248]?|numeric|decimal|real|double
 const TEMPORAL = /^(date|time.*|timestamp.*|interval)$/;
 
 const TEXT_OPS = [
-  ['contains', 'Contains'],
-  ['notContains', 'Does not contain'],
-  ['equals', 'Equals'],
-  ['notEquals', 'Does not equal'],
-  ['beginsWith', 'Begins with'],
-  ['endsWith', 'Ends with'],
-  ['empty', 'Is empty'],
-  ['notEmpty', 'Is not empty'],
+  ['contains', tr('Contains')],
+  ['notContains', tr('Does not contain')],
+  ['equals', tr('Equals')],
+  ['notEquals', tr('Does not equal')],
+  ['beginsWith', tr('Begins with')],
+  ['endsWith', tr('Ends with')],
+  ['empty', tr('Is empty')],
+  ['notEmpty', tr('Is not empty')],
 ];
 const RANGE_OPS = [
-  ['equals', 'Equals'],
-  ['notEquals', 'Does not equal'],
-  ['gt', 'Greater than'],
-  ['gte', 'Greater than or equal to'],
-  ['lt', 'Less than'],
-  ['lte', 'Less than or equal to'],
-  ['between', 'Between'],
-  ['empty', 'Is empty'],
-  ['notEmpty', 'Is not empty'],
+  ['equals', tr('Equals')],
+  ['notEquals', tr('Does not equal')],
+  ['gt', tr('Greater than')],
+  ['gte', tr('Greater than or equal to')],
+  ['lt', tr('Less than')],
+  ['lte', tr('Less than or equal to')],
+  ['between', tr('Between')],
+  ['empty', tr('Is empty')],
+  ['notEmpty', tr('Is not empty')],
 ];
 const NO_VALUE = new Set(['empty', 'notEmpty']);
 const PAGE_SIZES = [100, 500, 1000];
@@ -69,9 +70,9 @@ export function setupDataBrowser(ctx) {
     const title = h('strong', {}, table);
     const count = h('span', { class: 'muted' });
     const pageInfo = h('span', { class: 'dt-page-info' });
-    const prev = h('button', { type: 'button', title: 'Previous page', onclick: () => page(-1) }, '‹');
-    const next = h('button', { type: 'button', title: 'Next page', onclick: () => page(1) }, '›');
-    const sizeSelect = h('select', { title: 'Rows per page' }, PAGE_SIZES.map((n) => h('option', { value: n }, `${n} rows`)));
+    const prev = h('button', { type: 'button', title: tr('Previous page'), onclick: () => page(-1) }, '‹');
+    const next = h('button', { type: 'button', title: tr('Next page'), onclick: () => page(1) }, '›');
+    const sizeSelect = h('select', { title: tr('Rows per page') }, PAGE_SIZES.map((n) => h('option', { value: n }, trn(n, '{n} row', '{n} rows'))));
     sizeSelect.addEventListener('change', () => {
       view.limit = Number(sizeSelect.value);
       view.offset = 0;
@@ -83,10 +84,10 @@ export function setupDataBrowser(ctx) {
       h('div', { class: 'dt-toolbar' }, [
         title,
         count,
-        h('button', { type: 'button', icon: 'refresh', onclick: () => view.load() }, 'Refresh'),
-        h('button', { type: 'button', icon: 'check-none', onclick: () => clearAll() }, 'Clear filters'),
-        h('button', { type: 'button', icon: 'copy', title: 'Copy this page (tab-separated, pastes into a spreadsheet)', onclick: () => copyPage() }, 'Copy'),
-        h('button', { type: 'button', icon: 'toggle-tables', title: 'Show the table in the diagram', onclick: () => ctx.focusTable(table) }, 'Diagram'),
+        h('button', { type: 'button', icon: 'refresh', onclick: () => view.load() }, tr('Refresh')),
+        h('button', { type: 'button', icon: 'check-none', onclick: () => clearAll() }, tr('Clear filters')),
+        h('button', { type: 'button', icon: 'copy', title: tr('Copy this page (tab-separated, pastes into a spreadsheet)'), onclick: () => copyPage() }, tr('Copy')),
+        h('button', { type: 'button', icon: 'toggle-tables', title: tr('Show the table in the diagram'), onclick: () => ctx.focusTable(table) }, tr('Diagram')),
         h('span', { class: 'grow' }),
         prev,
         pageInfo,
@@ -119,7 +120,7 @@ export function setupDataBrowser(ctx) {
       const cols = view.data.columns.map((c) => c.name);
       const text = [cols.join('\t'), ...view.data.rows.map((r) => cols.map((c) => esc(r[c])).join('\t'))].join('\n');
       await navigator.clipboard.writeText(text);
-      status(`Copied ${view.data.rows.length} rows`);
+      status(trn(view.data.rows.length, 'Copied {n} row', 'Copied {n} rows'));
     }
 
     view.load = async () => {
@@ -139,9 +140,9 @@ export function setupDataBrowser(ctx) {
     function render() {
       const d = view.data;
       const filtered = Object.keys(view.filters).length > 0;
-      count.textContent = `${d.total.toLocaleString()} row${d.total === 1 ? '' : 's'}${filtered ? ' (filtered)' : ''}`;
+      count.textContent = trn(d.total, '{n} row', '{n} rows', { n: formatNumber(d.total) }) + (filtered ? ` ${tr('(filtered)')}` : '');
       const from = d.total ? view.offset + 1 : 0;
-      pageInfo.textContent = `${from.toLocaleString()}–${(view.offset + d.rows.length).toLocaleString()} of ${d.total.toLocaleString()}`;
+      pageInfo.textContent = tr('{from}–{to} of {total}', { from: formatNumber(from), to: formatNumber(view.offset + d.rows.length), total: formatNumber(d.total) });
       prev.disabled = view.offset === 0;
       next.disabled = view.offset + d.rows.length >= d.total;
       sizeSelect.value = String(view.limit);
@@ -149,7 +150,7 @@ export function setupDataBrowser(ctx) {
         ...Object.entries(view.filters).map(([col, f]) =>
           h('span', { class: 'dt-chip' }, [
             h('span', {}, `${col}: ${describeFilter(f)}`),
-            h('button', { type: 'button', title: 'Remove this filter', onclick: () => setFilter(view, col, null) }, '×'),
+            h('button', { type: 'button', title: tr('Remove this filter'), onclick: () => setFilter(view, col, null) }, '×'),
           ])
         )
       );
@@ -160,7 +161,7 @@ export function setupDataBrowser(ctx) {
         ...d.columns.map((c) => {
           const sort = view.sort.find((s) => s.column === c.name);
           const active = !!view.filters[c.name];
-          const btn = h('button', { type: 'button', class: `dt-filter${active ? ' active' : ''}`, title: 'Sort and filter', onclick: (e) => openFilter(view, c, e.currentTarget) }, active ? '⏷' : '▾');
+          const btn = h('button', { type: 'button', class: `dt-filter${active ? ' active' : ''}`, title: tr('Sort and filter'), onclick: (e) => openFilter(view, c, e.currentTarget) }, active ? '⏷' : '▾');
           return h('th', { title: `${c.name} ${c.type}${c.nullable ? '' : ' NOT NULL'}` }, [
             h('div', { class: 'dt-th' }, [
               h('span', { class: `dt-colname${pk.has(c.name) ? ' pk' : ''}` }, c.name),
@@ -185,7 +186,7 @@ export function setupDataBrowser(ctx) {
       );
       grid.replaceChildren(
         h('table', { class: 'dt-grid' }, [h('thead', {}, head), h('tbody', {}, body)]),
-        d.rows.length ? '' : h('div', { class: 'db-empty' }, filtered ? 'No rows match the filters.' : 'The table is empty.')
+        d.rows.length ? '' : h('div', { class: 'db-empty' }, filtered ? tr('No rows match the filters.') : tr('The table is empty.'))
       );
     }
     view.render = render;
@@ -203,11 +204,11 @@ export function setupDataBrowser(ctx) {
     const parts = [];
     if (Array.isArray(f.values)) {
       const n = f.values.length + (f.blanks ? 1 : 0);
-      parts.push(n <= 3 ? [...f.values.map((v) => (v === '' ? '(empty)' : v)), ...(f.blanks ? ['(Blanks)'] : [])].join(', ') : `${n} values`);
+      parts.push(n <= 3 ? [...f.values.map((v) => (v === '' ? tr('(empty)') : v)), ...(f.blanks ? [tr('(Blanks)')] : [])].join(', ') : trn(n, '{n} value', '{n} values'));
     }
     if (f.cond) {
       const label = [...TEXT_OPS, ...RANGE_OPS].find(([k]) => k === f.cond.op)?.[1].toLowerCase();
-      parts.push(NO_VALUE.has(f.cond.op) ? label : f.cond.op === 'between' ? `between ${f.cond.value} and ${f.cond.value2}` : `${label} "${f.cond.value}"`);
+      parts.push(NO_VALUE.has(f.cond.op) ? label : f.cond.op === 'between' ? tr('between {a} and {b}', { a: f.cond.value, b: f.cond.value2 }) : `${label} "${f.cond.value}"`);
     }
     return parts.join('; ');
   }
@@ -245,7 +246,11 @@ export function setupDataBrowser(ctx) {
     const key = (v) => (v === null ? '\u0000null' : v);
     if (Array.isArray(current.values)) st.checked = new Set([...current.values, ...(current.blanks ? ['\u0000null'] : [])]);
 
-    const sortLabels = kind === 'number' ? ['Sort smallest to largest', 'Sort largest to smallest'] : kind === 'date' ? ['Sort oldest to newest', 'Sort newest to oldest'] : ['Sort A to Z', 'Sort Z to A'];
+    const sortLabels = kind === 'number'
+      ? [tr('Sort smallest to largest'), tr('Sort largest to smallest')]
+      : kind === 'date'
+        ? [tr('Sort oldest to newest'), tr('Sort newest to oldest')]
+        : [tr('Sort A to Z'), tr('Sort Z to A')];
     const sortBtn = (dir, label) =>
       h('button', {
         type: 'button',
@@ -257,9 +262,9 @@ export function setupDataBrowser(ctx) {
         },
       }, `${dir === 'asc' ? '↑' : '↓'}  ${label}`);
 
-    const opSelect = h('select', {}, [h('option', { value: '' }, `${kind === 'text' ? 'Text' : kind === 'number' ? 'Number' : 'Date'} filter…`), ...ops.map(([k, l]) => h('option', { value: k }, l))]);
-    const input1 = h('input', { type: 'text', placeholder: kind === 'date' ? 'YYYY-MM-DD' : 'value' });
-    const input2 = h('input', { type: 'text', placeholder: 'and', hidden: true });
+    const opSelect = h('select', {}, [h('option', { value: '' }, kind === 'text' ? tr('Text filter…') : kind === 'number' ? tr('Number filter…') : tr('Date filter…')), ...ops.map(([k, l]) => h('option', { value: k }, l))]);
+    const input1 = h('input', { type: 'text', placeholder: kind === 'date' ? tr('YYYY-MM-DD') : tr('value') });
+    const input2 = h('input', { type: 'text', placeholder: tr('and'), hidden: true });
     opSelect.value = current.cond?.op ?? '';
     input1.value = current.cond?.value ?? '';
     input2.value = current.cond?.value2 ?? '';
@@ -270,8 +275,8 @@ export function setupDataBrowser(ctx) {
     opSelect.addEventListener('change', syncInputs);
     syncInputs();
 
-    const search = h('input', { type: 'search', placeholder: 'Search values' });
-    const list = h('div', { class: 'fp-list' }, h('div', { class: 'muted small' }, 'Loading…'));
+    const search = h('input', { type: 'search', placeholder: tr('Search values') });
+    const list = h('div', { class: 'fp-list' }, h('div', { class: 'muted small' }, tr('Loading…')));
     const note = h('div', { class: 'fp-note muted small' });
 
     const isChecked = (k) => st.checked === null || st.checked.has(k);
@@ -285,7 +290,7 @@ export function setupDataBrowser(ctx) {
         renderList();
       });
       list.replaceChildren(
-        h('label', { class: 'fp-check all' }, [all, st.search ? '(Select all search results)' : '(Select all)']),
+        h('label', { class: 'fp-check all' }, [all, st.search ? tr('(Select all search results)') : tr('(Select all)')]),
         ...visible.map((v) => {
           const k = key(v.value);
           const cb = h('input', { type: 'checkbox', checked: isChecked(k) });
@@ -294,11 +299,11 @@ export function setupDataBrowser(ctx) {
             cb.checked ? st.checked.add(k) : st.checked.delete(k);
             renderList();
           });
-          const label = v.value === null ? '(Blanks)' : v.value === '' ? '(empty)' : v.value.length > 80 ? `${v.value.slice(0, 80)}…` : v.value;
-          return h('label', { class: `fp-check${v.value === null ? ' blank' : ''}`, title: v.value ?? 'NULL' }, [cb, h('span', { class: 'grow' }, label), h('span', { class: 'muted' }, v.count.toLocaleString())]);
+          const label = v.value === null ? tr('(Blanks)') : v.value === '' ? tr('(empty)') : v.value.length > 80 ? `${v.value.slice(0, 80)}…` : v.value;
+          return h('label', { class: `fp-check${v.value === null ? ' blank' : ''}`, title: v.value ?? 'NULL' }, [cb, h('span', { class: 'grow' }, label), h('span', { class: 'muted' }, formatNumber(v.count))]);
         })
       );
-      note.textContent = st.truncated ? 'Showing the first values only — search to find others.' : '';
+      note.textContent = st.truncated ? tr('Showing the first values only — search to find others.') : '';
     }
 
     async function loadValues() {
@@ -358,7 +363,7 @@ export function setupDataBrowser(ctx) {
           closePopup();
           setFilter(view, col.name, null);
         },
-      }, `✕  Clear filter from "${col.name}"`),
+      }, `✕  ${tr('Clear filter from "{name}"', { name: col.name })}`),
       h('div', { class: 'fp-sep' }),
       h('div', { class: 'fp-cond' }, [opSelect, input1, input2]),
       h('div', { class: 'fp-sep' }),
@@ -366,8 +371,8 @@ export function setupDataBrowser(ctx) {
       list,
       note,
       h('div', { class: 'fp-actions' }, [
-        h('button', { type: 'button', class: 'primary', onclick: apply }, 'OK'),
-        h('button', { type: 'button', onclick: closePopup }, 'Cancel'),
+        h('button', { type: 'button', class: 'primary', onclick: apply }, tr('OK')),
+        h('button', { type: 'button', onclick: closePopup }, tr('Cancel')),
       ])
     );
     popup.hidden = false;
@@ -390,7 +395,7 @@ export function setupDataBrowser(ctx) {
     $('#data-pick-list').replaceChildren(
       ...(items.length
         ? items.map((t) => h('label', { class: 'item', onclick: () => (pick.close(), open(t)) }, [h('span', { class: 'grow' }, t)]))
-        : [h('div', { class: 'db-empty' }, 'No tables.')])
+        : [h('div', { class: 'db-empty' }, tr('No tables.'))])
     );
   }
   pickFilter.addEventListener('input', renderPick);

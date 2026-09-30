@@ -3,6 +3,7 @@
 // Pure functions, so they can be tested without a page.
 
 import { tablesMentioned } from '../../shared/scripts.js';
+import { tr, trn, formatNumber } from '../../shared/i18n.js';
 
 export const SCRIPT_W = 220;
 export const SCRIPT_HEADER = 30;
@@ -11,25 +12,25 @@ const PAD_BOTTOM = 8;
 
 // How a script relates to the tables it uses, by script type.
 export const RELATION = {
-  validator: 'validates',
-  generator: 'generates',
-  seeder: 'seeds',
-  migration: 'migrates',
-  import: 'imports into',
-  export: 'exports from',
-  query: 'queries',
-  maintenance: 'maintains',
+  validator: tr('validates'),
+  generator: tr('generates'),
+  seeder: tr('seeds'),
+  migration: tr('migrates'),
+  import: tr('imports into'),
+  export: tr('exports from'),
+  query: tr('queries'),
+  maintenance: tr('maintains'),
 };
 
 export const SCRIPT_TYPE_LABEL = {
-  validator: 'Validator',
-  generator: 'Generator',
-  seeder: 'Seeder',
-  migration: 'Migration',
-  import: 'Import',
-  export: 'Export',
-  query: 'Query',
-  maintenance: 'Maintenance',
+  validator: tr('Validator'),
+  generator: tr('Generator'),
+  seeder: tr('Seeder'),
+  migration: tr('Migration'),
+  import: tr('Import'),
+  export: tr('Export'),
+  query: tr('Query'),
+  maintenance: tr('Maintenance'),
 };
 
 // Diagram tables a script is linked to: the tables in its metadata plus the
@@ -50,30 +51,37 @@ export function linkedTables(script, tables) {
 export function scriptLines(script, run) {
   const lines = [{ text: `${SCRIPT_TYPE_LABEL[script.type] ?? script.type} · TypeScript`, cls: 's-line' }];
   if (!run) {
-    lines.push({ text: 'Not run yet', cls: 's-line muted' });
+    lines.push({ text: tr('Not run yet'), cls: 's-line muted' });
     return lines;
   }
-  if (run.status === 'error') lines.push({ text: 'Last run: ERROR', cls: 's-status fail' });
+  if (run.status === 'error') lines.push({ text: tr('Last run: ERROR'), cls: 's-status fail' });
   else if (run.validations) {
     const pass = run.passed === run.validations;
     lines.push({
-      text: `Last run: ${pass ? 'PASS' : 'FAIL'} (${run.passed}/${run.validations})`,
+      text: `${pass ? tr('Last run: PASS') : tr('Last run: FAIL')} (${run.passed}/${run.validations})`,
       cls: `s-status ${pass ? 'pass' : 'fail'}`,
     });
-    if (run.errors) lines.push({ text: `${run.errors.toLocaleString('en-US')} error${run.errors === 1 ? '' : 's'}`, cls: 's-line fail' });
+    if (run.errors) lines.push({ text: trn(run.errors, '{n} error', '{n} errors', { n: formatNumber(run.errors) }), cls: 's-line fail' });
   } else {
     const changes = (run.inserts ?? 0) + (run.updates ?? 0) + (run.deletes ?? 0);
-    lines.push({ text: `Last run: OK${run.mode === 'dry-run' ? ' (dry run)' : ''}`, cls: 's-status pass' });
-    if (changes) lines.push({ text: `+${run.inserts} ~${run.updates} −${run.deletes} rows`, cls: 's-line' });
+    lines.push({ text: run.mode === 'dry-run' ? tr('Last run: OK (dry run)') : tr('Last run: OK'), cls: 's-status pass' });
+    if (changes) lines.push({ text: tr('+{inserts} ~{updates} −{deletes} rows', { inserts: run.inserts, updates: run.updates, deletes: run.deletes }), cls: 's-line' });
   }
   if (run.rowsRead)
-    lines.push({ text: `${run.rowsRead.toLocaleString('en-US')} rows ${script.type === 'validator' ? 'checked' : 'read'}`, cls: 's-line muted' });
+    lines.push({
+      text: script.type === 'validator'
+        ? trn(run.rowsRead, '{n} row checked', '{n} rows checked', { n: formatNumber(run.rowsRead) })
+        : trn(run.rowsRead, '{n} row read', '{n} rows read', { n: formatNumber(run.rowsRead) }),
+      cls: 's-line muted',
+    });
   return lines;
 }
 
-// titleWidth: measured width of the script name, so it isn't clipped (up to 360px).
-export const scriptSize = (lines, titleWidth = 0) => ({
-  width: Math.min(360, Math.max(SCRIPT_W, Math.ceil(titleWidth) + 44)),
+// titleWidth / lineWidth: measured widths of the script name and of the
+// widest line, so neither is clipped (up to 360px). Lines are longer in some
+// languages.
+export const scriptSize = (lines, titleWidth = 0, lineWidth = 0) => ({
+  width: Math.min(360, Math.max(SCRIPT_W, Math.ceil(titleWidth) + 44, Math.ceil(lineWidth) + 20)),
   height: SCRIPT_HEADER + lines.length * SCRIPT_ROW + PAD_BOTTOM,
 });
 

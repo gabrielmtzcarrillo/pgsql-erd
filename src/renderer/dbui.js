@@ -6,9 +6,14 @@ import { diffModels } from './lib/diff.js';
 import { mergeFromDb } from './lib/sync.js';
 import { autoLayout, contentBounds, placeBelow } from './lib/layout.js';
 import { highlightSQL } from './lib/highlight.js';
+import { tr, trn } from '../shared/i18n.js';
 
 const STORAGE_KEY = 'pgsql-erd.connection';
 const $ = (sel) => document.querySelector(sel);
+
+// Connection environments, by code.
+export const envName = (env) =>
+  ({ development: tr('Development'), testing: tr('Testing'), staging: tr('Staging'), production: tr('Production') })[env] ?? env;
 
 export function setupDatabase(ctx) {
   const { host, state, h, commit, computeSizes, fit, status, events } = ctx;
@@ -26,11 +31,15 @@ export function setupDatabase(ctx) {
   function updateIndicator() {
     const env = conn?.profile.environment;
     const el = $('#status-db');
-    el.textContent = conn ? `DB: ${conn.description}${env !== 'development' ? ` · ${env.toUpperCase()}` : ''}${conn.profile.policy.allowWrites ? '' : ' · read-only'}` : 'Not connected';
+    el.textContent = conn
+      ? `${tr('DB:')} ${conn.description}${env !== 'development' ? ` · ${envName(env).toUpperCase()}` : ''}${conn.profile.policy.allowWrites ? '' : ` · ${tr('read-only')}`}`
+      : tr('Not connected');
     el.className = conn ? `env-${env}` : '';
     document.body.dataset.environment = env ?? '';
-    $('#db-button .label').textContent = conn ? 'Connected' : 'Connect';
-    $('#db-button').title = conn ? `Connected to ${conn.description} (${env}; click to change)` : 'Connect to a PostgreSQL database';
+    $('#db-button .label').textContent = conn ? tr('Connected') : tr('Connect');
+    $('#db-button').title = conn
+      ? tr('Connected to {db} ({env}; click to change)', { db: conn.description, env: envName(env) })
+      : tr('Connect to a PostgreSQL database');
     events.dispatchEvent(new Event('connection'));
   }
 
@@ -52,13 +61,15 @@ export function setupDatabase(ctx) {
   }
 
   async function refreshSchema() {
-    status('Reading the database schema…');
+    status(tr('Reading the database schema…'));
     try {
       const { changes } = await call(host.db.introspect);
       events.dispatchEvent(Object.assign(new Event('schema'), { changes }));
-      status(changes.length ? `Schema refreshed: ${changes.length} change${changes.length === 1 ? '' : 's'} (${changes.slice(0, 3).join('; ')}${changes.length > 3 ? '; …' : ''})` : 'Schema refreshed: no changes');
+      status(changes.length
+        ? trn(changes.length, 'Schema refreshed: {n} change ({list})', 'Schema refreshed: {n} changes ({list})', { list: changes.slice(0, 3).join('; ') + (changes.length > 3 ? '; …' : '') })
+        : tr('Schema refreshed: no changes'));
     } catch (err) {
-      status(`Could not read the schema: ${err.message}`);
+      status(tr('Could not read the schema: {message}', { message: err.message }));
     }
   }
 
@@ -109,7 +120,7 @@ export function setupDatabase(ctx) {
     for (const k of ['host', 'port', 'database', 'user']) f[k].value = saved?.[k] ?? '';
     // The password is never read back; leave it empty to reconnect with a new one.
     f.password.value = '';
-    f.password.placeholder = conn ? '(re-enter to reconnect)' : '';
+    f.password.placeholder = conn ? tr('(re-enter to reconnect)') : '';
     f.sslmode.value = saved?.sslmode ?? 'disable';
     f.profileName.value = saved?.profile?.name && saved.profile.name !== describe(saved) ? saved.profile.name : '';
     f.environment.value = saved?.profile?.environment ?? 'development';
@@ -123,9 +134,9 @@ export function setupDatabase(ctx) {
   }
 
   async function test(c) {
-    setStatus(connectStatus, 'Connecting…');
+    setStatus(connectStatus, tr('Connecting…'));
     const info = await call(host.db.test, c);
-    setStatus(connectStatus, `Connected to ${info.database} as ${info.user}\n${info.version}`, 'ok');
+    setStatus(connectStatus, `${tr('Connected to {db} as {user}', { db: info.database, user: info.user })}\n${info.version}`, 'ok');
     return info;
   }
 
@@ -138,7 +149,7 @@ export function setupDatabase(ctx) {
     e.preventDefault(); // keep the dialog open until the connection works
     const c = formConn();
     const profile = formProfile();
-    setStatus(connectStatus, 'Connecting…');
+    setStatus(connectStatus, tr('Connecting…'));
     try {
       conn = await call(host.db.connect, c, profile);
     } catch (err) {
@@ -152,7 +163,7 @@ export function setupDatabase(ctx) {
     }
     updateIndicator();
     connectDialog.close('ok');
-    status(`Connected to ${conn.description} (${conn.profile.environment})`);
+    status(tr('Connected to {db} ({env})', { db: conn.description, env: envName(conn.profile.environment) }));
     refreshSchema();
     const then = afterConnect;
     afterConnect = null;
@@ -190,21 +201,21 @@ export function setupDatabase(ctx) {
           h('label', { class: 'item' }, [
             h('input', { type: 'checkbox', value: key, checked: checked.has(key) }),
             h('span', {}, t.name),
-            h('span', { class: 'muted' }, `${t.columns.length} columns`),
-            h('span', { class: `tag${present ? '' : ' new'}` }, present ? 'in diagram: update' : 'new'),
+            h('span', { class: 'muted' }, trn(t.columns.length, '{n} column', '{n} columns')),
+            h('span', { class: `tag${present ? '' : ' new'}` }, present ? tr('in diagram: update') : tr('new')),
           ])
         );
       }
     }
-    importList.replaceChildren(...(items.length ? items : [h('div', { class: 'db-empty' }, 'No tables found.')]));
+    importList.replaceChildren(...(items.length ? items : [h('div', { class: 'db-empty' }, tr('No tables found.'))]));
   }
 
   async function refreshImport() {
-    setStatus(importStatus, 'Reading database…');
+    setStatus(importStatus, tr('Reading database…'));
     try {
       importModel = await loadCatalog();
       renderImportList();
-      setStatus(importStatus, `${importModel.tables.length} tables in ${importModel.schemas.length} schemas (${conn.description})`);
+      setStatus(importStatus, `${trn(importModel.tables.length, '{n} table', '{n} tables')} · ${trn(importModel.schemas.length, '{n} schema', '{n} schemas')} (${conn.description})`);
     } catch (err) {
       importList.replaceChildren();
       setStatus(importStatus, err.message, 'error');
@@ -243,7 +254,7 @@ export function setupDatabase(ctx) {
       }
     });
     if (wasEmpty || result.added.length) fit();
-    status(`Imported ${result.added.length} new and updated ${result.updated.length} existing tables`);
+    status(tr('Imported {added} new and updated {updated} existing tables', { added: result.added.length, updated: result.updated.length }));
   });
 
   // ------------------------------------------------------------ compare
@@ -267,7 +278,7 @@ export function setupDatabase(ctx) {
     const all = [...new Set([...erdSchemas, ...(dbModel?.schemas ?? [])])].sort();
     for (const s of all) if (!schemaChoice.has(s)) schemaChoice.set(s, erdSchemas.has(s));
     $('#db-compare-schemas').replaceChildren(
-      h('span', { class: 'muted' }, 'Schemas:'),
+      h('span', { class: 'muted' }, tr('Schemas:')),
       ...all.map((s) => {
         const cb = h('input', { type: 'checkbox', checked: schemaChoice.get(s) });
         cb.addEventListener('change', () => {
@@ -298,7 +309,7 @@ export function setupDatabase(ctx) {
       for (const c of list) {
         const [cls, s] = sym(c.kind);
         items.push(
-          h('div', { class: `chg ${cls}${c.skipped ? ' skipped' : ''}`, title: c.skipped ? 'Skipped: enable destructive changes to include' : '' }, [
+          h('div', { class: `chg ${cls}${c.skipped ? ' skipped' : ''}`, title: c.skipped ? tr('Skipped: enable destructive changes to include') : '' }, [
             h('span', { class: 'sym' }, s),
             h('span', {}, c.summary),
           ])
@@ -306,20 +317,20 @@ export function setupDatabase(ctx) {
       }
     }
     compareList.replaceChildren(
-      ...(items.length ? items : [h('div', { class: 'db-empty' }, 'No differences: the database matches the diagram.')])
+      ...(items.length ? items : [h('div', { class: 'db-empty' }, tr('No differences: the database matches the diagram.'))])
     );
     highlightSQL(compareSql, result.sql);
     const active = result.changes.filter((c) => !c.skipped).length;
     const skipped = result.changes.length - active;
     setStatus(
       compareStatus,
-      `${conn.description} — ${active} change${active === 1 ? '' : 's'}` + (skipped ? `, ${skipped} destructive skipped` : '')
+      `${conn.description} — ${trn(active, '{n} change', '{n} changes')}` + (skipped ? `, ${trn(skipped, '{n} destructive change skipped', '{n} destructive changes skipped')}` : '')
     );
     $('#db-compare-exec').disabled = active === 0;
   }
 
   async function refreshCompare() {
-    setStatus(compareStatus, 'Reading database…');
+    setStatus(compareStatus, tr('Reading database…'));
     try {
       dbModel = await loadCatalog();
       renderSchemas();
@@ -346,33 +357,33 @@ export function setupDatabase(ctx) {
   $('#db-compare-refresh').addEventListener('click', refreshCompare);
   $('#db-compare-copy').addEventListener('click', async () => {
     await navigator.clipboard.writeText(compareSql.textContent);
-    setStatus(compareStatus, 'SQL copied to clipboard', 'ok');
+    setStatus(compareStatus, tr('SQL copied to clipboard'), 'ok');
   });
   $('#db-compare-save').addEventListener('click', async () => {
     const base = state.filePath ? state.filePath.split(/[\\/]/).pop().replace(/\.pgerd$/i, '') : 'diagram';
     const target = await host.saveFile({ text: compareSql.textContent, saveAs: true, defaultName: `${base}-migration.sql`, kind: 'sql' });
-    if (target) setStatus(compareStatus, `Saved ${target}`, 'ok');
+    if (target) setStatus(compareStatus, tr('Saved {file}', { file: target }), 'ok');
   });
   $('#db-compare-exec').addEventListener('click', async () => {
     if (!result) return;
     const active = result.changes.filter((c) => !c.skipped);
     const drops = active.filter((c) => c.destructive).length;
     const choice = await host.confirm({
-      message: `Run ${active.length} change${active.length === 1 ? '' : 's'} on ${conn.description}?`,
+      message: trn(active.length, 'Run {n} change on {db}?', 'Run {n} changes on {db}?', { db: conn.description }),
       detail:
-        (drops ? `${drops} of them drop tables or columns and delete data.\n` : '') +
-        'The script runs in a single transaction and is rolled back if any statement fails.',
-      buttons: ['Run', 'Cancel'],
+        (drops ? `${trn(drops, '{n} of them drops tables or columns and deletes data.', '{n} of them drop tables or columns and delete data.')}\n` : '') +
+        tr('The script runs in a single transaction and is rolled back if any statement fails.'),
+      buttons: [tr('Run'), tr('Cancel')],
     });
     if (choice !== 0) return;
-    setStatus(compareStatus, 'Running migration…');
+    setStatus(compareStatus, tr('Running migration…'));
     try {
       await call(host.db.execute, result.sql);
     } catch (err) {
-      return setStatus(compareStatus, `Migration failed and was rolled back:\n${err.message}`, 'error');
+      return setStatus(compareStatus, `${tr('Migration failed and was rolled back:')}\n${err.message}`, 'error');
     }
     await refreshCompare();
-    setStatus(compareStatus, `Migration applied. ${compareStatus.textContent}`, 'ok');
+    setStatus(compareStatus, `${tr('Migration applied.')} ${compareStatus.textContent}`, 'ok');
   });
 
   updateIndicator();
@@ -388,7 +399,7 @@ export function setupDatabase(ctx) {
     'db-refresh': requireConnection(refreshSchema),
     'db-import': requireConnection(openImport),
     'db-compare': requireConnection(() => {
-      if (!state.model.tables.length) return status('The diagram is empty: add or import tables first.');
+      if (!state.model.tables.length) return status(tr('The diagram is empty: add or import tables first.'));
       return openCompare();
     }),
   };

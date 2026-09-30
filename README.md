@@ -1,5 +1,7 @@
 # pgsql-erd
 
+**English** · [Español](README-es.md)
+
 A desktop ERD (entity–relationship diagram) tool and database workbench for PostgreSQL, built with
 Node.js and Electron. It opens and saves **pgAdmin 4 `.pgerd` files**, so diagrams can move back and
 forth between pgAdmin's ERD tool and this app, and adds schema-aware TypeScript scripts (validators,
@@ -12,7 +14,7 @@ filters, and an AI assistant that works with Ollama, vLLM, OpenAI and other Open
 
 **Ribbon and tabs:** commands are grouped Office-style (File, History, Diagram, View, Grid, Database,
 Scripts, SQL & Export) with two-tone colour icons; the native menus use the same icons. Below the ribbon,
-tabs switch between the **Diagram**, **Scripts**, **Query** and **Assistant**, followed by one tab per
+tabs switch between the **Diagram**, **Scripts**, **Query**, **Graph** and **Assistant**, followed by one tab per
 table whose data you are browsing.
 
 ![Ribbon](docs/screenshots/ribbon.png)
@@ -31,6 +33,10 @@ table whose data you are browsing.
 | ![Query plan](docs/screenshots/query-plan.png) | ![Data filter](docs/screenshots/data-filter.png) |
 | **Assistant:** proposes scripts that open unsaved for review; they type-check against the schema. | **Scripts in the diagram:** each script linked to the tables it uses, with its last run. |
 | ![Assistant](docs/screenshots/assistant.png) | ![Scripts in the diagram](docs/screenshots/scripts-in-diagram.png) |
+| **pgvector columns:** the dimensions and a ready-to-copy HNSW index for similarity search. | **pgvector queries:** nearest-neighbour searches that scan every row get an HNSW index suggestion. |
+| ![pgvector column](docs/screenshots/pgvector-column.png) | ![pgvector query plan](docs/screenshots/pgvector-query-plan.png) |
+| **Apache AGE relationships:** every edge of a graph, filterable, searchable and editable in place. | **Graph explorer:** a force-directed view; double-click a vertex to expand its neighbours. |
+| ![AGE relationships](docs/screenshots/age-relationships.png) | ![AGE graph explorer](docs/screenshots/age-explorer.png) |
 
 ## Features
 
@@ -82,6 +88,7 @@ table whose data you are browsing.
 - An Office-style ribbon with labelled command groups and two-tone colour icons, which the
   native menus and dialogs share.
 - Follows the system's light or dark theme.
+- Available in English and Spanish (see [Languages](#languages)).
 
 ## Database sync
 
@@ -263,6 +270,32 @@ in the editor, labelled with whether they type-check. Nothing the assistant writ
   and migrations, script runs and commits, query-tab writes, assistant requests (and whether they carried
   row data) and settings changes.
 
+## Languages
+
+The app is available in **English** and **Spanish** (Español). It follows the operating system's language,
+falling back to English. To pick one yourself, use **View → Language**; menus switch immediately and
+open windows switch when the app restarts (it offers to restart). The choice is saved in `settings.json` in
+the app's user data folder. Numbers and dates follow the chosen language.
+
+Translations cover the whole interface: menus, dialogs, the diagram sidebar, every tab, compare / migration
+summaries and query-plan hints. Messages that come from PostgreSQL itself, and the names of plan nodes
+(`Seq Scan`, `Hash Join`), stay as the server reports them.
+
+### Adding a language
+
+The English text is the key: code calls `tr('Save')` or `trn(n, '{n} table', '{n} tables')`
+(`src/shared/i18n.js`), and the static page is translated from its text when it loads. To add a language:
+
+1. Copy `src/shared/locales/es.js` to `src/shared/locales/<code>.js` and translate the values. Keep the
+   `{placeholders}` and any leading or trailing spaces.
+2. Import it in `src/shared/i18n.js` and add it to `CATALOGS` and `LOCALES` (the name shown in
+   View → Language, in its own language).
+3. Add it to `CATALOGS` in `tests/i18n.test.js` and run `npm test`. The test lists every string used in the
+   code or the page that is missing from the catalog, entries that are no longer used, and translations whose
+   placeholders don't match.
+
+New interface text goes through `tr()` / `trn()` in the same way; the test fails until each catalog has it.
+
 ## Getting started
 
 ```bash
@@ -327,6 +360,8 @@ src/runner/               the isolated script process
 src/shared/               schema model, typings generator, permissions, context builder, JSON schema,
                           fake data, plan analyzer, pgvector and Apache AGE helpers (used by the main
                           process, the runner and the page)
+src/shared/i18n.js        translations: tr(), trn(), locale selection
+src/shared/locales/       translation catalogs (es.js)
 src/renderer/index.html   UI shell
 src/renderer/app.js       rendering, interaction, properties panel, commands
 src/renderer/dbui.js      connect / import / compare dialogs
@@ -395,3 +430,7 @@ A `.pgerd` file is pgAdmin's serialized react-diagrams model:
 
 The app reads relationships from each table's `foreign_key` list and from the links layer. When
 saving, it rebuilds both, together with the ports pgAdmin uses to attach links to columns.
+
+## License
+
+[MIT](LICENSE)
