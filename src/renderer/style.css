@@ -153,6 +153,34 @@ textarea { resize: vertical; width: 100%; }
 .erd-table .t-row:hover .t-row-bg { fill: var(--erd-row-hover); }
 .erd-table .t-row.focused .t-row-bg { fill: var(--accent-soft); }
 .erd-table.selected .t-body { stroke: var(--erd-accent); stroke-width: 2; }
+.erd-table.link-target .t-body { stroke: var(--erd-accent); stroke-width: 2.4; }
+.erd-table .t-link-handle {
+  fill: var(--erd-accent); stroke: var(--erd-table-bg); stroke-width: 2;
+  cursor: crosshair; opacity: 0; transition: opacity 0.12s;
+}
+.erd-table:hover .t-link-handle, .erd-table.selected .t-link-handle { opacity: 1; }
+#canvas.linking, #canvas.linking .erd-table { cursor: crosshair; }
+#canvas.linking .t-link-handle { opacity: 0; }
+.link-draft { stroke: var(--erd-accent); stroke-width: 2; stroke-dasharray: 6 4; pointer-events: none; }
+
+/* Diagram context menu */
+.ctx-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  font-size: 12.5px;
+}
+.ctx-menu .ctx-item { justify-content: flex-start; text-align: left; border: 0; background: transparent; padding: 5px 8px; border-radius: 4px; }
+.ctx-menu .ctx-item:hover, .ctx-menu .ctx-item:focus-visible { background: var(--accent-soft); outline: none; }
+.ctx-menu .ctx-item.danger { color: var(--danger); }
+.ctx-sep { border-top: 1px solid var(--border); margin: 3px 2px; }
 .erd-link { cursor: pointer; }
 .erd-link:hover .l-line, .erd-link:hover .l-marker,
 .erd-link.related .l-line, .erd-link.related .l-marker { stroke: var(--erd-accent); }
@@ -374,11 +402,16 @@ dialog {
   color: var(--text);
   padding: 16px 18px;
   width: 520px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
 }
 dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
 dialog h3 { margin: 0 0 4px; }
-dialog .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+dialog .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin: 12px 0; }
 dialog label { display: flex; flex-direction: column; gap: 3px; color: var(--muted); font-size: 12px; }
+/* Long option text (table and column names) must not widen the dialog. */
+dialog .grid2 select, dialog .grid2 input:not([type="checkbox"]):not([type="radio"]) { width: 100%; min-width: 0; }
 dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 8px 0 0; }
 
 /* Database dialogs */
