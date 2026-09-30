@@ -31,6 +31,10 @@ table whose data you are browsing.
 | ![Query plan](docs/screenshots/query-plan.png) | ![Data filter](docs/screenshots/data-filter.png) |
 | **Assistant:** proposes scripts that open unsaved for review; they type-check against the schema. | **Scripts in the diagram:** each script linked to the tables it uses, with its last run. |
 | ![Assistant](docs/screenshots/assistant.png) | ![Scripts in the diagram](docs/screenshots/scripts-in-diagram.png) |
+| **pgvector columns:** the dimensions and a ready-to-copy HNSW index for similarity search. | **pgvector queries:** nearest-neighbour searches that scan every row get an HNSW index suggestion. |
+| ![pgvector column](docs/screenshots/pgvector-column.png) | ![pgvector query plan](docs/screenshots/pgvector-query-plan.png) |
+| **Apache AGE relationships:** every edge of a graph, filterable, searchable and editable in place. | **Graph explorer:** a force-directed view; double-click a vertex to expand its neighbours. |
+| ![AGE relationships](docs/screenshots/age-relationships.png) | ![AGE graph explorer](docs/screenshots/age-explorer.png) |
 
 ## Features
 
@@ -395,3 +399,7 @@ A `.pgerd` file is pgAdmin's serialized react-diagrams model:
 
 The app reads relationships from each table's `foreign_key` list and from the links layer. When
 saving, it rebuilds both, together with the ports pgAdmin uses to attach links to columns.
+
+## License
+
+[MIT](LICENSE)
