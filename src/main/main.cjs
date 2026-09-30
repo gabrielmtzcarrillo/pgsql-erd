@@ -8,6 +8,12 @@ const db = require('./db.cjs');
 const windows = new Set();
 let pendingOpen = []; // files requested before the app was ready (macOS open-file)
 
+// Packaged builds take their icon from the executable / bundle. When running
+// from source (npm start), point Electron at the icon in build/ instead.
+const devIcon = app.isPackaged
+  ? undefined
+  : path.join(__dirname, '..', '..', 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+
 function pgerdArgs(argv) {
   return argv
     .slice(app.isPackaged ? 1 : 2)
@@ -23,6 +29,7 @@ function createWindow(filePath = null) {
     minHeight: 500,
     title: 'pgsql-erd',
     backgroundColor: '#f4f5f7',
+    icon: devIcon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -280,6 +287,8 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
+    // macOS ignores the window icon; the dock shows it instead.
+    if (devIcon && process.platform === 'darwin') app.dock?.setIcon(devIcon);
     buildMenu();
     const files = [...pendingOpen, ...pgerdArgs(process.argv)];
     pendingOpen = [];
