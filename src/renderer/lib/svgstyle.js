@@ -42,9 +42,9 @@ export const DIAGRAM_CSS = `
   .erd-table .t-col { fill: var(--erd-text); font: ${FONT}; }
   .erd-table .t-col.nn { font-weight: 600; }
   .erd-table .t-type { fill: var(--erd-muted); font: ${FONT}; }
-  .erd-table .t-key { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-  .erd-table .t-key.pk { stroke: var(--erd-pk); }
-  .erd-table .t-key.fk { stroke: var(--erd-fk); }
+  .erd-table .t-key { fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  .erd-table .t-key.pk { color: var(--erd-pk); }
+  .erd-table .t-key.fk { color: var(--erd-fk); }
   .erd-table .t-empty { fill: var(--erd-muted); font: italic ${FONT}; }
   .erd-table .t-row-bg { fill: transparent; }
   .erd-link .l-line { fill: none; stroke: var(--erd-link); stroke-width: 1.4; }

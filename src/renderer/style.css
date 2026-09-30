@@ -79,7 +79,13 @@ button.danger { color: var(--danger); }
 button.icon { padding: 2px 6px; line-height: 1; }
 button:has(> .btn-icon) { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
 button.icon-only { padding: 4px 6px; }
-.btn-icon { width: 15px; height: 15px; flex: none; }
+.btn-icon { width: 15px; height: 15px; flex: none; color: var(--tone, currentColor); }
+button.primary .btn-icon, button.danger .btn-icon { color: currentColor; }
+button:disabled .btn-icon { filter: grayscale(1); }
+@media (prefers-color-scheme: dark) {
+  .btn-icon { color: var(--tone-dark, currentColor); }
+  button.primary .btn-icon, button.danger .btn-icon { color: currentColor; }
+}
 
 input, select, textarea {
   font: inherit;
@@ -97,12 +103,42 @@ textarea { resize: vertical; width: 100%; }
 .toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 14px;
-  padding: 6px 10px;
+  row-gap: 4px;
+  padding: 4px 6px 2px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
-.toolbar .group { display: flex; align-items: center; gap: 4px; }
+.ribbon .group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 4px;
+  border-right: 1px solid var(--border);
+}
+.ribbon .group:last-child { border-right: 0; }
+.ribbon .group-items { display: flex; align-items: stretch; gap: 1px; flex: 1; }
+.ribbon .group-label { font-size: 11px; color: var(--muted); padding: 2px 0 1px; white-space: nowrap; }
+.ribbon button {
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 3px;
+  min-width: 42px;
+  padding: 4px 5px 3px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.ribbon button:hover:not(:disabled) { background: var(--accent-soft); border-color: transparent; }
+.ribbon button:disabled { border-color: transparent; }
+.ribbon button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.ribbon .btn-icon { width: 26px; height: 26px; }
+.ribbon .stack { display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+.ribbon .stack button { flex-direction: row; gap: 5px; min-width: 0; padding: 1px 6px; }
+.ribbon .stack .btn-icon { width: 16px; height: 16px; }
+.ribbon .stack .zoom-label { text-align: left; padding: 1px 6px 1px 27px; font-size: 12px; }
+.ribbon-field { display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 3px; padding: 4px 4px 3px; font-size: 12px; }
+.ribbon-field select { padding: 2px 4px; }
 .zoom-label { min-width: 44px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .workspace { flex: 1; display: flex; min-height: 0; }
@@ -279,7 +315,7 @@ textarea { resize: vertical; width: 100%; }
 .sb-col-row:focus-visible { outline: 2px solid var(--accent); }
 .sb-badges { display: inline-flex; gap: 3px; width: 44px; flex: none; }
 .badge { display: inline-flex; padding: 2px; border-radius: 3px; }
-.badge .btn-icon { width: 13px; height: 13px; stroke-width: 2.5; }
+.badge .btn-icon { width: 13px; height: 13px; stroke-width: 2.5; color: inherit; }
 .badge.pk { color: var(--erd-pk); background: color-mix(in srgb, var(--erd-pk) 15%, transparent); }
 .badge.fk { color: var(--erd-fk); background: color-mix(in srgb, var(--erd-fk) 15%, transparent); }
 .sb-col-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }

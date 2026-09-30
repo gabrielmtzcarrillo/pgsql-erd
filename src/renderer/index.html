@@ -8,53 +8,83 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="toolbar">
+  <header class="toolbar ribbon">
     <div class="group">
-      <button data-cmd="new" title="New diagram (Ctrl+N)">New</button>
-      <button data-cmd="open" title="Open .pgerd (Ctrl+O)">Open</button>
-      <button data-cmd="save" title="Save (Ctrl+S)">Save</button>
+      <div class="group-items">
+        <button data-cmd="new" title="New diagram (Ctrl+N)">New</button>
+        <button data-cmd="open" title="Open .pgerd (Ctrl+O)">Open</button>
+        <button data-cmd="save" title="Save (Ctrl+S)">Save</button>
+      </div>
+      <div class="group-label">File</div>
     </div>
     <div class="group">
-      <button data-cmd="toggle-tables" title="Show the list of tables">Tables</button>
-      <button data-cmd="add-table" title="Add table (Ctrl+Alt+T)">Table</button>
-      <button data-cmd="add-link" title="Add relationship (Ctrl+Alt+R)">Relationship</button>
-      <button data-cmd="delete" title="Delete selection (Del)">Delete</button>
+      <div class="group-items">
+        <div class="stack">
+          <button data-cmd="undo" title="Undo (Ctrl+Z)">Undo</button>
+          <button data-cmd="redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
+        </div>
+      </div>
+      <div class="group-label">History</div>
     </div>
     <div class="group">
-      <button data-cmd="undo" title="Undo (Ctrl+Z)">Undo</button>
-      <button data-cmd="redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
+      <div class="group-items">
+        <button data-cmd="toggle-tables" title="Show the list of tables">Tables</button>
+        <button data-cmd="add-table" title="Add table (Ctrl+Alt+T)">Table</button>
+        <button data-cmd="add-link" title="Add relationship (Ctrl+Alt+R)">Relationship</button>
+        <button data-cmd="delete" title="Delete selection (Del)">Delete</button>
+      </div>
+      <div class="group-label">Diagram</div>
     </div>
     <div class="group">
-      <button data-cmd="zoom-out" title="Zoom out (Ctrl+-)"></button>
-      <span id="zoom-label" class="zoom-label">100%</span>
-      <button data-cmd="zoom-in" title="Zoom in (Ctrl+=)"></button>
-      <button data-cmd="fit" title="Fit to window (Ctrl+0)">Fit</button>
-      <button data-cmd="auto-layout" title="Auto layout (Ctrl+L)">Auto layout</button>
+      <div class="group-items">
+        <div class="stack">
+          <button data-cmd="zoom-in" title="Zoom in (Ctrl+=)">Zoom in</button>
+          <button data-cmd="zoom-out" title="Zoom out (Ctrl+-)">Zoom out</button>
+          <span id="zoom-label" class="zoom-label">100%</span>
+        </div>
+        <button data-cmd="fit" title="Fit to window (Ctrl+0)">Fit</button>
+        <button data-cmd="auto-layout" title="Auto layout (Ctrl+L)">Layout</button>
+      </div>
+      <div class="group-label">View</div>
     </div>
     <div class="group">
-      <button data-cmd="toggle-grid" title="Show grid (Ctrl+Alt+G)">Grid</button>
-      <button data-cmd="toggle-snap" title="Snap tables to the grid (Ctrl+Shift+G). Hold Alt while dragging to invert.">Snap</button>
-      <select id="grid-size" title="Grid size (px)">
-        <option value="5">5</option>
-        <option value="10">10</option>
-        <option value="15">15</option>
-        <option value="20">20</option>
-        <option value="25">25</option>
-        <option value="30">30</option>
-        <option value="40">40</option>
-        <option value="50">50</option>
-      </select>
+      <div class="group-items">
+        <button data-cmd="toggle-grid" title="Show grid (Ctrl+Alt+G)">Grid</button>
+        <button data-cmd="toggle-snap" title="Snap tables to the grid (Ctrl+Shift+G). Hold Alt while dragging to invert.">Snap</button>
+        <label class="ribbon-field">
+          <select id="grid-size" title="Grid size (px)">
+            <option value="5">5</option>
+            <option value="10">10</option>
+            <option value="15">15</option>
+            <option value="20">20</option>
+            <option value="25">25</option>
+            <option value="30">30</option>
+            <option value="40">40</option>
+            <option value="50">50</option>
+          </select>
+          <span>Size</span>
+        </label>
+      </div>
+      <div class="group-label">Grid</div>
     </div>
     <div class="group">
-      <button data-cmd="db-connect" id="db-button" title="Connect to a PostgreSQL database">Connect DB</button>
-      <button data-cmd="db-import" title="Import tables from the database (Ctrl+Alt+I)">Import</button>
-      <button data-cmd="db-compare" title="Compare with the database and generate migration SQL (Ctrl+Alt+D)">Compare / Sync</button>
+      <div class="group-items">
+        <button data-cmd="db-connect" id="db-button" title="Connect to a PostgreSQL database">Connect</button>
+        <button data-cmd="db-import" title="Import tables from the database (Ctrl+Alt+I)">Import</button>
+        <button data-cmd="db-compare" title="Compare with the database and generate migration SQL (Ctrl+Alt+D)">Compare</button>
+      </div>
+      <div class="group-label">Database</div>
     </div>
     <div class="group">
-      <button data-cmd="toggle-sql" title="Show SQL preview (Ctrl+Alt+P)">SQL</button>
-      <button data-cmd="export-sql" title="Export SQL DDL">Export SQL</button>
-      <button data-cmd="export-svg" title="Export SVG image">SVG</button>
-      <button data-cmd="export-png" title="Export PNG image">PNG</button>
+      <div class="group-items">
+        <button data-cmd="toggle-sql" title="Show SQL preview (Ctrl+Alt+P)">SQL</button>
+        <div class="stack">
+          <button data-cmd="export-sql" title="Export SQL DDL">SQL file</button>
+          <button data-cmd="export-svg" title="Export SVG image">SVG image</button>
+          <button data-cmd="export-png" title="Export PNG image">PNG image</button>
+        </div>
+      </div>
+      <div class="group-label">SQL &amp; Export</div>
     </div>
   </header>
 

@@ -3,18 +3,17 @@
 //
 //   npm run menu-icons
 //
-// Each icon is written at 16px and 32px (@2x), in a dark variant for light
-// menus (also used as a macOS template image) and a light "-dark" variant
-// for dark menus.
+// Each icon is written at 16px and 32px (@2x), in its colours for light
+// menus and in a "-dark" variant with lighter colours for dark menus.
 
 import { app, BrowserWindow } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ICONS, iconMarkup } from '../src/renderer/icons.js';
+import { ICONS, iconMarkup, iconTone } from '../src/renderer/icons.js';
 
 const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/main/menu-icons');
-const VARIANTS = [['', '#333333'], ['-dark', '#e8e8e8']];
+const VARIANTS = [['', 0, '#333333'], ['-dark', 1, '#e8e8e8']]; // suffix, tone index, colour without a tone
 const SIZES = [['', 16], ['@2x', 32]];
 
 async function render(win, svg, size) {
@@ -36,7 +35,8 @@ app.whenReady().then(async () => {
   await fs.rm(OUT, { recursive: true, force: true });
   await fs.mkdir(OUT, { recursive: true });
   for (const name of Object.keys(ICONS)) {
-    for (const [suffix, color] of VARIANTS) {
+    for (const [suffix, toneIndex, plain] of VARIANTS) {
+      const color = iconTone(name)?.[toneIndex] ?? plain;
       const svg = iconMarkup(name)
         .replace('<svg ', `<svg xmlns="http://www.w3.org/2000/svg" color="${color}" `);
       for (const [scale, size] of SIZES) {

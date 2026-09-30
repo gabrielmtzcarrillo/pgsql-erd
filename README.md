@@ -31,7 +31,7 @@ pgAdmin's ERD tool and this app.
   - its relationships, in both directions
 
   Click a column in the diagram to jump to it. Drag the sidebar's edge to resize it, and press
-  <kbd>Esc</kbd> or × to close it. **Tables** in the toolbar shows a filterable list of all tables.
+  <kbd>Esc</kbd> or × to close it. **Tables** in the ribbon shows a filterable list of all tables.
 - Editing:
   - add, rename and delete tables
   - edit columns: name, type, length/scale, NOT NULL, PK, default value, order
@@ -53,7 +53,7 @@ pgAdmin's ERD tool and this app.
 
 ## Database sync
 
-The **Database** menu (and the *Connect DB / Import / Compare / Sync* toolbar buttons) works with a live
+The **Database** menu (and the *Connect / Import / Compare* buttons in the ribbon) works with a live
 PostgreSQL 10+ server:
 
 - **Connect:** host, port, database, user, password and SSL mode. The password stays in memory for the

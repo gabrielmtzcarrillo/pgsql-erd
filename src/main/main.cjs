@@ -183,16 +183,12 @@ ipcMain.on('close-window', (e) => {
   win.close();
 });
 
-// Menu item icons, rendered from src/renderer/icons.js by `npm run menu-icons`.
-// macOS tints template images itself; elsewhere pick the variant that
-// contrasts with the menu's light or dark background.
+// Menu item icons, rendered from src/renderer/icons.js by `npm run menu-icons`,
+// in the variant that suits the menu's light or dark background.
 function menuIcon(name) {
-  const isMac = process.platform === 'darwin';
-  const variant = !isMac && nativeTheme.shouldUseDarkColors ? '-dark' : '';
+  const variant = nativeTheme.shouldUseDarkColors ? '-dark' : '';
   const image = nativeImage.createFromPath(path.join(__dirname, 'menu-icons', `${name}${variant}.png`));
-  if (image.isEmpty()) return undefined;
-  if (isMac) image.setTemplateImage(true);
-  return image;
+  return image.isEmpty() ? undefined : image;
 }
 
 function buildMenu() {
@@ -295,7 +291,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     buildMenu();
     // Swap menu icons between the light and dark variants with the theme.
-    if (process.platform !== 'darwin') nativeTheme.on('updated', buildMenu);
+    nativeTheme.on('updated', buildMenu);
     const files = [...pendingOpen, ...pgerdArgs(process.argv)];
     pendingOpen = [];
     if (files.length) files.forEach((f) => createWindow(f));
