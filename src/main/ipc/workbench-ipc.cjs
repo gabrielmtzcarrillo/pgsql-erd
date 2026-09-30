@@ -14,6 +14,7 @@ const { Assistant } = require('../ai/assistant.cjs');
 const { AuditLog } = require('../audit.cjs');
 const dataBrowser = require('../database/data-browser.cjs');
 const { runQuery } = require('../database/query-runner.cjs');
+const { AgeService } = require('../database/age.cjs');
 
 function registerWorkbench({ ipcMain, app, safeStorage, shell }) {
   const userData = app.getPath('userData');
@@ -62,7 +63,8 @@ function registerWorkbench({ ipcMain, app, safeStorage, shell }) {
       },
     });
     executions.assistant = assistant;
-    return { shared, connections, projects, executions, assistant, readOnly, schemaFor };
+    const age = new AgeService({ connections, audit, shared });
+    return { shared, connections, projects, executions, assistant, readOnly, schemaFor, age };
   });
 
   const handle = (channel, fn) =>
@@ -133,6 +135,13 @@ function registerWorkbench({ ipcMain, app, safeStorage, shell }) {
       req
     );
   });
+
+  // Graph tab (Apache AGE).
+  handle('age-status', ({ age }, id) => age.status(id));
+  handle('age-edges', ({ age }, id, _sender, req) => age.edges(id, req));
+  handle('age-vertices', ({ age }, id, _sender, req) => age.vertices(id, req));
+  handle('age-cypher', ({ age }, id, _sender, req) => age.cypher(id, req));
+  handle('age-change', ({ age }, id, _sender, op, args) => age.change(id, op, args));
 
   // ------------------------------------------------------------ projects & scripts
 

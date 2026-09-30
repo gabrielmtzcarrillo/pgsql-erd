@@ -258,6 +258,7 @@ function buildMenu() {
         { label: 'Compare with Database / Generate Migration…', icon: menuIcon('db-compare'), accelerator: 'CmdOrCtrl+Alt+D', click: cmd('db-compare') },
         { label: 'Browse Table Data…', icon: menuIcon('toggle-tables'), accelerator: 'CmdOrCtrl+Alt+B', click: cmd('data-browse') },
         { label: 'Query Analyzer', icon: menuIcon('toggle-sql'), accelerator: 'CmdOrCtrl+Alt+Q', click: cmd('query-tab') },
+        { label: 'Graphs (Apache AGE)', icon: menuIcon('add-link'), accelerator: 'CmdOrCtrl+Alt+H', click: cmd('graph-tab') },
         { type: 'separator' },
         { label: 'Open Audit Log', icon: menuIcon('audit-log'), click: () => workbench.openAuditLog() },
       ],

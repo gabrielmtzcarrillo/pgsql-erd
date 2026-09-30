@@ -31,6 +31,14 @@ contextBridge.exposeInMainWorld('erdHost', {
   query: {
     run: (req) => ipcRenderer.invoke('query-run', req),
   },
+  // Apache AGE graphs.
+  age: {
+    status: () => ipcRenderer.invoke('age-status'),
+    edges: (req) => ipcRenderer.invoke('age-edges', req),
+    vertices: (req) => ipcRenderer.invoke('age-vertices', req),
+    cypher: (req) => ipcRenderer.invoke('age-cypher', req),
+    change: (op, args) => ipcRenderer.invoke('age-change', op, args),
+  },
   project: {
     set: (diagramPath) => ipcRenderer.invoke('project-set', diagramPath),
     saveSettings: (settings) => ipcRenderer.invoke('project-settings-save', settings),

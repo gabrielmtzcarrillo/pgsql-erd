@@ -4,8 +4,13 @@
 
 const { Client } = require('pg');
 
-const SYSTEM_SCHEMAS = `n.nspname NOT IN ('pg_catalog', 'information_schema')
+const BASE_SCHEMAS = `n.nspname NOT IN ('pg_catalog', 'information_schema')
   AND n.nspname NOT LIKE 'pg\\_toast%' AND n.nspname NOT LIKE 'pg\\_temp\\_%'`;
+
+// Apache AGE keeps its catalog in ag_catalog and each graph's label tables in
+// a schema named after the graph; those are managed in the Graph tab, not the
+// diagram.
+const AGE_SCHEMAS = `n.nspname <> 'ag_catalog' AND n.oid NOT IN (SELECT namespace FROM ag_catalog.ag_graph)`;
 
 function clientConfig(conn) {
   const ssl =
@@ -46,6 +51,8 @@ async function introspect(conn) {
     const version = Number((await c.query("SELECT current_setting('server_version_num') AS v")).rows[0].v);
     if (version < 100000) throw new Error('PostgreSQL 10 or newer is required.');
     const generated = version >= 120000 ? 'a.attgenerated' : "''";
+    const age = (await c.query("SELECT to_regclass('ag_catalog.ag_graph') IS NOT NULL AS age")).rows[0].age;
+    const SYSTEM_SCHEMAS = age ? `${BASE_SCHEMAS} AND ${AGE_SCHEMAS}` : BASE_SCHEMAS;
 
     const schemas = await c.query(
       `SELECT n.nspname AS name FROM pg_namespace n WHERE ${SYSTEM_SCHEMAS} ORDER BY 1`

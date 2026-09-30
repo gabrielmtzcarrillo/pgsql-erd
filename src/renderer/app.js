@@ -13,6 +13,7 @@ import { setupAssistant } from './assistant.js';
 import { setupTabs } from './tabs.js';
 import { setupDataBrowser } from './databrowser.js';
 import { setupQuery } from './query.js';
+import { setupGraph } from './graph.js';
 import { setupErdScripts } from './erdscripts.js';
 import { tableKey } from './lib/catalog.js';
 import { setupSpreadsheetImport, SPREADSHEET_EXT } from './xlui.js';
@@ -1283,6 +1284,7 @@ const workbench = setupWorkbench(workbenchCtx);
 const assistant = setupAssistant(workbenchCtx, workbench.api);
 const dataBrowser = setupDataBrowser(workbenchCtx);
 const query = setupQuery(workbenchCtx);
+const graph = setupGraph(workbenchCtx);
 erdScripts = setupErdScripts({ ...workbenchCtx, el, measure, workbench: workbench.api, select, render, focusTable });
 Object.assign(workbenchCtx, {
   aiConfig: assistant.aiConfig,
@@ -1290,7 +1292,7 @@ Object.assign(workbenchCtx, {
   openData: dataBrowser.open,
   openSql: query.setSql,
 });
-Object.assign(commands, dbCommands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, {
+Object.assign(commands, dbCommands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, graph.commands, {
   'tab-erd': () => tabs.show('erd'),
   'toggle-erd-scripts': () => {
     tabs.show('erd');
