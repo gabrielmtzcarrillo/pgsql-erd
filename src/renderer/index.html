@@ -38,18 +38,6 @@
     </div>
     <div class="group">
       <div class="group-items">
-        <div class="stack">
-          <button data-cmd="zoom-in" title="Zoom in (Ctrl+=)">Zoom in</button>
-          <button data-cmd="zoom-out" title="Zoom out (Ctrl+-)">Zoom out</button>
-          <span id="zoom-label" class="zoom-label">100%</span>
-        </div>
-        <button data-cmd="fit" title="Fit to window (Ctrl+0)">Fit</button>
-        <button data-cmd="auto-layout" title="Auto layout (Ctrl+L)">Layout</button>
-      </div>
-      <div class="group-label">View</div>
-    </div>
-    <div class="group">
-      <div class="group-items">
         <button data-cmd="toggle-grid" title="Show grid (Ctrl+Alt+G)" data-i18n="ribbon: Grid">Grid</button>
         <button data-cmd="toggle-snap" title="Snap tables to the grid (Ctrl+Shift+G). Hold Alt while dragging to invert." data-i18n="ribbon: Snap">Snap</button>
         <label class="ribbon-field">
@@ -282,6 +270,15 @@
     <span id="status-db">Not connected</span>
     <span id="status-msg"></span>
     <span id="status-count"></span>
+    <span id="status-view" class="status-view">
+      <button type="button" data-cmd="auto-layout" title="Auto layout (Ctrl+L)"></button>
+      <button type="button" data-cmd="fit" title="Fit to window (Ctrl+0)"></button>
+      <span class="status-sep"></span>
+      <button type="button" data-cmd="zoom-out" title="Zoom out (Ctrl+-)"></button>
+      <input type="range" id="zoom-slider" min="0" max="1000" step="1" value="500" title="Zoom">
+      <button type="button" data-cmd="zoom-in" title="Zoom in (Ctrl+=)"></button>
+      <span id="zoom-label" class="zoom-label">100%</span>
+    </span>
   </footer>
 
   <dialog id="link-dialog">

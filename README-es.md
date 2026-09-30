@@ -14,7 +14,7 @@ funciona con Ollama, vLLM, OpenAI y otros servidores compatibles con OpenAI.
 ## Capturas de pantalla
 
 **Cinta de opciones y pestañas:** los comandos se agrupan al estilo de Office (Archivo, Historial, Diagrama,
-Vista, Cuadrícula, Base de datos, Scripts, SQL y exportar) con iconos a dos colores; los menús nativos usan los
+Cuadrícula, Base de datos, Scripts, SQL y exportar) con iconos a dos colores; los menús nativos usan los
 mismos iconos. Debajo de la cinta, las pestañas cambian entre **Diagrama**, **Scripts**, **Consulta**, **Grafo**
 y **Asistente**, seguidas de una pestaña por cada tabla cuyos datos estés explorando.
 
@@ -61,8 +61,10 @@ y **Asistente**, seguidas de una pestaña por cada tabla cuyos datos estés expl
   - editar columnas: nombre, tipo, longitud/escala, NOT NULL, PK, valor predeterminado, orden
   - establecer esquema, comentario, nota y color del encabezado
   - agregar y quitar relaciones, creando opcionalmente la columna FK
-- Arrastra las tablas para moverlas. Arrastra el fondo para desplazarte, usa la rueda para acercar o alejar, y
-  usa **Ajustar** u **Organizar** para ordenarlo todo.
+- Arrastra las tablas para moverlas. Arrastra el fondo para desplazarte y usa la rueda para acercar o alejar.
+  La barra de estado reúne los controles de vista, como en Word: un control deslizante de zoom (100% en el
+  centro) con botones para alejar y acercar y el nivel de zoom, además de **Ajustar** y **Organizar** para
+  ordenarlo todo.
 - Detrás del diagrama se dibuja una cuadrícula (**Mostrar**, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd>), con
   una línea más marcada cada cinco celdas. Con **Imán** activado (<kbd>Ctrl</kbd>+<kbd>Mayús</kbd>+<kbd>G</kbd>),
   las tablas arrastradas, los desplazamientos con las flechas, las tablas nuevas y la organización automática
