@@ -85,8 +85,8 @@
         <div class="sql-head">
           <strong>SQL preview</strong>
           <span>
-            <button id="sql-copy">Copy</button>
-            <button data-cmd="toggle-sql">Close</button>
+            <button id="sql-copy" data-icon="copy">Copy</button>
+            <button data-cmd="toggle-sql" data-icon="close">Close</button>
           </span>
         </div>
         <pre id="sql-text"></pre>
@@ -123,8 +123,8 @@
         <label>Constraint name<input name="fkName" placeholder="(auto)"></label>
       </div>
       <menu>
-        <button value="cancel" formnovalidate>Cancel</button>
-        <button value="ok" class="primary">Create</button>
+        <button value="cancel" formnovalidate data-icon="close">Cancel</button>
+        <button value="ok" class="primary" data-icon="plus">Create</button>
       </menu>
     </form>
   </dialog>
@@ -149,9 +149,9 @@
       <p class="muted small">The password is kept in memory for this window only; other settings are remembered.</p>
       <p id="db-connect-status" class="db-status"></p>
       <menu>
-        <button type="button" id="db-test">Test</button>
-        <button value="cancel" formnovalidate>Cancel</button>
-        <button value="ok" class="primary">Connect</button>
+        <button type="button" id="db-test" data-icon="test">Test</button>
+        <button value="cancel" formnovalidate data-icon="close">Cancel</button>
+        <button value="ok" class="primary" data-icon="db-connect">Connect</button>
       </menu>
     </form>
   </dialog>
@@ -163,15 +163,15 @@
         database (columns, keys, comment); their position, color and note are kept.</p>
       <div class="db-toolbar">
         <input id="db-import-filter" type="search" placeholder="Filter tables…">
-        <button type="button" id="db-import-all">All</button>
-        <button type="button" id="db-import-none">None</button>
-        <button type="button" id="db-import-refresh">Refresh</button>
+        <button type="button" id="db-import-all" data-icon="check-all">All</button>
+        <button type="button" id="db-import-none" data-icon="check-none">None</button>
+        <button type="button" id="db-import-refresh" data-icon="refresh">Refresh</button>
       </div>
       <div id="db-import-list" class="db-list"></div>
       <p id="db-import-status" class="db-status"></p>
       <menu>
-        <button value="cancel" formnovalidate>Cancel</button>
-        <button value="ok" class="primary" id="db-import-ok">Import selected</button>
+        <button value="cancel" formnovalidate data-icon="close">Cancel</button>
+        <button value="ok" class="primary" id="db-import-ok" data-icon="db-import">Import selected</button>
       </menu>
     </form>
   </dialog>
@@ -194,11 +194,11 @@
       </div>
       <p id="db-compare-status" class="db-status"></p>
       <menu>
-        <button type="button" id="db-compare-refresh">Refresh</button>
-        <button type="button" id="db-compare-copy">Copy SQL</button>
-        <button type="button" id="db-compare-save">Save SQL…</button>
-        <button type="button" id="db-compare-exec" class="danger">Run on database…</button>
-        <button value="close" class="primary">Close</button>
+        <button type="button" id="db-compare-refresh" data-icon="refresh">Refresh</button>
+        <button type="button" id="db-compare-copy" data-icon="copy">Copy SQL</button>
+        <button type="button" id="db-compare-save" data-icon="save">Save SQL…</button>
+        <button type="button" id="db-compare-exec" class="danger" data-icon="run">Run on database…</button>
+        <button value="close" class="primary" data-icon="close">Close</button>
       </menu>
     </form>
   </dialog>

@@ -9,7 +9,7 @@ import {
 import { DIAGRAM_CSS, LIGHT_VARS, DARK_VARS, FONT, FONT_BOLD } from './lib/svgstyle.js';
 import { setupDatabase } from './dbui.js';
 import { highlightSQL } from './lib/highlight.js';
-import { decorateButtons } from './icons.js';
+import { ICONS, decorateButton, decorateButtons, iconElement } from './icons.js';
 
 const host = window.erdHost;
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -29,7 +29,7 @@ const tablesLayer = $('#tables-layer');
 const linksLayer = $('#links-layer');
 const panel = $('#panel');
 
-decorateButtons($('.toolbar'));
+decorateButtons(document.body);
 
 const state = {
   model: emptyModel(),
@@ -82,12 +82,14 @@ function el(tag, attrs = {}, children = []) {
 function h(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'icon') continue;
     if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
     else if (k === 'class') node.className = v;
     else if (k in node && typeof v !== 'string') node[k] = v;
     else if (v !== null && v !== undefined && v !== false) node.setAttribute(k, v);
   }
   for (const c of [].concat(children)) if (c !== null && c !== undefined && c !== false) node.append(c);
+  if (attrs.icon) decorateButton(node, attrs.icon);
   return node;
 }
 
@@ -246,18 +248,26 @@ function renderTable(t) {
     const focused = sel && state.expandedCol === c.attnum;
     const row = el('g', { class: `t-row${focused ? ' focused' : ''}`, 'data-attnum': c.attnum });
     row.append(el('rect', { class: 't-row-bg', x: 1, y, width: width - 2, height: ROW_H }));
-    const badge = c.pk ? 'PK' : fks.has(c.attnum) ? 'FK' : '';
-    if (badge) {
-      row.append(el('text', { class: `t-badge ${badge.toLowerCase()}`, x: PAD_X, y: y + 15 }, badge));
-    }
+    const keys = [c.pk && 'pk', fks.has(c.attnum) && 'fk'].filter(Boolean);
+    keys.forEach((k, j) => row.append(keyIcon(k, PAD_X + j * (KEY_ICON + 2), y + (ROW_H - KEY_ICON) / 2)));
     row.append(el('text', { class: `t-col${c.notNull || c.pk ? ' nn' : ''}`, x: PAD_X + BADGE_W, y: y + 15 }, c.name));
     row.append(el('text', { class: 't-type', x: width - PAD_X, y: y + 15, 'text-anchor': 'end' }, formatType(c)));
     const tip = [`${c.name} ${formatType(c)}`, c.notNull || c.pk ? 'NOT NULL' : 'NULL'];
+    if (c.pk) tip.push('PRIMARY KEY');
+    if (fks.has(c.attnum)) tip.push('FOREIGN KEY');
     if (c.default) tip.push(`DEFAULT ${c.default}`);
     row.append(el('title', {}, tip.join(' ')));
     g.append(row);
   });
   return g;
+}
+
+// Key icon for a column row: 'pk' (key) or 'fk' (link).
+const KEY_ICON = 11;
+function keyIcon(kind, x, y) {
+  const icon = el('svg', { class: `t-key ${kind}`, x, y, width: KEY_ICON, height: KEY_ICON, viewBox: '0 0 24 24' });
+  icon.innerHTML = ICONS[kind];
+  return icon;
 }
 
 function renderLink(l) {
@@ -362,7 +372,7 @@ function sidebarHeader(title, subtitle, color) {
   return h('header', { class: 'sb-header' }, [
     color !== undefined ? h('span', { class: 'sb-swatch', style: `background:${color || 'var(--erd-header-bg)'}` }) : null,
     h('div', { class: 'sb-heading' }, [h('h3', {}, title), h('div', { class: 'muted' }, subtitle)]),
-    h('button', { class: 'icon sb-close', title: 'Close (Esc)', onclick: () => closeSidebar() }, '×'),
+    h('button', { class: 'sb-close', icon: 'close', title: 'Close (Esc)', onclick: () => closeSidebar() }),
   ]);
 }
 
@@ -443,7 +453,7 @@ function renderTablePanel(t) {
     h('div', { class: 'sb-inline' }, [
       h('span', { class: 'muted' }, 'Header color'),
       colorInput,
-      t.color ? h('button', { onclick: () => commit(() => (t.color = null)) }, 'Reset') : null,
+      t.color ? h('button', { icon: 'reset', onclick: () => commit(() => (t.color = null)) }, 'Reset') : null,
     ]),
     h('dl', { class: 'sb-facts' }, [
       h('dt', {}, 'Primary key'), h('dd', {}, pk.length ? pk.join(', ') : '—'),
@@ -461,7 +471,7 @@ function renderTablePanel(t) {
       ? h('ul', { class: 'list' }, incoming.map((l) => linkItem(l, 'in')))
       : h('p', { class: 'muted small' }, 'Not referenced.'),
     h('div', { class: 'actions' }, [
-      h('button', { onclick: () => openLinkDialog({ localTable: t.id }) }, '+ Foreign key'),
+      h('button', { icon: 'plus', onclick: () => openLinkDialog({ localTable: t.id }) }, 'Foreign key'),
     ]),
   ];
 
@@ -477,12 +487,12 @@ function renderTablePanel(t) {
     section('columns', 'Columns', t.columns.length, [
       t.columns.length ? columns : h('p', { class: 'muted small' }, 'No columns yet.'),
     ], h('button', {
-      class: 'sb-add', title: 'Add column',
+      class: 'sb-add', icon: 'plus', title: 'Add column',
       onclick: (e) => { e.preventDefault(); addColumn(t); },
-    }, '+ Add')),
+    }, 'Add')),
     section('relations', 'Relationships', outgoing.length + incoming.length, relations),
     h('div', { class: 'sb-footer' }, [
-      h('button', { class: 'danger', onclick: deleteSelection }, 'Delete table'),
+      h('button', { class: 'danger', icon: 'delete', onclick: deleteSelection }, 'Delete table'),
     ]),
   );
 }
@@ -491,8 +501,8 @@ function renderTablePanel(t) {
 function columnItem(t, c, i, fks) {
   const open = state.expandedCol === c.attnum;
   const badges = [];
-  if (c.pk) badges.push(h('span', { class: 'badge pk', title: 'Primary key' }, 'PK'));
-  if (fks.has(c.attnum)) badges.push(h('span', { class: 'badge fk', title: 'Foreign key' }, 'FK'));
+  if (c.pk) badges.push(h('span', { class: 'badge pk', title: 'Primary key' }, iconElement('pk')));
+  if (fks.has(c.attnum)) badges.push(h('span', { class: 'badge fk', title: 'Foreign key' }, iconElement('fk')));
   const flags = [];
   if (c.notNull || c.pk) flags.push(h('span', { class: 'flag', title: 'NOT NULL' }, 'NN'));
   if (c.default) flags.push(h('span', { class: 'flag def', title: `DEFAULT ${c.default}` }, `= ${c.default}`));
@@ -557,10 +567,10 @@ function columnEditor(t, c, i) {
       check('pk', 'Primary key', 'col-pk'),
     ]),
     h('div', { class: 'sb-inline end' }, [
-      h('button', { class: 'icon', title: 'Move up', disabled: i === 0, onclick: () => move(-1) }, '↑'),
-      h('button', { class: 'icon', title: 'Move down', disabled: i === t.columns.length - 1, onclick: () => move(1) }, '↓'),
+      h('button', { icon: 'up', title: 'Move up', disabled: i === 0, onclick: () => move(-1) }),
+      h('button', { icon: 'down', title: 'Move down', disabled: i === t.columns.length - 1, onclick: () => move(1) }),
       h('span', { class: 'grow' }),
-      h('button', { class: 'danger', onclick: () => deleteColumn(t, c) }, 'Delete column'),
+      h('button', { class: 'danger', icon: 'delete', onclick: () => deleteColumn(t, c) }, 'Delete column'),
     ]),
   ]);
 }
@@ -574,10 +584,11 @@ function linkItem(l, dir) {
   return h('li', { class: 'clickable', title: 'Show relationship', onclick: () => select({ type: 'link', id: l.id }) }, [
     h('code', { class: 'grow' }, text),
     h('button', {
-      class: 'icon danger',
+      class: 'danger',
+      icon: 'close',
       title: 'Delete relationship',
       onclick: (e) => { e.stopPropagation(); commit(() => removeLinks((x) => x.id === l.id)); },
-    }, '×'),
+    }),
   ]);
 }
 
@@ -609,12 +620,12 @@ function renderLinkPanel(l) {
       field('Constraint name', fkName),
       field('Cardinality', typeSel),
       h('div', { class: 'actions' }, [
-        h('button', { onclick: () => select({ type: 'table', id: local.id }) }, `Go to ${local.name}`),
-        h('button', { onclick: () => select({ type: 'table', id: ref.id }) }, `Go to ${ref.name}`),
+        h('button', { icon: 'go', onclick: () => select({ type: 'table', id: local.id }) }, `Go to ${local.name}`),
+        h('button', { icon: 'go', onclick: () => select({ type: 'table', id: ref.id }) }, `Go to ${ref.name}`),
       ]),
     ]),
     h('div', { class: 'sb-footer' }, [
-      h('button', { class: 'danger', onclick: deleteSelection }, 'Delete relationship'),
+      h('button', { class: 'danger', icon: 'delete', onclick: deleteSelection }, 'Delete relationship'),
     ]),
   );
 }

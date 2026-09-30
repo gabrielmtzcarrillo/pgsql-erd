@@ -22,7 +22,7 @@ pgAdmin's ERD tool and this app.
 - Open `.pgerd` files from **File → Open**, by dragging them onto the window, from the command
   line (`npm start -- path/to/file.pgerd`), or by double-clicking them once the app is installed
   (the packaged app registers the `.pgerd` file type).
-- Draws tables with columns, types, primary keys (PK) and foreign keys (FK). Relationships use
+- Draws tables with columns, types, primary keys (key icon) and foreign keys (link icon). Relationships use
   crow's-foot notation.
 - A sidebar opens when you select a table. It shows:
   - the table's name, schema and column count

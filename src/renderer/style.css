@@ -77,6 +77,9 @@ button:disabled { opacity: 0.45; cursor: default; border-color: var(--border); }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.danger { color: var(--danger); }
 button.icon { padding: 2px 6px; line-height: 1; }
+button:has(> .btn-icon) { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+button.icon-only { padding: 4px 6px; }
+.btn-icon { width: 15px; height: 15px; flex: none; }
 
 input, select, textarea {
   font: inherit;
@@ -100,9 +103,6 @@ textarea { resize: vertical; width: 100%; }
   background: var(--surface);
 }
 .toolbar .group { display: flex; align-items: center; gap: 4px; }
-.toolbar button { display: inline-flex; align-items: center; gap: 5px; }
-.toolbar button.icon-only { padding: 4px 6px; }
-.btn-icon { width: 15px; height: 15px; flex: none; }
 .zoom-label { min-width: 44px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .workspace { flex: 1; display: flex; min-height: 0; }
@@ -278,7 +278,8 @@ textarea { resize: vertical; width: 100%; }
 .sb-col-row:hover { background: var(--accent-soft); }
 .sb-col-row:focus-visible { outline: 2px solid var(--accent); }
 .sb-badges { display: inline-flex; gap: 3px; width: 44px; flex: none; }
-.badge { font-size: 10px; font-weight: 700; padding: 0 4px; border-radius: 3px; line-height: 16px; }
+.badge { display: inline-flex; padding: 2px; border-radius: 3px; }
+.badge .btn-icon { width: 13px; height: 13px; stroke-width: 2.5; }
 .badge.pk { color: var(--erd-pk); background: color-mix(in srgb, var(--erd-pk) 15%, transparent); }
 .badge.fk { color: var(--erd-fk); background: color-mix(in srgb, var(--erd-fk) 15%, transparent); }
 .sb-col-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
