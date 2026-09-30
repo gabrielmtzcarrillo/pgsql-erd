@@ -8,6 +8,7 @@ import {
 } from './lib/layout.js';
 import { DIAGRAM_CSS, LIGHT_VARS, DARK_VARS, FONT, FONT_BOLD } from './lib/svgstyle.js';
 import { setupDatabase } from './dbui.js';
+import { setupSpreadsheetImport, SPREADSHEET_EXT } from './xlui.js';
 import { highlightSQL } from './lib/highlight.js';
 import { ICONS, decorateButton, decorateButtons, iconElement } from './icons.js';
 
@@ -1144,10 +1145,9 @@ const commands = {
   },
 };
 
-Object.assign(
-  commands,
-  setupDatabase({ host, state, h, commit, computeSizes, fit, status })
-);
+const uiCtx = { host, state, h, commit, computeSizes, fit, status };
+const spreadsheet = setupSpreadsheetImport(uiCtx);
+Object.assign(commands, setupDatabase(uiCtx), spreadsheet.commands);
 
 function runCommand(name) {
   const fn = commands[name];
@@ -1210,7 +1210,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Drag and drop .pgerd files onto the window.
+// Drag and drop .pgerd files onto the window; spreadsheets open the import dialog.
 const wrap = $('.canvas-wrap');
 document.addEventListener('dragover', (e) => {
   e.preventDefault();
@@ -1224,6 +1224,11 @@ document.addEventListener('drop', async (e) => {
   wrap.classList.remove('drop-target');
   const file = e.dataTransfer.files[0];
   if (!file) return;
+  if (SPREADSHEET_EXT.test(file.name)) {
+    const open = document.querySelector('dialog[open]');
+    if (!open || open.id === 'xl-import-dialog') await spreadsheet.openFile(file.name, await file.arrayBuffer());
+    return;
+  }
   if (!(await confirmDiscard())) return;
   openText(await file.text(), host.pathForFile(file) || null);
 });

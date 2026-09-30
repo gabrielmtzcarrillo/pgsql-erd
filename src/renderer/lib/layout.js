@@ -160,3 +160,25 @@ export function contentBounds(model, sizes, margin = 40) {
     height: maxY - minY + margin * 2,
   };
 }
+
+// Lay out the tables `ids` in rows under `bounds` (the diagram before they
+// were added).
+export function placeBelow(model, sizes, ids, bounds) {
+  const maxWidth = Math.max(bounds.width, 1200);
+  let x = bounds.x + 40;
+  let y = bounds.y + bounds.height + 40;
+  let rowH = 0;
+  for (const id of ids) {
+    const t = model.tables.find((x) => x.id === id);
+    const s = sizes.get(id);
+    if (x > bounds.x + 40 && x + s.width > bounds.x + maxWidth) {
+      x = bounds.x + 40;
+      y += rowH + 50;
+      rowH = 0;
+    }
+    t.x = x;
+    t.y = y;
+    x += s.width + 60;
+    rowH = Math.max(rowH, s.height);
+  }
+}
