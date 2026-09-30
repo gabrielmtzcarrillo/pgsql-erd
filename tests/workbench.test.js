@@ -321,3 +321,18 @@ test('plan analyzer: self time, hints and missing foreign key indexes', async ()
   assert.ok(hints.some((x) => /Hash used 4 batches/.test(x.message)));
   assert.ok(hints.some((x) => x.sql === 'CREATE INDEX ON "shop"."orders" ("customer_id");'));
 });
+
+test('plan analyzer: column names with regex characters', async () => {
+  const { flattenPlan, analyzePlan } = await import('../src/shared/plan-analyzer.js');
+  const col = (name) => ({ name, databaseType: 'integer', baseType: 'integer', isArray: false, nullable: true });
+  const schema = {
+    source: 'database',
+    enums: [],
+    schemas: [{ name: 'public', tables: [{ id: 'public.t', schema: 'public', name: 't', comment: '', columns: [col('id'), col('total(usd'), col('a.b'), col('axb')], primaryKey: { name: 'p', columns: ['id'] }, uniques: [], foreignKeys: [], indexes: [], checks: [] }] }],
+  };
+  const scan = (filter) => ({ Plan: { 'Node Type': 'Seq Scan', 'Relation Name': 't', Schema: 'public', 'Total Cost': 1, 'Plan Rows': 10, 'Actual Rows': 10, 'Actual Loops': 1, 'Actual Total Time': 5, Filter: filter, 'Rows Removed by Filter': 50000 } });
+  const hint = (filter) => analyzePlan(flattenPlan(scan(filter)), schema).find((x) => x.severity === 'warning');
+  assert.equal(hint('("total(usd" > 5)').sql, 'CREATE INDEX ON "public"."t" ("total(usd");');
+  // "a.b" must not match the column "axb".
+  assert.equal(hint('(axb = 1)').sql, 'CREATE INDEX ON "public"."t" ("axb");');
+});

@@ -51,9 +51,12 @@ export function flattenPlan(plan) {
   return { nodes, planningTime: plan['Planning Time'] ?? null, executionTime: plan['Execution Time'] ?? null, analyzed: nodes[0]?.totalTime !== null };
 }
 
+const escapeRegExp = (s) => String(s).replace(/[\\^$.*+?()[\]{}|/-]/g, '\\$&');
+
 // Column names mentioned in a filter expression like "(departamento_id = 3)".
+// Quoted names can contain any character, so they are escaped in full.
 const filterColumns = (filter, table) =>
-  table ? table.columns.map((c) => c.name).filter((n) => new RegExp(`(^|[^A-Za-z0-9_])"?${n.replace(/[$]/g, '\\$')}"?([^A-Za-z0-9_(]|$)`).test(filter ?? '')) : [];
+  table ? table.columns.map((c) => c.name).filter((n) => new RegExp(`(^|[^A-Za-z0-9_])"?${escapeRegExp(n)}"?([^A-Za-z0-9_(]|$)`).test(filter ?? '')) : [];
 
 const indexed = (table, col) =>
   (table.primaryKey?.columns[0] === col) ||
