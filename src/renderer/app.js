@@ -14,6 +14,7 @@ import { setupTabs } from './tabs.js';
 import { setupDataBrowser } from './databrowser.js';
 import { setupQuery } from './query.js';
 import { tableKey } from './lib/catalog.js';
+import { setupSpreadsheetImport, SPREADSHEET_EXT } from './xlui.js';
 import { highlightSQL } from './lib/highlight.js';
 import { ICONS, decorateButton, decorateButtons, iconElement } from './icons.js';
 
@@ -1162,6 +1163,7 @@ const commands = {
   },
 };
 
+
 // Select a table of the diagram by its "schema.name" key and bring it into
 // view. Returns false when the table isn't in the diagram.
 function findDiagramTable(key) {
@@ -1193,7 +1195,9 @@ function selectedTableIds() {
 }
 
 const tabs = setupTabs({ h });
-const { api: db, ...dbCommands } = setupDatabase({ host, state, h, commit, computeSizes, fit, status, events });
+const uiCtx = { host, state, h, commit, computeSizes, fit, status, events };
+const { api: db, ...dbCommands } = setupDatabase(uiCtx);
+const spreadsheet = setupSpreadsheetImport(uiCtx);
 const workbenchCtx = {
   host, state, h, status, db, events, tabs, focusTable, selectedTableIds,
   hasTable: (key) => !!findDiagramTable(key),
@@ -1210,7 +1214,7 @@ Object.assign(workbenchCtx, {
   openData: dataBrowser.open,
   openSql: query.setSql,
 });
-Object.assign(commands, dbCommands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, {
+Object.assign(commands, dbCommands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, {
   'tab-erd': () => tabs.show('erd'),
 });
 // The diagram re-renders when its tab comes back (sizes are measured on screen).
@@ -1281,7 +1285,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Drag and drop .pgerd files onto the window.
+// Drag and drop .pgerd files onto the window; spreadsheets open the import dialog.
 const wrap = $('.canvas-wrap');
 document.addEventListener('dragover', (e) => {
   e.preventDefault();
@@ -1295,6 +1299,11 @@ document.addEventListener('drop', async (e) => {
   wrap.classList.remove('drop-target');
   const file = e.dataTransfer.files[0];
   if (!file) return;
+  if (SPREADSHEET_EXT.test(file.name)) {
+    const open = document.querySelector('dialog[open]');
+    if (!open || open.id === 'xl-import-dialog') await spreadsheet.openFile(file.name, await file.arrayBuffer());
+    return;
+  }
   if (!(await confirmDiscard())) return;
   openText(await file.text(), host.pathForFile(file) || null);
 });

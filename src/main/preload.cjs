@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('erdHost', {
   openDialog: () => ipcRenderer.invoke('open-dialog'),
+  openSpreadsheet: () => ipcRenderer.invoke('open-spreadsheet'),
   saveFile: (opts) => ipcRenderer.invoke('save-file', opts),
   saveBinary: (opts) => ipcRenderer.invoke('save-binary', opts),
   confirm: (opts) => ipcRenderer.invoke('confirm', opts),
