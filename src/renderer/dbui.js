@@ -11,8 +11,10 @@ const STORAGE_KEY = 'pgsql-erd.connection';
 const $ = (sel) => document.querySelector(sel);
 
 export function setupDatabase(ctx) {
-  const { host, state, h, commit, computeSizes, fit, status } = ctx;
-  let conn = null; // { host, port, database, user, password, sslmode }
+  const { host, state, h, commit, computeSizes, fit, status, events } = ctx;
+  // The connection lives in the main process. Here we keep what it reports
+  // back: settings without the password, the profile and its policy.
+  let conn = null; // { conn: { host, port, database, user, sslmode }, description, profile }
 
   const describe = (c) => `${c.user || 'postgres'}@${c.host || 'localhost'}:${c.port || 5432}/${c.database || 'postgres'}`;
 
@@ -22,9 +24,14 @@ export function setupDatabase(ctx) {
   }
 
   function updateIndicator() {
-    $('#status-db').textContent = conn ? `DB: ${describe(conn)}` : 'Not connected';
+    const env = conn?.profile.environment;
+    const el = $('#status-db');
+    el.textContent = conn ? `DB: ${conn.description}${env !== 'development' ? ` · ${env.toUpperCase()}` : ''}${conn.profile.policy.allowWrites ? '' : ' · read-only'}` : 'Not connected';
+    el.className = conn ? `env-${env}` : '';
+    document.body.dataset.environment = env ?? '';
     $('#db-button .label').textContent = conn ? 'Connected' : 'Connect';
-    $('#db-button').title = conn ? `Connected to ${describe(conn)} (click to change)` : 'Connect to a PostgreSQL database';
+    $('#db-button').title = conn ? `Connected to ${conn.description} (${env}; click to change)` : 'Connect to a PostgreSQL database';
+    events.dispatchEvent(new Event('connection'));
   }
 
   // Unwrap { ok, result | error } from the main process.
@@ -34,11 +41,25 @@ export function setupDatabase(ctx) {
     return res.result;
   }
 
+  // Reads the catalog; the main process also refreshes its schema model,
+  // which scripts and the assistant use.
   async function loadCatalog() {
-    const catalog = await call(host.db.introspect, conn);
+    const { catalog, changes } = await call(host.db.introspect);
     const model = modelFromCatalog(catalog);
     model.schemas = catalog.schemas;
+    events.dispatchEvent(Object.assign(new Event('schema'), { changes }));
     return model;
+  }
+
+  async function refreshSchema() {
+    status('Reading the database schema…');
+    try {
+      const { changes } = await call(host.db.introspect);
+      events.dispatchEvent(Object.assign(new Event('schema'), { changes }));
+      status(changes.length ? `Schema refreshed: ${changes.length} change${changes.length === 1 ? '' : 's'} (${changes.slice(0, 3).join('; ')}${changes.length > 3 ? '; …' : ''})` : 'Schema refreshed: no changes');
+    } catch (err) {
+      status(`Could not read the schema: ${err.message}`);
+    }
   }
 
   // ------------------------------------------------------------ connect
@@ -59,10 +80,24 @@ export function setupDatabase(ctx) {
       sslmode: f.sslmode.value,
     };
   };
+  const formProfile = () => {
+    const f = connectForm.elements;
+    return {
+      name: f.profileName.value.trim(),
+      environment: f.environment.value,
+      policy: { allowWrites: f.allowWrites.checked, allowDDL: f.allowDDL.checked },
+    };
+  };
+  // Production starts read-only; the user can still opt in.
+  connectForm.elements.environment.addEventListener('change', () => {
+    const prod = connectForm.elements.environment.value === 'production';
+    connectForm.elements.allowWrites.checked = !prod;
+    connectForm.elements.allowDDL.checked = !prod;
+  });
 
   function openConnect(then = null) {
     afterConnect = then;
-    let saved = conn;
+    let saved = conn ? { ...conn.conn, profile: conn.profile } : null;
     if (!saved) {
       try {
         saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
@@ -72,8 +107,15 @@ export function setupDatabase(ctx) {
     }
     const f = connectForm.elements;
     for (const k of ['host', 'port', 'database', 'user']) f[k].value = saved?.[k] ?? '';
-    f.password.value = conn?.password ?? '';
+    // The password is never read back; leave it empty to reconnect with a new one.
+    f.password.value = '';
+    f.password.placeholder = conn ? '(re-enter to reconnect)' : '';
     f.sslmode.value = saved?.sslmode ?? 'disable';
+    f.profileName.value = saved?.profile?.name && saved.profile.name !== describe(saved) ? saved.profile.name : '';
+    f.environment.value = saved?.profile?.environment ?? 'development';
+    const prod = f.environment.value === 'production';
+    f.allowWrites.checked = saved?.profile?.policy?.allowWrites ?? !prod;
+    f.allowDDL.checked = saved?.profile?.policy?.allowDDL ?? !prod;
     setStatus(connectStatus, '');
     connectDialog.returnValue = '';
     connectDialog.showModal();
@@ -95,21 +137,23 @@ export function setupDatabase(ctx) {
     if (e.submitter?.value !== 'ok') return;
     e.preventDefault(); // keep the dialog open until the connection works
     const c = formConn();
+    const profile = formProfile();
+    setStatus(connectStatus, 'Connecting…');
     try {
-      await test(c);
+      conn = await call(host.db.connect, c, profile);
     } catch (err) {
       return setStatus(connectStatus, err.message, 'error');
     }
-    conn = c;
-    const { password, ...rest } = c;
+    connectForm.elements.password.value = '';
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...conn.conn, profile: conn.profile }));
     } catch {
       /* storage unavailable: settings just won't be remembered */
     }
     updateIndicator();
     connectDialog.close('ok');
-    status(`Connected to ${describe(c)}`);
+    status(`Connected to ${conn.description} (${conn.profile.environment})`);
+    refreshSchema();
     const then = afterConnect;
     afterConnect = null;
     then?.();
@@ -160,7 +204,7 @@ export function setupDatabase(ctx) {
     try {
       importModel = await loadCatalog();
       renderImportList();
-      setStatus(importStatus, `${importModel.tables.length} tables in ${importModel.schemas.length} schemas (${describe(conn)})`);
+      setStatus(importStatus, `${importModel.tables.length} tables in ${importModel.schemas.length} schemas (${conn.description})`);
     } catch (err) {
       importList.replaceChildren();
       setStatus(importStatus, err.message, 'error');
@@ -290,7 +334,7 @@ export function setupDatabase(ctx) {
     const skipped = result.changes.length - active;
     setStatus(
       compareStatus,
-      `${describe(conn)} — ${active} change${active === 1 ? '' : 's'}` + (skipped ? `, ${skipped} destructive skipped` : '')
+      `${conn.description} — ${active} change${active === 1 ? '' : 's'}` + (skipped ? `, ${skipped} destructive skipped` : '')
     );
     $('#db-compare-exec').disabled = active === 0;
   }
@@ -335,7 +379,7 @@ export function setupDatabase(ctx) {
     const active = result.changes.filter((c) => !c.skipped);
     const drops = active.filter((c) => c.destructive).length;
     const choice = await host.confirm({
-      message: `Run ${active.length} change${active.length === 1 ? '' : 's'} on ${describe(conn)}?`,
+      message: `Run ${active.length} change${active.length === 1 ? '' : 's'} on ${conn.description}?`,
       detail:
         (drops ? `${drops} of them drop tables or columns and delete data.\n` : '') +
         'The script runs in a single transaction and is rolled back if any statement fails.',
@@ -344,7 +388,7 @@ export function setupDatabase(ctx) {
     if (choice !== 0) return;
     setStatus(compareStatus, 'Running migration…');
     try {
-      await call(host.db.execute, conn, result.sql);
+      await call(host.db.execute, result.sql);
     } catch (err) {
       return setStatus(compareStatus, `Migration failed and was rolled back:\n${err.message}`, 'error');
     }
@@ -355,7 +399,14 @@ export function setupDatabase(ctx) {
   updateIndicator();
 
   return {
+    api: {
+      connected: () => !!conn,
+      info: () => conn,
+      openConnect,
+      refreshSchema,
+    },
     'db-connect': () => openConnect(),
+    'db-refresh': requireConnection(refreshSchema),
     'db-import': requireConnection(openImport),
     'db-compare': requireConnection(() => {
       if (!state.model.tables.length) return status('The diagram is empty: add or import tables first.');

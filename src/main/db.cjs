@@ -84,12 +84,42 @@ async function introspect(conn) {
        WHERE con.contype IN ('p', 'u', 'f') AND ${SYSTEM_SCHEMAS}
        ORDER BY con.conrelid, con.contype, con.conname`);
 
+    const checks = await c.query(`
+      SELECT con.conrelid AS oid, con.conname AS name, pg_get_constraintdef(con.oid) AS definition
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE con.contype = 'c' AND ${SYSTEM_SCHEMAS}
+       ORDER BY con.conrelid, con.conname`);
+    // Indexes that don't back a constraint (those are listed as keys already).
+    const indexes = await c.query(`
+      SELECT i.indrelid AS oid, ic.relname AS name, i.indisunique AS unique,
+             i.indkey::int2[] AS cols, pg_get_indexdef(i.indexrelid) AS definition
+        FROM pg_index i
+        JOIN pg_class ic ON ic.oid = i.indexrelid
+        JOIN pg_class c ON c.oid = i.indrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE c.relkind IN ('r', 'p') AND ${SYSTEM_SCHEMAS}
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint con WHERE con.conindid = i.indexrelid)
+       ORDER BY i.indrelid, ic.relname`);
+    const enums = await c.query(`
+      SELECT n.nspname AS schema, t.typname AS name, array_agg(e.enumlabel::text ORDER BY e.enumsortorder) AS values
+        FROM pg_type t
+        JOIN pg_enum e ON e.enumtypid = t.oid
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+       WHERE ${SYSTEM_SCHEMAS}
+       GROUP BY 1, 2
+       ORDER BY 1, 2`);
+
     return {
       version,
       schemas: schemas.rows.map((r) => r.name),
       tables: tables.rows,
       columns: columns.rows,
       constraints: constraints.rows,
+      checks: checks.rows,
+      indexes: indexes.rows,
+      enums: enums.rows,
     };
   });
 }
@@ -109,4 +139,4 @@ async function execute(conn, sql) {
   });
 }
 
-module.exports = { testConnection, introspect, execute, clientConfig };
+module.exports = { testConnection, introspect, execute, clientConfig, withClient };

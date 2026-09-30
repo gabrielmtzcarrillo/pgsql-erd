@@ -2,7 +2,7 @@
   "name": "pgsql-erd",
   "productName": "pgsql-erd",
   "version": "0.1.0",
-  "description": "Desktop ERD tool for PostgreSQL that opens and saves pgAdmin .pgerd files",
+  "description": "Desktop ERD and scripting workbench for PostgreSQL: pgAdmin .pgerd files, schema sync, typed TypeScript scripts, validators, test data and AI assistance",
   "type": "module",
   "main": "src/main/main.cjs",
   "scripts": {
@@ -33,7 +33,9 @@
     "productName": "pgsql-erd",
     "files": [
       "src/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/monaco-editor/{esm,dev,min-maps}/**",
+      "!node_modules/monaco-editor/**/*.map"
     ],
     "fileAssociations": [
       {
@@ -86,9 +88,17 @@
         "dmg"
       ],
       "category": "public.app-category.developer-tools"
-    }
+    },
+    "asarUnpack": [
+      "src/runner/**",
+      "src/shared/**",
+      "src/renderer/lib/sql.js",
+      "src/renderer/lib/pgerd.js"
+    ]
   },
   "dependencies": {
-    "pg": "^8.23.0"
+    "monaco-editor": "^0.57.0",
+    "pg": "^8.23.0",
+    "typescript": "~5.9.3"
   }
 }

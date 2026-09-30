@@ -8,6 +8,12 @@ import {
 } from './lib/layout.js';
 import { DIAGRAM_CSS, LIGHT_VARS, DARK_VARS, FONT, FONT_BOLD } from './lib/svgstyle.js';
 import { setupDatabase } from './dbui.js';
+import { setupWorkbench } from './workbench.js';
+import { setupAssistant } from './assistant.js';
+import { setupTabs } from './tabs.js';
+import { setupDataBrowser } from './databrowser.js';
+import { setupQuery } from './query.js';
+import { tableKey } from './lib/catalog.js';
 import { highlightSQL } from './lib/highlight.js';
 import { ICONS, decorateButton, decorateButtons, iconElement } from './icons.js';
 
@@ -30,6 +36,11 @@ const linksLayer = $('#links-layer');
 const panel = $('#panel');
 
 decorateButtons(document.body);
+
+// Notifies the workbench and assistant: 'model' (diagram edited), 'file'
+// (diagram opened or saved under a new path), 'connection', 'schema'.
+const events = new EventTarget();
+const emit = (name) => events.dispatchEvent(new Event(name));
 
 const state = {
   model: emptyModel(),
@@ -131,6 +142,7 @@ function commit(fn, { panel: rerenderPanel = true } = {}) {
   pushUndo();
   fn();
   setDirty(true);
+  emit('model');
   render();
   if (rerenderPanel) renderPanel();
 }
@@ -141,6 +153,7 @@ function restore(from, to) {
   const snap = from.pop();
   state.model.tables = snap.tables;
   state.model.links = snap.links;
+  emit('model');
   if (state.selection?.type === 'table' && !tableById(state.selection.id)) state.selection = null;
   if (state.selection?.type === 'link' && !linkById(state.selection.id)) state.selection = null;
   setDirty(true);
@@ -492,6 +505,7 @@ function renderTablePanel(t) {
     }, 'Add')),
     section('relations', 'Relationships', outgoing.length + incoming.length, relations),
     h('div', { class: 'sb-footer' }, [
+      h('button', { icon: 'toggle-tables', onclick: () => dataBrowser.open(tableKey(t)), title: 'Open the rows of this table in a data tab' }, 'Browse data'),
       h('button', { class: 'danger', icon: 'delete', onclick: deleteSelection }, 'Delete table'),
     ]),
   );
@@ -989,6 +1003,8 @@ async function confirmDiscard() {
 function loadModel(model, filePath) {
   state.model = model;
   state.filePath = filePath;
+  emit('model');
+  emit('file');
   state.selection = null;
   state.undo = [];
   state.redo = [];
@@ -1021,8 +1037,10 @@ async function save(saveAs = false) {
     kind: 'pgerd',
   });
   if (!target) return false;
+  const moved = target !== state.filePath;
   state.filePath = target;
   setDirty(false);
+  if (moved) emit('file');
   status(`Saved ${basename(target)}`);
   return true;
 }
@@ -1144,10 +1162,61 @@ const commands = {
   },
 };
 
-Object.assign(
-  commands,
-  setupDatabase({ host, state, h, commit, computeSizes, fit, status })
-);
+// Select a table of the diagram by its "schema.name" key and bring it into
+// view. Returns false when the table isn't in the diagram.
+function findDiagramTable(key) {
+  const k = String(key ?? '');
+  return (
+    state.model.tables.find((x) => tableKey(x) === k) ??
+    state.model.tables.find((x) => tableKey(x) === `public.${k}`) ??
+    state.model.tables.find((x) => tableKey(x).toLowerCase() === k.toLowerCase())
+  );
+}
+
+function focusTable(key) {
+  const t = findDiagramTable(key);
+  if (!t) return false;
+  tabs.show('erd');
+  select({ type: 'table', id: t.id });
+  centerOn(t);
+  return true;
+}
+
+function selectedTableIds() {
+  const sel = state.selection;
+  if (sel?.type === 'table') return [tableKey(tableById(sel.id))];
+  if (sel?.type === 'link') {
+    const l = linkById(sel.id);
+    return [tableById(l.localTable), tableById(l.refTable)].filter(Boolean).map(tableKey);
+  }
+  return [];
+}
+
+const tabs = setupTabs({ h });
+const { api: db, ...dbCommands } = setupDatabase({ host, state, h, commit, computeSizes, fit, status, events });
+const workbenchCtx = {
+  host, state, h, status, db, events, tabs, focusTable, selectedTableIds,
+  hasTable: (key) => !!findDiagramTable(key),
+  saveDiagram: () => save(false),
+  refreshSchema: () => db.refreshSchema(),
+};
+const workbench = setupWorkbench(workbenchCtx);
+const assistant = setupAssistant(workbenchCtx, workbench.api);
+const dataBrowser = setupDataBrowser(workbenchCtx);
+const query = setupQuery(workbenchCtx);
+Object.assign(workbenchCtx, {
+  aiConfig: assistant.aiConfig,
+  askAssistant: assistant.ask,
+  openData: dataBrowser.open,
+  openSql: query.setSql,
+});
+Object.assign(commands, dbCommands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, {
+  'tab-erd': () => tabs.show('erd'),
+});
+// The diagram re-renders when its tab comes back (sizes are measured on screen).
+tabs.onShow((name) => {
+  if (name === 'erd') render();
+});
 
 function runCommand(name) {
   const fn = commands[name];
@@ -1173,7 +1242,9 @@ $('#sql-copy').addEventListener('click', async () => {
   status('SQL copied to clipboard');
 });
 
-const isEditing = (e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+// Keys typed in fields, the script editor or the assistant are not diagram shortcuts.
+const isEditing = (e) =>
+  /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable || tabs.current() !== 'erd';
 
 document.addEventListener('keydown', (e) => {
   if (isEditing(e) || document.querySelector('dialog[open]')) return;
