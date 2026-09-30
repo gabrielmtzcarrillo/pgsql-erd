@@ -15,6 +15,7 @@
       <button data-cmd="save" title="Save (Ctrl+S)">Save</button>
     </div>
     <div class="group">
+      <button data-cmd="toggle-tables" title="Show the list of tables">Tables</button>
       <button data-cmd="add-table" title="Add table (Ctrl+Alt+T)">+ Table</button>
       <button data-cmd="add-link" title="Add relationship (Ctrl+Alt+R)">+ Relationship</button>
       <button data-cmd="delete" title="Delete selection (Del)">Delete</button>
@@ -76,7 +77,10 @@
         <pre id="sql-text"></pre>
       </section>
     </section>
-    <aside id="panel" class="panel"></aside>
+    <aside id="sidebar" class="sidebar" hidden>
+      <div id="sidebar-resize" class="sidebar-resize" title="Drag to resize"></div>
+      <div id="panel" class="panel"></div>
+    </aside>
   </main>
 
   <footer class="statusbar">

@@ -4,6 +4,19 @@ A desktop ERD (entity–relationship diagram) tool for PostgreSQL, built with No
 It opens and saves **pgAdmin 4 `.pgerd` files**, so diagrams can move back and forth between
 pgAdmin's ERD tool and this app.
 
+![Diagram](docs/screenshots/diagram.png)
+
+## Screenshots
+
+| | |
+|---|---|
+| **Table sidebar:** select a table to see and edit its properties, columns and relationships. Clicking a column in the diagram opens its editor. | **SQL preview:** live PostgreSQL DDL with syntax highlighting. |
+| ![Table sidebar](docs/screenshots/table-sidebar.png) | ![SQL preview](docs/screenshots/sql-preview.png) |
+| **Relationships:** add a foreign key, optionally creating the column. | **Dark theme:** follows the system setting. |
+| ![New relationship](docs/screenshots/relationship.png) | ![Dark theme](docs/screenshots/dark-theme.png) |
+| **Import from database:** pick tables to add, or refresh the ones already in the diagram. | **Compare / sync:** differences with the database and the migration SQL. |
+| ![Import tables](docs/screenshots/db-import.png) | ![Compare with database](docs/screenshots/db-compare.png) |
+
 ## Features
 
 - Open `.pgerd` files from **File → Open**, by dragging them onto the window, from the command
@@ -11,6 +24,14 @@ pgAdmin's ERD tool and this app.
   (the packaged app registers the `.pgerd` file type).
 - Draws tables with columns, types, primary keys (PK) and foreign keys (FK). Relationships use
   crow's-foot notation.
+- A sidebar opens when you select a table. It shows:
+  - the table's name, schema and column count
+  - its properties (name, schema, comment, note, header colour, primary key)
+  - its columns, with PK/FK, NOT NULL and default markers; click one to edit it
+  - its relationships, in both directions
+
+  Click a column in the diagram to jump to it. Drag the sidebar's edge to resize it, and press
+  <kbd>Esc</kbd> or × to close it. **Tables** in the toolbar shows a filterable list of all tables.
 - Editing:
   - add, rename and delete tables
   - edit columns: name, type, length/scale, NOT NULL, PK, default value, order
