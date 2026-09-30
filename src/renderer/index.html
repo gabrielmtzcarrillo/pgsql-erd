@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:">
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:">
   <title>pgsql-erd</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -71,10 +71,24 @@
     <div class="group">
       <div class="group-items">
         <button data-cmd="db-connect" id="db-button" title="Connect to a PostgreSQL database">Connect</button>
-        <button data-cmd="db-import" title="Import tables from the database (Ctrl+Alt+I)">Import</button>
-        <button data-cmd="db-compare" title="Compare with the database and generate migration SQL (Ctrl+Alt+D)">Compare</button>
+        <div class="stack">
+          <button data-cmd="db-refresh" title="Read the database schema again (Ctrl+Alt+F5)">Refresh</button>
+          <button data-cmd="db-import" title="Import tables from the database (Ctrl+Alt+I)">Import</button>
+          <button data-cmd="db-compare" title="Compare with the database and generate migration SQL (Ctrl+Alt+D)">Compare</button>
+        </div>
       </div>
       <div class="group-label">Database</div>
+    </div>
+    <div class="group">
+      <div class="group-items">
+        <button data-cmd="script-new" title="New script (Ctrl+Alt+N)">New script</button>
+        <div class="stack">
+          <button data-cmd="script-dry-run" title="Run in a transaction that is rolled back (F6)">Dry run</button>
+          <button data-cmd="script-run" title="Run, then review changes before they are committed (F5)">Run</button>
+          <button data-cmd="script-stop" title="Stop the running script (Shift+F5)">Stop</button>
+        </div>
+      </div>
+      <div class="group-label">Scripts</div>
     </div>
     <div class="group">
       <div class="group-items">
@@ -89,7 +103,16 @@
     </div>
   </header>
 
-  <main class="workspace">
+  <nav id="main-tabs" class="main-tabs" role="tablist">
+    <button type="button" data-main-tab="erd" data-icon="toggle-tables" class="active">Diagram</button>
+    <button type="button" data-main-tab="scripts" data-icon="toggle-workbench">Scripts</button>
+    <button type="button" data-main-tab="query" data-icon="toggle-sql">Query</button>
+    <button type="button" data-main-tab="assistant" data-icon="ai-assistant">Assistant</button>
+    <span id="data-tabs" class="data-tabs"></span>
+    <button type="button" id="data-tab-add" class="data-add" data-icon="plus" title="Browse the data of a table">Data</button>
+  </nav>
+
+  <main class="workspace tab-page" data-page="erd">
     <section class="canvas-wrap">
       <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -129,6 +152,101 @@
       <div id="panel" class="panel"></div>
     </aside>
   </main>
+
+  <section id="scripts-page" class="tab-page scripts-page" data-page="scripts" hidden>
+    <aside class="wb-scripts">
+      <div class="wb-head">
+        <strong>Scripts</strong>
+        <button type="button" data-cmd="script-new" title="New script (Ctrl+Alt+N)">New</button>
+      </div>
+      <input id="wb-filter" type="search" placeholder="Filter scripts…">
+      <div id="wb-list" class="wb-list"></div>
+      <p id="wb-project" class="wb-project"></p>
+    </aside>
+    <section class="wb-editor">
+      <div class="wb-toolbar">
+        <input id="wb-name" class="wb-name" placeholder="Script name" spellcheck="false">
+        <select id="wb-type" title="Script type"></select>
+        <select id="wb-profile" title="Permission profile"></select>
+        <button type="button" id="wb-perms" data-icon="permissions" title="Permissions of this script"></button>
+        <span class="grow"></span>
+        <span id="wb-state" class="wb-state"></span>
+        <button type="button" data-cmd="script-save" title="Save the script to the project (Ctrl+S in the editor)">Save</button>
+        <button type="button" data-cmd="script-dry-run" title="Run in a transaction that is rolled back (F6)">Dry run</button>
+        <button type="button" data-cmd="script-run" class="primary" title="Run, then review changes before commit (F5)">Run</button>
+        <button type="button" data-cmd="script-stop" data-icon="script-stop" title="Stop (Shift+F5)"></button>
+      </div>
+      <div id="wb-editor" class="wb-code"></div>
+      <div id="wb-problems" class="wb-problems"></div>
+    </section>
+    <aside class="wb-side">
+      <div class="wb-tabs" role="tablist">
+        <button type="button" data-tab="results" class="active">Results</button>
+        <button type="button" data-tab="audit">Activity</button>
+      </div>
+      <div id="wb-results" class="wb-pane" data-pane="results"></div>
+      <div id="wb-audit" class="wb-pane" data-pane="audit" hidden></div>
+    </aside>
+  </section>
+
+  <section id="query-page" class="tab-page query-page" data-page="query" hidden>
+    <div class="q-toolbar">
+      <button type="button" id="q-run" class="primary" data-icon="script-run" title="Run the query (Ctrl+Enter or F5)">Run</button>
+      <button type="button" id="q-explain" data-icon="toggle-sql" title="Show the plan without running the query (Shift+F5)">Explain</button>
+      <button type="button" id="q-analyze" data-icon="test" title="Run the query and show the actual plan and timings (Ctrl+Shift+Enter); rolled back">Explain analyze</button>
+      <label class="check" title="Allow statements that change data or the schema. They are committed when they succeed.">
+        <input type="checkbox" id="q-allow"> Allow changes</label>
+      <span class="grow"></span>
+      <select id="q-history" title="Recent queries"><option value="">History…</option></select>
+      <button type="button" id="q-ask" data-icon="ai-assistant" title="Ask the assistant about this query and its plan">Ask assistant</button>
+    </div>
+    <div id="q-editor" class="q-editor"></div>
+    <div id="q-resize" class="q-resize" title="Drag to resize"></div>
+    <div class="q-output">
+      <div class="wb-tabs" role="tablist">
+        <button type="button" data-qtab="results" class="active">Results</button>
+        <button type="button" data-qtab="plan">Plan</button>
+        <button type="button" data-qtab="messages">Messages</button>
+        <span class="grow"></span>
+        <span id="q-status" class="muted small"></span>
+      </div>
+      <div id="q-results" class="q-pane" data-qpane="results"></div>
+      <div id="q-plan" class="q-pane" data-qpane="plan" hidden></div>
+      <div id="q-messages" class="q-pane" data-qpane="messages" hidden></div>
+    </div>
+  </section>
+
+  <section id="assistant-page" class="tab-page assistant-page" data-page="assistant" hidden>
+    <aside class="ai-sidebar">
+      <div class="ai-config">
+        <label>Provider<select id="ai-provider"></select></label>
+        <button type="button" data-cmd="ai-settings" data-icon="ai-settings" title="AI providers"></button>
+      </div>
+      <div class="ai-config">
+        <label>Model<input id="ai-model" list="ai-model-list" placeholder="model" spellcheck="false" autocomplete="off"></label>
+        <datalist id="ai-model-list"></datalist>
+        <button type="button" id="ai-models-refresh" data-icon="refresh" title="Reload the model list"></button>
+      </div>
+      <div class="ai-sharing-row">Sharing: <span id="ai-sharing" class="ai-sharing"></span></div>
+      <div class="ai-col"><div class="ai-col-title">Send to the model</div><div id="ai-context"></div></div>
+      <div class="ai-col"><div class="ai-col-title">Assistant may</div><div id="ai-perms"></div></div>
+    </aside>
+    <section class="ai-main">
+      <div id="ai-log" class="ai-log"></div>
+      <div class="ai-quick" id="ai-quick"></div>
+      <div class="ai-input">
+        <textarea id="ai-prompt" rows="3" placeholder="Ask about the schema, or describe a validator or generator… (Ctrl+Enter to send)"></textarea>
+        <div class="ai-input-bar">
+          <span id="ai-context-info" class="muted small grow"></span>
+          <button type="button" id="ai-clear" data-icon="delete" title="Clear the conversation"></button>
+          <button type="button" id="ai-stop" data-icon="script-stop" disabled>Stop</button>
+          <button type="button" id="ai-send" class="primary" data-icon="send">Send</button>
+        </div>
+      </div>
+    </section>
+  </section>
+
+  <div id="data-pages"></div>
 
   <footer class="statusbar">
     <span id="status-file">Untitled</span>
@@ -178,7 +296,23 @@
           </select>
         </label>
       </div>
-      <p class="muted small">The password is kept in memory for this window only; other settings are remembered.</p>
+      <div class="grid2">
+        <label>Name<input name="profileName" placeholder="(host/database)" autocomplete="off"></label>
+        <label>Environment
+          <select name="environment">
+            <option value="development">Development</option>
+            <option value="testing">Testing</option>
+            <option value="staging">Staging</option>
+            <option value="production">Production</option>
+          </select>
+        </label>
+      </div>
+      <div class="db-toolbar">
+        <label class="check"><input type="checkbox" name="allowWrites"> Allow scripts to write data</label>
+        <label class="check"><input type="checkbox" name="allowDDL"> Allow schema changes (DDL, migrations)</label>
+      </div>
+      <p class="muted small">The password is sent to the app's main process and kept in memory for this window only; the
+        page never sees it again. Other settings are remembered. Production connections are read-only by default.</p>
       <p id="db-connect-status" class="db-status"></p>
       <menu>
         <button type="button" id="db-test" data-icon="test">Test</button>
@@ -235,6 +369,94 @@
     </form>
   </dialog>
 
+  <dialog id="script-new-dialog">
+    <form method="dialog" id="script-new-form">
+      <h3>New script</h3>
+      <div class="grid2">
+        <label>Name<input name="name" required placeholder="employees without area" autocomplete="off"></label>
+        <label>Type<select name="type"></select></label>
+        <label>Table (for the template)<select name="table"></select></label>
+        <label>Permission profile<select name="profile"></select></label>
+      </div>
+      <label>Description<input name="description" placeholder="(optional)" autocomplete="off"></label>
+      <menu>
+        <button value="cancel" formnovalidate data-icon="close">Cancel</button>
+        <button value="ok" class="primary" data-icon="script-new">Create</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="script-perms-dialog">
+    <form method="dialog">
+      <h3>Script permissions</h3>
+      <p class="muted">What the script may do. The connection's policy can restrict this further; the database
+        enforces read-only runs.</p>
+      <div id="script-perms-list" class="perm-list"></div>
+      <p id="script-perms-policy" class="db-status"></p>
+      <menu>
+        <button type="button" id="script-perms-reset" data-icon="reset">Profile defaults</button>
+        <button value="cancel" formnovalidate data-icon="close">Cancel</button>
+        <button value="ok" class="primary" data-icon="ok">Apply</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="run-preview-dialog" class="medium">
+    <form method="dialog">
+      <h3 id="run-preview-title">Review changes</h3>
+      <p id="run-preview-summary" class="muted"></p>
+      <div id="run-preview-body" class="run-preview"></div>
+      <p class="muted small">The changes are held in an open transaction. Nothing is visible to other sessions until you
+        commit; discarding rolls everything back.</p>
+      <menu>
+        <button value="discard" data-icon="discard">Discard</button>
+        <button value="commit" class="primary" data-icon="commit" id="run-preview-commit">Commit changes</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="ai-settings-dialog" class="medium">
+    <form method="dialog" id="ai-settings-form">
+      <h3>AI providers</h3>
+      <p class="muted">Ollama, vLLM (or any OpenAI-compatible server) and OpenAI. API keys are stored with the
+        operating system's credential store and never shown again.</p>
+      <div class="ai-settings">
+        <div class="ai-provider-list">
+          <div id="ai-provider-list" class="db-list"></div>
+          <button type="button" id="ai-provider-add" data-icon="plus">Add provider</button>
+        </div>
+        <div class="ai-provider-form">
+          <label>Name<input name="name" autocomplete="off"></label>
+          <label>Type<select name="type"></select></label>
+          <label>Base URL<input name="baseUrl" autocomplete="off" spellcheck="false"></label>
+          <label>API key<input name="apiKey" type="password" autocomplete="off" placeholder="(none)"></label>
+          <label class="check"><input type="checkbox" name="clearKey"> Remove the stored key</label>
+          <p id="ai-provider-where" class="muted small"></p>
+          <div class="db-toolbar">
+            <button type="button" id="ai-provider-test" data-icon="test">Test / list models</button>
+            <button type="button" id="ai-provider-delete" class="danger" data-icon="delete">Delete</button>
+            <button type="button" id="ai-provider-save" class="primary" data-icon="save">Save provider</button>
+          </div>
+          <p id="ai-provider-status" class="db-status"></p>
+        </div>
+      </div>
+      <menu>
+        <button value="close" class="primary" data-icon="close">Close</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="data-pick-dialog">
+    <form method="dialog">
+      <h3>Browse table data</h3>
+      <input id="data-pick-filter" type="search" placeholder="Filter tables…">
+      <div id="data-pick-list" class="db-list short"></div>
+      <menu>
+        <button value="cancel" formnovalidate data-icon="close">Cancel</button>
+      </menu>
+    </form>
+  </dialog>
+
   <dialog id="xl-import-dialog" class="wide">
     <form method="dialog">
       <h3>Import tables from Excel / CSV</h3>
@@ -264,6 +486,8 @@
       </menu>
     </form>
   </dialog>
+
+  <div id="filter-popup" class="filter-popup" hidden></div>
 
   <datalist id="pg-types"></datalist>
   <script type="module" src="app.js"></script>

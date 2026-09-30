@@ -1,9 +1,9 @@
 // Electron main process: windows, menus, native file dialogs and file I/O.
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, nativeTheme, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, nativeTheme, safeStorage, shell } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const db = require('./db.cjs');
+const { registerWorkbench } = require('./ipc/workbench-ipc.cjs');
 
 const windows = new Set();
 let pendingOpen = []; // files requested before the app was ready (macOS open-file)
@@ -70,7 +70,11 @@ function createWindow(filePath = null) {
       send(win, 'menu', 'save-and-close');
     }
   });
-  win.on('closed', () => windows.delete(win));
+  const contentsId = win.webContents.id;
+  win.on('closed', () => {
+    windows.delete(win);
+    workbench.windowClosed(contentsId).catch(() => {});
+  });
   return win;
 }
 
@@ -165,18 +169,8 @@ ipcMain.handle('save-binary', async (e, { defaultName, data, name, extensions })
   return res.filePath;
 });
 
-// Database access. Errors are returned as values so the renderer can show
-// the server's message instead of Electron's wrapped IPC error.
-const dbCall = (fn) => async (_e, ...args) => {
-  try {
-    return { ok: true, result: await fn(...args) };
-  } catch (err) {
-    return { ok: false, error: err.message || String(err) };
-  }
-};
-ipcMain.handle('db-test', dbCall((conn) => db.testConnection(conn)));
-ipcMain.handle('db-introspect', dbCall((conn) => db.introspect(conn)));
-ipcMain.handle('db-execute', dbCall((conn, sql) => db.execute(conn, sql)));
+// Database connections, scripts, the assistant and the audit log.
+const workbench = registerWorkbench({ ipcMain, app, safeStorage, shell });
 
 ipcMain.handle('confirm', (e, { message, detail, buttons }) => {
   const win = BrowserWindow.fromWebContents(e.sender);
@@ -259,13 +253,35 @@ function buildMenu() {
       label: '&Database',
       submenu: [
         { label: 'Connect…', icon: menuIcon('db-connect'), click: cmd('db-connect') },
+        { label: 'Refresh Schema', icon: menuIcon('db-refresh'), accelerator: 'CmdOrCtrl+Alt+F5', click: cmd('db-refresh') },
         { label: 'Import Tables from Database…', icon: menuIcon('db-import'), accelerator: 'CmdOrCtrl+Alt+I', click: cmd('db-import') },
         { label: 'Compare with Database / Generate Migration…', icon: menuIcon('db-compare'), accelerator: 'CmdOrCtrl+Alt+D', click: cmd('db-compare') },
+        { label: 'Browse Table Data…', icon: menuIcon('toggle-tables'), accelerator: 'CmdOrCtrl+Alt+B', click: cmd('data-browse') },
+        { label: 'Query Analyzer', icon: menuIcon('toggle-sql'), accelerator: 'CmdOrCtrl+Alt+Q', click: cmd('query-tab') },
+        { type: 'separator' },
+        { label: 'Open Audit Log', icon: menuIcon('audit-log'), click: () => workbench.openAuditLog() },
+      ],
+    },
+    {
+      label: '&Scripts',
+      submenu: [
+        { label: 'Scripts Tab', icon: menuIcon('toggle-workbench'), accelerator: 'CmdOrCtrl+Alt+J', click: cmd('toggle-workbench') },
+        { label: 'New Script…', icon: menuIcon('script-new'), accelerator: 'CmdOrCtrl+Alt+N', click: cmd('script-new') },
+        { label: 'Save Script', icon: menuIcon('script-save'), click: cmd('script-save') },
+        { type: 'separator' },
+        { label: 'Dry Run', icon: menuIcon('script-dry-run'), accelerator: 'F6', click: cmd('script-dry-run') },
+        { label: 'Run', icon: menuIcon('script-run'), accelerator: 'F5', click: cmd('script-run') },
+        { label: 'Stop', icon: menuIcon('script-stop'), accelerator: 'Shift+F5', click: cmd('script-stop') },
+        { type: 'separator' },
+        { label: 'AI Assistant', icon: menuIcon('ai-assistant'), accelerator: 'CmdOrCtrl+Alt+A', click: cmd('ai-assistant') },
+        { label: 'AI Providers…', icon: menuIcon('ai-settings'), click: cmd('ai-settings') },
       ],
     },
     {
       label: '&View',
       submenu: [
+        { label: 'Diagram Tab', icon: menuIcon('toggle-tables'), accelerator: 'CmdOrCtrl+Alt+1', click: cmd('tab-erd') },
+        { type: 'separator' },
         { label: 'Zoom In', icon: menuIcon('zoom-in'), accelerator: 'CmdOrCtrl+=', click: cmd('zoom-in') },
         { label: 'Zoom Out', icon: menuIcon('zoom-out'), accelerator: 'CmdOrCtrl+-', click: cmd('zoom-out') },
         { label: 'Fit to Window', icon: menuIcon('fit'), accelerator: 'CmdOrCtrl+0', click: cmd('fit') },

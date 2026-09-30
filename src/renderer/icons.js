@@ -41,6 +41,25 @@ export const ICONS = {
   'export-svg': `<path ${F} d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18z"/><path d="m12 19 7-7 3 3-7 7z"/><path d="m2 2 7.6 7.6"/><circle cx="11" cy="11" r="2"/>`,
   'export-png': `${SQUARE}<circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>`,
 
+  'db-refresh': `<path ${F} d="M3 5v11c0 1.4 3.1 2.5 7 2.5M17 5v4"/><ellipse cx="10" cy="5" rx="7" ry="2.5"/><path d="M3 10.5c0 1.4 3.1 2.5 7 2.5M22 17a4 4 0 0 1-7 2.6M14 17a4 4 0 0 1 7-2.6M21.5 12v2.6H19M14.5 22v-2.4H17"/>`,
+  'audit-log': `${FILE}<path d="M8 13h8M8 17h5"/><circle cx="17" cy="17" r="0.5"/>`,
+
+  // Scripts and assistant
+  'toggle-workbench': `${SQUARE}<path d="M3 14h18M7 18h.01M7 8l3 2-3 2M12 12h4"/>`,
+  'script-new': `${FILE}<path d="m9 13-1.5 1.5L9 16M13 13l1.5 1.5L13 16"/><path d="M17 18v4M15 20h4"/>`,
+  'script-save': `<path ${F} d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="m9 11-2 2 2 2M15 11l2 2-2 2"/>`,
+  'script-run': `<path ${F} d="M6 4v16l14-8z"/>`,
+  'script-dry-run': `<path ${F} d="M5 4v16l11-8z"/><path d="M18 8.5a5 5 0 0 1 0 7" stroke-dasharray="2 2"/><path d="M20.5 6a8.5 8.5 0 0 1 0 12" stroke-dasharray="2 2"/>`,
+  'script-stop': `<rect ${F} x="5" y="5" width="14" height="14" rx="2"/>`,
+  'ai-assistant': `<path ${F} d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 14.5l.8 1.7 1.7.8-1.7.8-.8 1.7-.8-1.7-1.7-.8 1.7-.8zM5 16l.6 1.4L7 18l-1.4.6L5 20l-.6-1.4L3 18l1.4-.6z"/>`,
+  'ai-settings': `<path ${F} d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>`,
+  'permissions': `<path ${F} d="M12 3 4 6v6c0 5 3.4 8.3 8 9 4.6-.7 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>`,
+  'commit': `<circle ${F} cx="12" cy="12" r="4"/><path d="M3 12h5M16 12h5"/>`,
+  'discard': `<path ${F} d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M9 9l6 6M15 9l-6 6"/>`,
+  'send': `<path ${F} d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/>`,
+  'validator': `<path ${F} d="M12 3 4 6v6c0 5 3.4 8.3 8 9 4.6-.7 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>`,
+  'insert': `${SQUARE}<path d="M12 8v8M8 12h8"/>`,
+
   // Keys
   'pk': `<circle ${F} cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.8-9.8M17 6l3 3M14.5 8.5l2.5 2.5"/>`,
   'fk': '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
@@ -92,6 +111,10 @@ export const ICON_TONES = {
   'check-all': 'green', 'refresh': 'green', 'reset': 'blue', 'test': 'amber', 'run': 'green',
   'go': 'blue', 'up': 'blue', 'down': 'blue', 'ok': 'green', 'fullscreen': 'teal',
   'about': 'blue', 'quit': 'red',
+  'db-refresh': 'green', 'audit-log': 'amber', 'toggle-workbench': 'purple', 'script-new': 'blue',
+  'script-save': 'purple', 'script-run': 'green', 'script-dry-run': 'teal', 'script-stop': 'red',
+  'ai-assistant': 'purple', 'ai-settings': 'teal', 'permissions': 'amber', 'commit': 'green',
+  'discard': 'red', 'send': 'blue', 'validator': 'green', 'insert': 'blue',
 };
 
 export function iconTone(name) {
