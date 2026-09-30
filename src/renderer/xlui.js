@@ -6,6 +6,7 @@ import { tableKey } from './lib/catalog.js';
 import { generateSQL } from './lib/sql.js';
 import { autoLayout, contentBounds, placeBelow } from './lib/layout.js';
 import { highlightSQL } from './lib/highlight.js';
+import { tr, trn } from '../shared/i18n.js';
 
 const $ = (sel) => document.querySelector(sel);
 export const SPREADSHEET_EXT = /\.(xlsx|xlsm|csv|tsv)$/i;
@@ -72,14 +73,14 @@ export function setupSpreadsheetImport(ctx) {
       if (s.spec.sheet !== lastSheet) {
         lastSheet = s.spec.sheet;
         const sheet = file.sheets.find((x) => x.name === lastSheet);
-        items.push(h('div', { class: 'schema' }, `${lastSheet}${sheet?.hidden ? ' (hidden)' : ''} · ${s.spec.layout === 'data' ? 'data' : 'column definitions'}`));
+        items.push(h('div', { class: 'schema' }, `${lastSheet}${sheet?.hidden ? ` ${tr('(hidden)')}` : ''} · ${s.spec.layout === 'data' ? tr('data') : tr('column definitions')}`));
       }
       const cb = h('input', { type: 'checkbox', checked: s.checked });
       cb.addEventListener('change', () => {
         s.checked = cb.checked;
         update();
       });
-      const name = h('input', { class: 'xl-name', value: s.name, spellcheck: false, title: 'Table name' });
+      const name = h('input', { class: 'xl-name', value: s.name, spellcheck: false, title: tr('Table name') });
       name.addEventListener('input', () => {
         s.name = name.value;
         update();
@@ -87,18 +88,18 @@ export function setupSpreadsheetImport(ctx) {
       const tag = h('span', { class: 'tag' });
       s.tag = tag;
       const detail = s.spec.layout === 'data'
-        ? `${s.spec.columns.length} columns, ${s.spec.rows} rows`
-        : `${s.spec.columns.length} columns`;
+        ? `${trn(s.spec.columns.length, '{n} column', '{n} columns')}, ${trn(s.spec.rows, '{n} row', '{n} rows')}`
+        : trn(s.spec.columns.length, '{n} column', '{n} columns');
       items.push(h('label', { class: 'item' }, [cb, h('span', { class: 'muted' }, `${s.spec.schema}.`), name, h('span', { class: 'muted nowrap' }, detail), tag]));
     }
-    list.replaceChildren(...(items.length ? items : [h('div', { class: 'db-empty' }, file ? 'No tables found in this file.' : 'Choose an Excel or CSV file.')]));
+    list.replaceChildren(...(items.length ? items : [h('div', { class: 'db-empty' }, file ? tr('No tables found in this file.') : tr('Choose an Excel or CSV file.'))]));
   }
 
   function update() {
     const inErd = new Set(state.model.tables.map(tableKey));
     for (const s of specs) {
       const present = inErd.has(`${s.spec.schema}.${s.name.trim()}`);
-      s.tag.textContent = present ? 'in diagram: update' : 'new';
+      s.tag.textContent = present ? tr('in diagram: update') : tr('new');
       s.tag.className = `tag${present ? '' : ' new'}`;
     }
     const chosen = selected();
@@ -110,8 +111,8 @@ export function setupSpreadsheetImport(ctx) {
     highlightSQL(sqlBox, chosen.length ? generateSQL(modelFromSpecs(chosen).model) : '');
     const keys = chosen.map(tableKey);
     const dup = keys.find((k, i) => keys.indexOf(k) !== i);
-    if (dup) setStatus(`More than one selected table is named ${dup}; rename one of them.`, 'error');
-    else setStatus(`${file.name}: ${chosen.length} of ${specs.length} tables selected`);
+    if (dup) setStatus(tr('More than one selected table is named {name}; rename one of them.', { name: dup }), 'error');
+    else setStatus(`${file.name}: ${tr('{n} of {total} tables selected', { n: chosen.length, total: specs.length })}`);
     if (dup) $('#xl-import-ok').disabled = true;
   }
 
@@ -123,7 +124,7 @@ export function setupSpreadsheetImport(ctx) {
       specs = [];
       renderList();
       update();
-      return setStatus(`Could not read ${name}: ${err.message}`, 'error');
+      return setStatus(tr('Could not read {file}: {message}', { file: name, message: err.message }), 'error');
     }
     specs = [];
     $('#xl-file').textContent = name;
@@ -138,7 +139,7 @@ export function setupSpreadsheetImport(ctx) {
   function reset() {
     file = null;
     specs = [];
-    $('#xl-file').textContent = 'No file chosen';
+    $('#xl-file').textContent = tr('No file chosen');
     setStatus('');
     renderList();
     update();
@@ -180,7 +181,7 @@ export function setupSpreadsheetImport(ctx) {
       else if (result.added.length) placeBelow(state.model, state.sizes, result.added, before);
     });
     if (wasEmpty || result.added.length) fit();
-    status(`Imported ${result.added.length} new and updated ${result.updated.length} existing tables from ${file.name}`);
+    status(tr('Imported {added} new and updated {updated} existing tables from {file}', { added: result.added.length, updated: result.updated.length, file: file.name }));
   });
 
   function open() {

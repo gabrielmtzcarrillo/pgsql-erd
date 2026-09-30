@@ -8,6 +8,8 @@ import { createEditor, setSqlSchema } from './lib/monaco.js';
 import { flattenPlan, analyzePlan, describeNode } from '../shared/plan-analyzer.js';
 import { classifySql } from '../shared/permissions.js';
 import { decorateButtons } from './icons.js';
+import { tr, trn, formatNumber } from '../shared/i18n.js';
+import { envName } from './dbui.js';
 
 const $ = (sel) => document.querySelector(sel);
 const TEXT_KEY = 'pgsql-erd.query';
@@ -45,7 +47,7 @@ export function setupQuery(ctx) {
 
   function ensureEditor() {
     editorReady ??= createEditor($('#q-editor'), {
-      value: load(TEXT_KEY, '-- Ctrl+Enter runs the selection (or everything).\n-- Explain shows the plan; Explain analyze runs the query and measures it.\nSELECT 1;\n'),
+      value: load(TEXT_KEY, `-- ${tr('Ctrl+Enter runs the selection (or everything).')}\n-- ${tr('Explain shows the plan; Explain analyze runs the query and measures it.')}\nSELECT 1;\n`),
       language: 'sql',
       onChange: () => {
         clearTimeout(ensureEditor.t);
@@ -135,15 +137,17 @@ export function setupQuery(ctx) {
     if (writes && allowChanges && explain !== 'plan') {
       const info = db.info();
       const choice = await host.confirm({
-        message: explain === 'analyze' ? 'Run EXPLAIN ANALYZE on a statement that changes data?' : `Run ${statements} statement${statements === 1 ? '' : 's'} that change${statements === 1 ? 's' : ''} the database?`,
-        detail: `${info.description} (${info.profile.environment})\n\n${sql.slice(0, 600)}${sql.length > 600 ? '…' : ''}\n\n${explain === 'analyze' ? 'The statement runs and is rolled back.' : 'The changes are committed when all statements succeed.'}`,
-        buttons: [explain === 'analyze' ? 'Analyze' : 'Run and Commit', 'Cancel'],
+        message: explain === 'analyze'
+          ? tr('Run EXPLAIN ANALYZE on a statement that changes data?')
+          : trn(statements, 'Run {n} statement that changes the database?', 'Run {n} statements that change the database?'),
+        detail: `${info.description} (${envName(info.profile.environment)})\n\n${sql.slice(0, 600)}${sql.length > 600 ? '…' : ''}\n\n${explain === 'analyze' ? tr('The statement runs and is rolled back.') : tr('The changes are committed when all statements succeed.')}`,
+        buttons: [explain === 'analyze' ? tr('Analyze') : tr('Run and Commit'), tr('Cancel')],
       });
       if (choice !== 0) return;
     }
     running = true;
     editor.clearMarkers();
-    setStatus(explain ? 'Explaining…' : 'Running…');
+    setStatus(explain ? tr('Explaining…') : tr('Running…'));
     for (const b of page.querySelectorAll('#q-run, #q-explain, #q-analyze')) b.disabled = true;
     const started = Date.now();
     try {
@@ -152,7 +156,7 @@ export function setupQuery(ctx) {
       if (r.kind === 'plan') renderPlan(sql, r);
       else renderResults(r);
       if (r.committed) {
-        status('Changes committed');
+        status(tr('Changes committed'));
         if (kinds.includes('ddl')) ctx.refreshSchema?.();
       }
     } catch (err) {
@@ -160,7 +164,7 @@ export function setupQuery(ctx) {
       if (pos) editor.markError(pos + (editor.getValue().indexOf(sql) > 0 ? editor.getValue().indexOf(sql) : 0), err.message);
       $('#q-messages').replaceChildren(h('pre', { class: 'wb-error' }, err.message));
       showOut('messages');
-      setStatus(`Error after ${((Date.now() - started) / 1000).toFixed(2)} s`, 'error');
+      setStatus(tr('Error after {s} s', { s: ((Date.now() - started) / 1000).toFixed(2) }), 'error');
     } finally {
       running = false;
       for (const b of page.querySelectorAll('#q-run, #q-explain, #q-analyze')) b.disabled = false;
@@ -174,7 +178,7 @@ export function setupQuery(ctx) {
   }
   function renderHistory() {
     const sel = $('#q-history');
-    sel.replaceChildren(h('option', { value: '' }, 'History…'), ...history.map((q, i) => h('option', { value: String(i), title: q }, q.replace(/\s+/g, ' ').slice(0, 70))));
+    sel.replaceChildren(h('option', { value: '' }, tr('History…')), ...history.map((q, i) => h('option', { value: String(i), title: q }, q.replace(/\s+/g, ' ').slice(0, 70))));
   }
   $('#q-history').addEventListener('change', async (e) => {
     const q = history[Number(e.target.value)];
@@ -188,9 +192,9 @@ export function setupQuery(ctx) {
     const nodes = [];
     const msgs = [];
     r.results.forEach((res, i) => {
-      msgs.push(`${res.command ?? 'OK'}${res.rowCount !== null && res.rowCount !== undefined ? ` ${res.rowCount}` : ''}${res.truncated ? ` (showing ${res.rows.length})` : ''}`);
+      msgs.push(`${res.command ?? 'OK'}${res.rowCount !== null && res.rowCount !== undefined ? ` ${res.rowCount}` : ''}${res.truncated ? ` ${tr('(showing {n})', { n: res.rows.length })}` : ''}`);
       if (!res.columns.length) return;
-      if (r.results.length > 1) nodes.push(h('div', { class: 'wb-section-title' }, `Result ${i + 1} — ${res.rowCount ?? res.rows.length} rows`));
+      if (r.results.length > 1) nodes.push(h('div', { class: 'wb-section-title' }, `${tr('Result {i}', { i: i + 1 })} — ${trn(res.rowCount ?? res.rows.length, '{n} row', '{n} rows')}`));
       nodes.push(
         h('table', { class: 'dt-grid' }, [
           h('thead', {}, h('tr', {}, [h('th', { class: 'dt-rownum' }, '#'), ...res.columns.map((c) => h('th', {}, c))])),
@@ -206,12 +210,12 @@ export function setupQuery(ctx) {
           ),
         ])
       );
-      if (res.truncated) nodes.push(h('p', { class: 'wb-note' }, `Only the first ${res.rows.length} rows are shown.`));
+      if (res.truncated) nodes.push(h('p', { class: 'wb-note' }, tr('Only the first {n} rows are shown.', { n: res.rows.length })));
     });
     $('#q-results').replaceChildren(...(nodes.length ? nodes : [h('div', { class: 'db-empty' }, msgs.join('\n'))]));
-    $('#q-messages').replaceChildren(h('pre', { class: 'wb-output' }, `${msgs.join('\n')}\n${r.committed ? 'Committed.' : ''}`));
+    $('#q-messages').replaceChildren(h('pre', { class: 'wb-output' }, `${msgs.join('\n')}\n${r.committed ? tr('Committed.') : ''}`));
     const rows = r.results.at(-1)?.rowCount ?? 0;
-    setStatus(`${r.results.length > 1 ? `${r.results.length} statements · ` : ''}${rows} row${rows === 1 ? '' : 's'} · ${(r.durationMs / 1000).toFixed(3)} s${r.committed ? ' · committed' : ''}`);
+    setStatus(`${r.results.length > 1 ? `${trn(r.results.length, '{n} statement', '{n} statements')} · ` : ''}${trn(rows, '{n} row', '{n} rows')} · ${(r.durationMs / 1000).toFixed(3)} s${r.committed ? ` · ${tr('committed')}` : ''}`);
     showOut(nodes.length ? 'results' : 'messages');
   }
 
@@ -228,16 +232,16 @@ export function setupQuery(ctx) {
     const byNode = new Map();
     for (const hnt of hints) if (hnt.node !== null) byNode.set(hnt.node, [...(byNode.get(hnt.node) ?? []), hnt]);
     const maxPct = Math.max(1, ...flat.nodes.map((n) => n.percent ?? 0));
-    const fmt = (v, d = 2) => (v === null || v === undefined ? '' : Number(v).toLocaleString(undefined, { maximumFractionDigits: d }));
+    const fmt = (v, d = 2) => (v === null || v === undefined ? '' : formatNumber(v, { maximumFractionDigits: d }));
 
     const head = h('div', { class: 'qp-summary' }, [
-      h('strong', {}, r.analyze ? 'Actual plan' : 'Estimated plan'),
-      flat.planningTime !== null ? h('span', {}, `planning ${fmt(flat.planningTime)} ms`) : null,
-      flat.executionTime !== null ? h('span', {}, `execution ${fmt(flat.executionTime)} ms`) : null,
-      h('span', {}, `cost ${fmt(flat.nodes[0]?.cost)}`),
+      h('strong', {}, r.analyze ? tr('Actual plan') : tr('Estimated plan')),
+      flat.planningTime !== null ? h('span', {}, tr('planning {ms} ms', { ms: fmt(flat.planningTime) })) : null,
+      flat.executionTime !== null ? h('span', {}, tr('execution {ms} ms', { ms: fmt(flat.executionTime) })) : null,
+      h('span', {}, tr('cost {cost}', { cost: fmt(flat.nodes[0]?.cost) })),
     ]);
     const table = h('table', { class: 'qp-tree' }, [
-      h('thead', {}, h('tr', {}, [h('th', {}, 'Node'), h('th', {}, 'Est. rows'), h('th', {}, r.analyze ? 'Rows' : ''), h('th', {}, r.analyze ? 'Self time' : 'Cost'), h('th', {}, '')])),
+      h('thead', {}, h('tr', {}, [h('th', {}, tr('Node')), h('th', {}, tr('Est. rows')), h('th', {}, r.analyze ? tr('Rows') : ''), h('th', {}, r.analyze ? tr('Self time') : tr('Cost')), h('th', {}, '')])),
       h(
         'tbody',
         {},
@@ -262,18 +266,18 @@ export function setupQuery(ctx) {
     const general = hints.filter((x) => x.node === null || !byNode.has(x.node) || x.sql);
     const hintList = hints.length
       ? h('div', { class: 'qp-hints' }, [
-          h('div', { class: 'wb-section-title' }, `Suggestions (${hints.length})`),
+          h('div', { class: 'wb-section-title' }, tr('Suggestions ({n})', { n: hints.length })),
           ...general.map((x) =>
             h('div', { class: `qp-hint-row ${x.severity}` }, [
               h('span', { class: 'grow' }, x.message),
-              x.sql ? h('button', { type: 'button', title: 'Put this statement in the editor', onclick: () => editor.insertText(`\n${x.sql}\n`) }, 'Insert SQL') : null,
+              x.sql ? h('button', { type: 'button', title: tr('Put this statement in the editor'), onclick: () => editor.insertText(`\n${x.sql}\n`) }, tr('Insert SQL')) : null,
             ])
           ),
         ])
-      : h('p', { class: 'muted small' }, 'No problems spotted in this plan.');
-    const raw = h('details', { class: 'qp-raw' }, [h('summary', {}, 'Raw plan (JSON)'), h('pre', { class: 'wb-output' }, JSON.stringify(r.plan, null, 2))]);
+      : h('p', { class: 'muted small' }, tr('No problems spotted in this plan.'));
+    const raw = h('details', { class: 'qp-raw' }, [h('summary', {}, tr('Raw plan (JSON)')), h('pre', { class: 'wb-output' }, JSON.stringify(r.plan, null, 2))]);
     $('#q-plan').replaceChildren(head, table, hintList, raw);
-    setStatus(`${r.analyze ? 'Analyzed' : 'Explained'} · ${(r.durationMs / 1000).toFixed(3)} s · ${hints.length} suggestion${hints.length === 1 ? '' : 's'}`);
+    setStatus(`${r.analyze ? tr('Analyzed') : tr('Explained')} · ${(r.durationMs / 1000).toFixed(3)} s · ${trn(hints.length, '{n} suggestion', '{n} suggestions')}`);
     showOut('plan');
   }
 
@@ -288,13 +292,13 @@ export function setupQuery(ctx) {
   $('#q-ask').addEventListener('click', async () => {
     await ensureEditor();
     const sql = editor.getSelectedOrAll().trim();
-    let prompt = `Explain this query and suggest how to improve it:\n\n\`\`\`sql\n${sql}\n\`\`\``;
+    let prompt = `${tr('Explain this query and suggest how to improve it:')}\n\n\`\`\`sql\n${sql}\n\`\`\``;
     if (lastPlan && lastPlan.sql === sql) {
       const lines = lastPlan.flat.nodes.map(
         (n) => `${'  '.repeat(n.depth)}${describeNode(n)} (est ${n.planRows} rows${n.actualRows !== null ? `, actual ${n.actualRows}, ${n.selfTime?.toFixed(2)} ms self` : ''})${n.filter ? ` filter: ${n.filter}` : ''}`
       );
-      prompt += `\n\n${lastPlan.analyze ? 'Actual' : 'Estimated'} plan:\n\`\`\`\n${lines.join('\n')}\n\`\`\``;
-      if (lastPlan.hints.length) prompt += `\n\nThe app flagged:\n${lastPlan.hints.map((x) => `- ${x.message}`).join('\n')}`;
+      prompt += `\n\n${lastPlan.analyze ? tr('Actual plan:') : tr('Estimated plan:')}\n\`\`\`\n${lines.join('\n')}\n\`\`\``;
+      if (lastPlan.hints.length) prompt += `\n\n${tr('The app flagged:')}\n${lastPlan.hints.map((x) => `- ${x.message}`).join('\n')}`;
     }
     ctx.askAssistant(prompt);
   });

@@ -20,6 +20,7 @@ import { setupSpreadsheetImport, SPREADSHEET_EXT } from './xlui.js';
 import { highlightSQL } from './lib/highlight.js';
 import { vectorKind, vectorIndexSQL } from '../shared/pgvector.js';
 import { ICONS, decorateButton, decorateButtons, iconElement } from './icons.js';
+import { tr, trn, getLocale, translateDom } from '../shared/i18n.js';
 
 const host = window.erdHost;
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -44,6 +45,8 @@ const scriptsLayer = $('#scripts-layer');
 let erdScripts = null; // scripts drawn in the diagram, set up after the workbench
 const panel = $('#panel');
 
+document.documentElement.lang = getLocale();
+translateDom(document.body);
 decorateButtons(document.body);
 
 // Notifies the workbench and assistant: 'model' (diagram edited), 'file'
@@ -126,8 +129,8 @@ function status(msg) {
 }
 
 function updateTitle() {
-  const name = state.filePath ? basename(state.filePath) : 'Untitled';
-  $('#status-file').textContent = (state.filePath ?? 'Untitled') + (state.dirty ? ' (modified)' : '');
+  const name = state.filePath ? basename(state.filePath) : tr('Untitled');
+  $('#status-file').textContent = (state.filePath ?? tr('Untitled')) + (state.dirty ? ` ${tr('(modified)')}` : '');
   host?.setState({ dirty: state.dirty, title: `${name}${state.dirty ? ' •' : ''} — pgsql-erd` });
 }
 
@@ -263,7 +266,7 @@ function renderTable(t) {
 
   const fks = fkColumns(t);
   if (!t.columns.length) {
-    g.append(el('text', { class: 't-empty', x: PAD_X, y: HEADER_H + 15 }, 'no columns'));
+    g.append(el('text', { class: 't-empty', x: PAD_X, y: HEADER_H + 15 }, tr('no columns')));
   }
   t.columns.forEach((c, i) => {
     const y = HEADER_H + i * ROW_H;
@@ -315,6 +318,9 @@ function renderLink(l) {
   return g;
 }
 
+const countsText = () =>
+  `${trn(state.model.tables.length, '{n} table', '{n} tables')} · ${trn(state.model.links.length, '{n} relationship', '{n} relationships')}`;
+
 function render() {
   computeSizes();
   applyView();
@@ -322,8 +328,7 @@ function render() {
   linksLayer.replaceChildren(...state.model.links.map(renderLink).filter(Boolean));
   erdScripts?.render(scriptLinksLayer, scriptsLayer);
   $('#empty-hint').hidden = state.model.tables.length > 0;
-  $('#status-count').textContent =
-    `${state.model.tables.length} tables · ${state.model.links.length} relationships`;
+  $('#status-count').textContent = countsText();
   $('[data-cmd="undo"]').disabled = !state.undo.length;
   $('[data-cmd="redo"]').disabled = !state.redo.length;
   $('[data-cmd="delete"]').disabled = !state.selection || state.selection.type === 'script';
@@ -385,11 +390,13 @@ function vectorHint(t, c) {
   const idx = vectorIndexSQL(t, c, { metric: 'cosine' });
   const sql = idx?.sql;
   return h('div', { class: 'sb-vector muted small' }, [
-    h('p', {}, `pgvector ${kind}: the length is the number of dimensions${c.length ? '' : ' (set it to match your embedding model)'}. Exporting SQL adds CREATE EXTENSION vector.`),
-    sql ? h('p', {}, ['Index for cosine (<=>) nearest-neighbour search:']) : null,
-    sql ? h('code', { class: 'sb-vector-sql', title: 'Click to copy', onclick: async () => {
+    h('p', {}, c.length
+      ? tr('pgvector {kind}: the length is the number of dimensions. Exporting SQL adds CREATE EXTENSION vector.', { kind })
+      : tr('pgvector {kind}: the length is the number of dimensions (set it to match your embedding model). Exporting SQL adds CREATE EXTENSION vector.', { kind })),
+    sql ? h('p', {}, [tr('Index for cosine (<=>) nearest-neighbour search:')]) : null,
+    sql ? h('code', { class: 'sb-vector-sql', title: tr('Click to copy'), onclick: async () => {
       await navigator.clipboard.writeText(sql);
-      status('Index SQL copied to clipboard');
+      status(tr('Index SQL copied to clipboard'));
     } }, sql) : null,
     idx?.note ? h('p', {}, idx.note) : null,
   ]);
@@ -413,7 +420,7 @@ function sidebarHeader(title, subtitle, color) {
   return h('header', { class: 'sb-header' }, [
     color !== undefined ? h('span', { class: 'sb-swatch', style: `background:${color || 'var(--erd-header-bg)'}` }) : null,
     h('div', { class: 'sb-heading' }, [h('h3', {}, title), h('div', { class: 'muted' }, subtitle)]),
-    h('button', { class: 'sb-close', icon: 'close', title: 'Close (Esc)', onclick: () => closeSidebar() }),
+    h('button', { class: 'sb-close', icon: 'close', title: tr('Close (Esc)'), onclick: () => closeSidebar() }),
   ]);
 }
 
@@ -434,7 +441,7 @@ function renderPanel() {
   if (sel?.type === 'table' && tableById(sel.id)) renderTablePanel(tableById(sel.id));
   else if (sel?.type === 'link' && linkById(sel.id)) renderLinkPanel(linkById(sel.id));
   else if (sel?.type === 'script' && erdScripts?.exists(sel.id))
-    panel.replaceChildren(sidebarHeader(erdScripts.title(sel.id), 'Script'), ...erdScripts.panel(sel.id));
+    panel.replaceChildren(sidebarHeader(erdScripts.title(sel.id), tr('Script')), ...erdScripts.panel(sel.id));
   else if (state.showTables) renderDiagramPanel();
   else visible = false;
   sidebar.hidden = !visible;
@@ -452,7 +459,7 @@ function renderPanel() {
 
 function renderDiagramPanel() {
   const m = state.model;
-  const filter = h('input', { type: 'search', placeholder: 'Filter tables…', 'data-key': 'table-filter', value: state.tableFilter ?? '' });
+  const filter = h('input', { type: 'search', placeholder: tr('Filter tables…'), 'data-key': 'table-filter', value: state.tableFilter ?? '' });
   const list = h('ul', { class: 'list' });
   const fill = () => {
     const q = filter.value.trim().toLowerCase();
@@ -465,14 +472,14 @@ function renderDiagramPanel() {
           h('li', { class: 'clickable', onclick: () => { select({ type: 'table', id: t.id }); centerOn(t); } }, [
             h('span', { class: 'sb-swatch small', style: `background:${t.color || 'var(--erd-header-bg)'}` }),
             h('span', { class: 'grow' }, fullName(t)),
-            h('span', { class: 'muted' }, `${t.columns.length} cols`),
+            h('span', { class: 'muted' }, trn(t.columns.length, '{n} col', '{n} cols')),
           ]))
-      : [h('li', { class: 'muted' }, m.tables.length ? 'No matching tables.' : 'No tables yet.')]));
+      : [h('li', { class: 'muted' }, m.tables.length ? tr('No matching tables.') : tr('No tables yet.'))]));
   };
   filter.addEventListener('input', fill);
   fill();
   panel.replaceChildren(
-    sidebarHeader('Tables', `${m.tables.length} tables · ${m.links.length} relationships`),
+    sidebarHeader(tr('Tables'), countsText()),
     h('div', { class: 'sb-pad' }, [filter, list]),
   );
 }
@@ -488,56 +495,56 @@ function renderTablePanel(t) {
 
   const props = [
     h('div', { class: 'sb-grid' }, [
-      field('Name', Object.assign(bound(t, 'name', 'table-name'), { id: 'table-name' })),
-      field('Schema', bound(t, 'schema', 'table-schema')),
+      field(tr('Name'), Object.assign(bound(t, 'name', 'table-name'), { id: 'table-name' })),
+      field(tr('Schema'), bound(t, 'schema', 'table-schema')),
     ]),
-    field('Comment', boundText(t, 'description', 'table-comment')),
-    field('Note', boundText(t, 'note', 'table-note')),
+    field(tr('Comment'), boundText(t, 'description', 'table-comment')),
+    field(tr('Note'), boundText(t, 'note', 'table-note')),
     h('div', { class: 'sb-inline' }, [
-      h('span', { class: 'muted' }, 'Header color'),
+      h('span', { class: 'muted' }, tr('Header color')),
       colorInput,
-      t.color ? h('button', { icon: 'reset', onclick: () => commit(() => (t.color = null)) }, 'Reset') : null,
+      t.color ? h('button', { icon: 'reset', onclick: () => commit(() => (t.color = null)) }, tr('Reset')) : null,
     ]),
     h('dl', { class: 'sb-facts' }, [
-      h('dt', {}, 'Primary key'), h('dd', {}, pk.length ? pk.join(', ') : '—'),
+      h('dt', {}, tr('Primary key')), h('dd', {}, pk.length ? pk.join(', ') : '—'),
     ]),
   ];
 
   const columns = h('ul', { class: 'sb-cols' }, t.columns.map((c, i) => columnItem(t, c, i, fks)));
   const relations = [
-    h('div', { class: 'sb-sub' }, 'References'),
+    h('div', { class: 'sb-sub' }, tr('References')),
     outgoing.length
       ? h('ul', { class: 'list' }, outgoing.map((l) => linkItem(l, 'out')))
-      : h('p', { class: 'muted small' }, 'No foreign keys.'),
-    h('div', { class: 'sb-sub' }, 'Referenced by'),
+      : h('p', { class: 'muted small' }, tr('No foreign keys.')),
+    h('div', { class: 'sb-sub' }, tr('Referenced by')),
     incoming.length
       ? h('ul', { class: 'list' }, incoming.map((l) => linkItem(l, 'in')))
-      : h('p', { class: 'muted small' }, 'Not referenced.'),
+      : h('p', { class: 'muted small' }, tr('Not referenced.')),
     h('div', { class: 'actions' }, [
-      h('button', { icon: 'plus', onclick: () => openLinkDialog({ localTable: t.id }) }, 'Foreign key'),
+      h('button', { icon: 'plus', onclick: () => openLinkDialog({ localTable: t.id }) }, tr('Foreign key')),
     ]),
   ];
 
   const subtitle = [
     t.schema || 'public',
-    `${t.columns.length} column${t.columns.length === 1 ? '' : 's'}`,
+    trn(t.columns.length, '{n} column', '{n} columns'),
     outgoing.length ? `${outgoing.length} FK` : null,
   ].filter(Boolean).join(' · ');
 
   panel.replaceChildren(
     sidebarHeader(t.name, subtitle, t.color),
-    section('props', 'Properties', null, props),
-    section('columns', 'Columns', t.columns.length, [
-      t.columns.length ? columns : h('p', { class: 'muted small' }, 'No columns yet.'),
+    section('props', tr('Properties'), null, props),
+    section('columns', tr('Columns'), t.columns.length, [
+      t.columns.length ? columns : h('p', { class: 'muted small' }, tr('No columns yet.')),
     ], h('button', {
-      class: 'sb-add', icon: 'plus', title: 'Add column',
+      class: 'sb-add', icon: 'plus', title: tr('Add column'),
       onclick: (e) => { e.preventDefault(); addColumn(t); },
-    }, 'Add')),
-    section('relations', 'Relationships', outgoing.length + incoming.length, relations),
+    }, tr('Add'))),
+    section('relations', tr('Relationships'), outgoing.length + incoming.length, relations),
     tableScriptsSection(t),
     h('div', { class: 'sb-footer' }, [
-      h('button', { icon: 'toggle-tables', onclick: () => dataBrowser.open(tableKey(t)), title: 'Open the rows of this table in a data tab' }, 'Browse data'),
-      h('button', { class: 'danger', icon: 'delete', onclick: deleteSelection }, 'Delete table'),
+      h('button', { icon: 'toggle-tables', onclick: () => dataBrowser.open(tableKey(t)), title: tr('Open the rows of this table in a data tab') }, tr('Browse data')),
+      h('button', { class: 'danger', icon: 'delete', onclick: deleteSelection }, tr('Delete table')),
     ]),
   );
 }
@@ -547,13 +554,13 @@ function tableScriptsSection(t) {
   const list = erdScripts?.forTable(t) ?? [];
   if (!list.length) return null;
   const badge = (run) => {
-    if (!run) return h('span', { class: 'flag' }, 'not run');
+    if (!run) return h('span', { class: 'flag' }, tr('not run'));
     const fail = run.status === 'error' || (run.validations && run.passed < run.validations);
-    return h('span', { class: `flag ${fail ? 'fail' : 'pass'}` }, fail ? 'FAIL' : 'PASS');
+    return h('span', { class: `flag ${fail ? 'fail' : 'pass'}` }, fail ? tr('FAIL') : tr('PASS'));
   };
-  return section('scripts', 'Scripts', list.length, [
+  return section('scripts', tr('Scripts'), list.length, [
     h('ul', { class: 'list' }, list.map(({ script, run, relation }) =>
-      h('li', { class: 'clickable', title: `${script.path}\nClick to open`, onclick: () => erdScripts.open(script.path) }, [
+      h('li', { class: 'clickable', title: `${script.path}\n${tr('Click to open')}`, onclick: () => erdScripts.open(script.path) }, [
         h('span', { class: 'grow' }, [h('span', { class: 'muted' }, `${relation} · `), script.name]),
         badge(run),
       ]))),
@@ -564,8 +571,8 @@ function tableScriptsSection(t) {
 function columnItem(t, c, i, fks) {
   const open = state.expandedCol === c.attnum;
   const badges = [];
-  if (c.pk) badges.push(h('span', { class: 'badge pk', title: 'Primary key' }, iconElement('pk')));
-  if (fks.has(c.attnum)) badges.push(h('span', { class: 'badge fk', title: 'Foreign key' }, iconElement('fk')));
+  if (c.pk) badges.push(h('span', { class: 'badge pk', title: tr('Primary key') }, iconElement('pk')));
+  if (fks.has(c.attnum)) badges.push(h('span', { class: 'badge fk', title: tr('Foreign key') }, iconElement('fk')));
   const flags = [];
   if (c.notNull || c.pk) flags.push(h('span', { class: 'flag', title: 'NOT NULL' }, 'NN'));
   if (c.default) flags.push(h('span', { class: 'flag def', title: `DEFAULT ${c.default}` }, `= ${c.default}`));
@@ -574,7 +581,7 @@ function columnItem(t, c, i, fks) {
     class: 'sb-col-row',
     role: 'button',
     tabindex: 0,
-    title: open ? 'Collapse' : 'Edit column',
+    title: open ? tr('Collapse') : tr('Edit column'),
     onclick: () => toggleColumn(c.attnum),
     onkeydown: (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleColumn(c.attnum); }
@@ -612,8 +619,8 @@ function columnEditor(t, c, i) {
   });
   return h('div', { class: 'sb-col-editor' }, [
     h('div', { class: 'sb-grid' }, [
-      field('Name', bound(c, 'name', 'col-name')),
-      field('Type', bound(c, 'type', 'col-type', {
+      field(tr('Name'), bound(c, 'name', 'col-name')),
+      field(tr('Type'), bound(c, 'type', 'col-type', {
         list: 'pg-types',
         after: (v) => {
           if (!SIZED_TYPE.test(String(v).trim())) c.length = c.precision = null;
@@ -621,20 +628,20 @@ function columnEditor(t, c, i) {
       })),
     ]),
     h('div', { class: 'sb-grid' }, [
-      field(vectorKind(c.type) ? 'Dimensions' : 'Length / precision', bound(c, 'length', 'col-length', { type: 'number' })),
-      field('Scale', bound(c, 'precision', 'col-scale', { type: 'number' })),
+      field(vectorKind(c.type) ? tr('Dimensions') : tr('Length / precision'), bound(c, 'length', 'col-length', { type: 'number' })),
+      field(tr('Scale'), bound(c, 'precision', 'col-scale', { type: 'number' })),
     ]),
     vectorHint(t, c),
-    field('Default', bound(c, 'default', 'col-default', { placeholder: 'e.g. now() or \'text\'' })),
+    field(tr('Default'), bound(c, 'default', 'col-default', { placeholder: tr('e.g. now() or \'text\'') })),
     h('div', { class: 'sb-inline' }, [
       check('notNull', 'NOT NULL', 'col-nn'),
-      check('pk', 'Primary key', 'col-pk'),
+      check('pk', tr('Primary key'), 'col-pk'),
     ]),
     h('div', { class: 'sb-inline end' }, [
-      h('button', { icon: 'up', title: 'Move up', disabled: i === 0, onclick: () => move(-1) }),
-      h('button', { icon: 'down', title: 'Move down', disabled: i === t.columns.length - 1, onclick: () => move(1) }),
+      h('button', { icon: 'up', title: tr('Move up'), disabled: i === 0, onclick: () => move(-1) }),
+      h('button', { icon: 'down', title: tr('Move down'), disabled: i === t.columns.length - 1, onclick: () => move(1) }),
       h('span', { class: 'grow' }),
-      h('button', { class: 'danger', icon: 'delete', onclick: () => deleteColumn(t, c) }, 'Delete column'),
+      h('button', { class: 'danger', icon: 'delete', onclick: () => deleteColumn(t, c) }, tr('Delete column')),
     ]),
   ]);
 }
@@ -645,12 +652,12 @@ function linkItem(l, dir) {
   const text = dir === 'out'
     ? `${colOf(local, l.localCol)?.name} → ${fullName(ref)}.${colOf(ref, l.refCol)?.name}`
     : `${fullName(local)}.${colOf(local, l.localCol)?.name} → ${colOf(ref, l.refCol)?.name}`;
-  return h('li', { class: 'clickable', title: 'Show relationship', onclick: () => select({ type: 'link', id: l.id }) }, [
+  return h('li', { class: 'clickable', title: tr('Show relationship'), onclick: () => select({ type: 'link', id: l.id }) }, [
     h('code', { class: 'grow' }, text),
     h('button', {
       class: 'danger',
       icon: 'close',
-      title: 'Delete relationship',
+      title: tr('Delete relationship'),
       onclick: (e) => { e.stopPropagation(); commit(() => removeLinks((x) => x.id === l.id)); },
     }),
   ]);
@@ -660,36 +667,36 @@ function renderLinkPanel(l) {
   const local = tableById(l.localTable);
   const ref = tableById(l.refTable);
   const typeSel = h('select', { 'data-key': 'link-type' }, [
-    h('option', { value: 'onetomany' }, 'One to many'),
-    h('option', { value: 'onetoone' }, 'One to one'),
+    h('option', { value: 'onetomany' }, tr('One to many')),
+    h('option', { value: 'onetoone' }, tr('One to one')),
   ]);
   typeSel.value = l.type === 'onetoone' ? 'onetoone' : 'onetomany';
   typeSel.addEventListener('change', () => commitField(() => {
     for (const x of state.model.links) if (x.group === l.group) x.type = typeSel.value;
   }));
 
-  const fkName = h('input', { value: l.fkName ?? '', placeholder: '(unnamed)', 'data-key': 'link-name' });
+  const fkName = h('input', { value: l.fkName ?? '', placeholder: tr('(unnamed)'), 'data-key': 'link-name' });
   fkName.addEventListener('change', () => commitField(() => {
     for (const x of state.model.links) if (x.group === l.group) x.fkName = fkName.value;
   }));
 
   panel.replaceChildren(
-    sidebarHeader('Relationship', l.fkName || 'Foreign key'),
-    section('link', 'Properties', null, [
+    sidebarHeader(tr('Relationship'), l.fkName || tr('Foreign key')),
+    section('link', tr('Properties'), null, [
       h('p', {}, [
         h('code', {}, `${fullName(local)}.${colOf(local, l.localCol)?.name}`),
-        ' references ',
+        ` ${tr('references')} `,
         h('code', {}, `${fullName(ref)}.${colOf(ref, l.refCol)?.name}`),
       ]),
-      field('Constraint name', fkName),
-      field('Cardinality', typeSel),
+      field(tr('Constraint name'), fkName),
+      field(tr('Cardinality'), typeSel),
       h('div', { class: 'actions' }, [
-        h('button', { icon: 'go', onclick: () => select({ type: 'table', id: local.id }) }, `Go to ${local.name}`),
-        h('button', { icon: 'go', onclick: () => select({ type: 'table', id: ref.id }) }, `Go to ${ref.name}`),
+        h('button', { icon: 'go', onclick: () => select({ type: 'table', id: local.id }) }, tr('Go to {name}', { name: local.name })),
+        h('button', { icon: 'go', onclick: () => select({ type: 'table', id: ref.id }) }, tr('Go to {name}', { name: ref.name })),
       ]),
     ]),
     h('div', { class: 'sb-footer' }, [
-      h('button', { class: 'danger', icon: 'delete', onclick: deleteSelection }, 'Delete relationship'),
+      h('button', { class: 'danger', icon: 'delete', onclick: deleteSelection }, tr('Delete relationship')),
     ]),
   );
 }
@@ -827,13 +834,13 @@ function refreshLinkDialogColumns() {
   const refCol = colOf(ref, Number(f.refCol.value));
   const suggested = ref && refCol ? `${ref.name}_${refCol.name}` : '';
   const localOpts = (local?.columns ?? []).map((c) => [String(c.attnum), `${c.name} (${formatType(c)})`]);
-  localOpts.unshift(['new', suggested ? `+ new column "${suggested}"` : '+ new column']);
+  localOpts.unshift(['new', suggested ? tr('+ new column "{name}"', { name: suggested }) : tr('+ new column')]);
   const match = local?.columns.find((c) => c.name === suggested);
   fillSelect(f.localCol, localOpts, match ? String(match.attnum) : f.localCol.value || 'new');
 }
 
 function openLinkDialog({ localTable } = {}) {
-  if (!state.model.tables.length) return status('Add a table first.');
+  if (!state.model.tables.length) return status(tr('Add a table first.'));
   const f = linkForm.elements;
   const opts = [...state.model.tables]
     .sort((a, b) => fullName(a).localeCompare(fullName(b)))
@@ -1068,9 +1075,9 @@ window.addEventListener('resize', applyView);
 async function confirmDiscard() {
   if (!state.dirty) return true;
   const choice = await host.confirm({
-    message: 'Do you want to save the changes to this diagram?',
-    detail: "Your changes will be lost if you don't save them.",
-    buttons: ['Save', "Don't Save", 'Cancel'],
+    message: tr('Do you want to save the changes to this diagram?'),
+    detail: tr("Your changes will be lost if you don't save them."),
+    buttons: [tr('Save'), tr("Don't Save"), tr('Cancel')],
   });
   if (choice === 2) return false;
   if (choice === 0) return save();
@@ -1097,9 +1104,9 @@ function openText(text, filePath) {
   try {
     const model = parsePgerd(text);
     loadModel(model, filePath);
-    status(`Opened ${model.tables.length} tables from ${filePath ? basename(filePath) : 'file'}`);
+    status(trn(model.tables.length, 'Opened {n} table from {file}', 'Opened {n} tables from {file}', { file: filePath ? basename(filePath) : tr('file') }));
   } catch (err) {
-    host.confirm({ message: 'Could not open file', detail: err.message, buttons: ['OK'] });
+    host.confirm({ message: tr('Could not open file'), detail: err.message, buttons: [tr('OK')] });
   }
 }
 
@@ -1118,7 +1125,7 @@ async function save(saveAs = false) {
   state.filePath = target;
   setDirty(false);
   if (moved) emit('file');
-  status(`Saved ${basename(target)}`);
+  status(tr('Saved {file}', { file: basename(target) }));
   return true;
 }
 
@@ -1131,7 +1138,7 @@ async function exportSQL() {
     defaultName: `${exportBase()}.sql`,
     kind: 'sql',
   });
-  if (target) status(`Exported ${basename(target)}`);
+  if (target) status(tr('Exported {file}', { file: basename(target) }));
 }
 
 function buildExportSVG() {
@@ -1154,14 +1161,14 @@ function buildExportSVG() {
 }
 
 async function exportSVG() {
-  if (!state.model.tables.length) return status('Nothing to export.');
+  if (!state.model.tables.length) return status(tr('Nothing to export.'));
   const { text } = buildExportSVG();
   const target = await host.saveFile({ text, saveAs: true, defaultName: `${exportBase()}.svg`, kind: 'svg' });
-  if (target) status(`Exported ${basename(target)}`);
+  if (target) status(tr('Exported {file}', { file: basename(target) }));
 }
 
 async function exportPNG() {
-  if (!state.model.tables.length) return status('Nothing to export.');
+  if (!state.model.tables.length) return status(tr('Nothing to export.'));
   const { text, width, height } = buildExportSVG();
   const scale = Math.min(2, 16000 / Math.max(width, height));
   const img = new Image();
@@ -1175,8 +1182,8 @@ async function exportPNG() {
   ctx.drawImage(img, 0, 0, width, height);
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
   const data = new Uint8Array(await blob.arrayBuffer());
-  const target = await host.saveBinary({ defaultName: `${exportBase()}.png`, data, name: 'PNG Image', extensions: ['png'] });
-  if (target) status(`Exported ${basename(target)}`);
+  const target = await host.saveBinary({ defaultName: `${exportBase()}.png`, data, name: tr('PNG Image'), extensions: ['png'] });
+  if (target) status(tr('Exported {file}', { file: basename(target) }));
 }
 
 // ---------------------------------------------------------------- commands
@@ -1230,7 +1237,7 @@ const commands = {
     state.snap = !state.snap;
     savePref('pgsql-erd.snap', state.snap);
     applyView();
-    status(state.snap ? 'Snap to grid on' : 'Snap to grid off');
+    status(state.snap ? tr('Snap to grid on') : tr('Snap to grid off'));
   },
   'toggle-sql'() {
     state.showSql = !state.showSql;
@@ -1306,7 +1313,7 @@ tabs.onShow((name) => {
 
 function runCommand(name) {
   const fn = commands[name];
-  if (fn) Promise.resolve(fn()).catch((err) => status(`Error: ${err.message}`));
+  if (fn) Promise.resolve(fn()).catch((err) => status(tr('Error: {message}', { message: err.message })));
 }
 
 document.addEventListener('click', (e) => {
@@ -1325,7 +1332,7 @@ $('#grid-size').addEventListener('change', (e) => {
 
 $('#sql-copy').addEventListener('click', async () => {
   await navigator.clipboard.writeText($('#sql-text').textContent);
-  status('SQL copied to clipboard');
+  status(tr('SQL copied to clipboard'));
 });
 
 // Keys typed in fields, the script editor or the assistant are not diagram shortcuts.

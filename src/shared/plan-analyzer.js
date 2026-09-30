@@ -7,6 +7,7 @@
 
 import { allTables, findTable } from './schema-model.js';
 import { vectorKind, vectorIndexSQL, vectorIndexesOn, metricOfOperator, distanceOf } from './pgvector.js';
+import { tr, formatNumber } from './i18n.js';
 
 // plan: the object inside EXPLAIN's JSON array ({ Plan, Planning Time, … }).
 export function flattenPlan(plan) {
@@ -92,16 +93,29 @@ function vectorSortHints(flat, n, tableOf) {
         out.push({
           severity: 'info',
           node: n.id,
-          message: `Nearest-neighbour search on ${t.id}.${c.name} sorts every row although ${matching.name} (${matching.method}) could order by ${op}. The planner uses it only for ORDER BY ${c.name} ${op} … LIMIT n, and may skip it on small tables.`,
+          message: tr('Nearest-neighbour search on {column} sorts every row although {index} ({method}) could order by {op}. The planner uses it only for ORDER BY {name} {op} … LIMIT n, and may skip it on small tables.', {
+            column: `${t.id}.${c.name}`,
+            index: matching.name,
+            method: matching.method,
+            op,
+            name: c.name,
+          }),
         });
         continue;
       }
       const idx = vectorIndexSQL(t, c, { metric });
-      const other = indexes.length ? ` ${indexes.map((i) => `${i.name} is for ${i.metric ? distanceOf(i.metric).operator : 'another operator'}`).join('; ')}, not ${op}.` : '';
+      const other = indexes.length
+        ? ` ${tr('{indexes}, not {op}.', {
+            indexes: indexes.map((i) => tr('{index} is for {operator}', { index: i.name, operator: i.metric ? distanceOf(i.metric).operator : tr('another operator') })).join('; '),
+            op,
+          })}`
+        : '';
       out.push({
         severity: 'warning',
         node: n.id,
-        message: `Nearest-neighbour search on ${t.id}.${c.name} (${distanceOf(metric).label}, ${op}) compares every row.${other}${idx ? ` An HNSW index turns it into an index scan.${idx.note ? ` ${idx.note}` : ''}` : ''}`,
+        message: tr('Nearest-neighbour search on {column} ({distance}, {op}) compares every row.', { column: `${t.id}.${c.name}`, distance: tr(distanceOf(metric).label), op }) +
+          other +
+          (idx ? ` ${tr('An HNSW index turns it into an index scan.')}${idx.note ? ` ${idx.note}` : ''}` : ''),
         sql: idx?.sql,
       });
     }
@@ -123,7 +137,8 @@ export function analyzePlan(flat, schema = null) {
       out.push({
         severity: 'warning',
         node: n.id,
-        message: `Sequential scan on ${n.relation} discards ${n.rowsRemoved.toLocaleString()} rows to return ${(rows ?? 0).toLocaleString()}.${cols.length ? ` An index on ${cols.join(', ')} may help.` : ''}`,
+        message: tr('Sequential scan on {table} discards {removed} rows to return {rows}.', { table: n.relation, removed: formatNumber(n.rowsRemoved), rows: formatNumber(rows ?? 0) }) +
+          (cols.length ? ` ${tr('An index on {columns} may help.', { columns: cols.join(', ') })}` : ''),
         sql: cols.length && t ? `CREATE INDEX ON "${t.schema}"."${t.name}" (${cols.map((c) => `"${c}"`).join(', ')});` : undefined,
       });
     }
@@ -134,15 +149,19 @@ export function analyzePlan(flat, schema = null) {
         out.push({
           severity: 'info',
           node: n.id,
-          message: `${n.type}${n.relation ? ` on ${n.relation}` : ''}: estimated ${n.planRows.toLocaleString()} rows, got ${Math.round(perLoop).toLocaleString()}${n.loops > 1 ? ' per loop' : ''}. Statistics may be stale; try ANALYZE${n.relation ? ` ${n.relation}` : ''}.`,
+          message: `${n.type}${n.relation ? ` ${tr('on {table}', { table: n.relation })}` : ''}: ` +
+            (n.loops > 1
+              ? tr('estimated {est} rows, got {rows} per loop.', { est: formatNumber(n.planRows), rows: formatNumber(Math.round(perLoop)) })
+              : tr('estimated {est} rows, got {rows}.', { est: formatNumber(n.planRows), rows: formatNumber(Math.round(perLoop)) })) +
+            ` ${tr('Statistics may be stale; try {sql}.', { sql: `ANALYZE${n.relation ? ` ${n.relation}` : ''}` })}`,
           sql: n.relation ? `ANALYZE ${n.relation};` : undefined,
         });
     }
     if (n.sortSpace === 'Disk' || /external/i.test(n.sortMethod ?? ''))
-      out.push({ severity: 'warning', node: n.id, message: `Sort spilled to disk (${n.sortMethod}). Increasing work_mem or an index on ${n.sortKey?.join(', ') ?? 'the sort key'} may help.` });
-    if (n.hashBatches > 1) out.push({ severity: 'warning', node: n.id, message: `Hash used ${n.hashBatches} batches (spilled to disk). Consider a higher work_mem.` });
+      out.push({ severity: 'warning', node: n.id, message: tr('Sort spilled to disk ({method}). Increasing work_mem or an index on {key} may help.', { method: n.sortMethod, key: n.sortKey?.join(', ') ?? tr('the sort key') }) });
+    if (n.hashBatches > 1) out.push({ severity: 'warning', node: n.id, message: tr('Hash used {n} batches (spilled to disk). Consider a higher work_mem.', { n: n.hashBatches }) });
     if (n.type === 'Nested Loop' && (flat.nodes.find((c) => c.parent === n.id && c.loops > 1000)))
-      out.push({ severity: 'info', node: n.id, message: 'Nested loop runs its inner side more than 1,000 times; check that the join columns are indexed.' });
+      out.push({ severity: 'info', node: n.id, message: tr('Nested loop runs its inner side more than 1,000 times; check that the join columns are indexed.') });
   }
   // Foreign keys without an index, for tables in the plan.
   if (schema) {
@@ -154,7 +173,7 @@ export function analyzePlan(flat, schema = null) {
         out.push({
           severity: 'info',
           node: null,
-          message: `Foreign key ${t.id}(${fk.columns.join(', ')}) → ${fk.refTable} has no index; joins and deletes on ${fk.refTable} scan ${t.name}.`,
+          message: tr('Foreign key {fk} → {ref} has no index; joins and deletes on {ref} scan {table}.', { fk: `${t.id}(${fk.columns.join(', ')})`, ref: fk.refTable, table: t.name }),
           sql: `CREATE INDEX ON "${t.schema}"."${t.name}" (${fk.columns.map((c) => `"${c}"`).join(', ')});`,
         });
       }

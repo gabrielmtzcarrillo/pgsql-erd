@@ -7,28 +7,30 @@
 import { schemaFromErd } from '../shared/schema-model.js';
 import { codeBlocks, DEFAULT_CONTEXT_OPTIONS } from '../shared/context-builder.js';
 import { AI_PERMISSION_LABELS, DEFAULT_AI_PERMISSIONS, normalizeAiPermissions } from '../shared/permissions.js';
+import { SCRIPT_TYPES } from '../shared/scripts.js';
 import { decorateButton, decorateButtons } from './icons.js';
+import { tr, trn } from '../shared/i18n.js';
 
 const $ = (sel) => document.querySelector(sel);
 const PREFS_KEY = 'pgsql-erd.ai';
 
 const CONTEXT_LABELS = {
-  selectedTables: 'Selected / mentioned tables',
-  relatedTables: 'Related tables',
-  relationships: 'Relationships',
-  constraints: 'Constraints & indexes',
-  entireSchema: 'Entire schema',
-  currentScript: 'Current script',
-  validationErrors: 'Validation errors',
-  rowSamples: 'Row samples (data)',
+  selectedTables: tr('Selected / mentioned tables'),
+  relatedTables: tr('Related tables'),
+  relationships: tr('Relationships'),
+  constraints: tr('Constraints & indexes'),
+  entireSchema: tr('Entire schema'),
+  currentScript: tr('Current script'),
+  validationErrors: tr('Validation errors'),
+  rowSamples: tr('Row samples (data)'),
 };
 
 const QUICK = [
-  ['Explain', 'Explain what the selected tables store and how they relate.'],
-  ['Validator', 'Create a validator that checks '],
-  ['Test data', 'Create a generator that inserts 50 realistic rows into '],
-  ['Review schema', 'Review the schema: find missing indexes on foreign keys, suspicious nullable columns and naming inconsistencies.'],
-  ['Fix script', 'The current script has problems. Fix it and explain the changes.'],
+  [tr('Explain'), tr('Explain what the selected tables store and how they relate.')],
+  [tr('Validator'), tr('Create a validator that checks ')],
+  [tr('Test data'), tr('Create a generator that inserts 50 realistic rows into ')],
+  [tr('Review schema'), tr('Review the schema: find missing indexes on foreign keys, suspicious nullable columns and naming inconsistencies.')],
+  [tr('Fix script'), tr('The current script has problems. Fix it and explain the changes.')],
 ];
 
 export function setupAssistant(ctx, workbench) {
@@ -97,7 +99,7 @@ export function setupAssistant(ctx, workbench) {
       status(err.message);
     }
     if (!provider() && providers.length) prefs.provider = providers[0].id;
-    providerSelect.replaceChildren(...providers.map((p) => h('option', { value: p.id }, `${p.name}${p.local ? '' : ' (remote)'}`)));
+    providerSelect.replaceChildren(...providers.map((p) => h('option', { value: p.id }, `${p.name}${p.local ? '' : ` ${tr('(remote)')}`}`)));
     providerSelect.value = prefs.provider;
     modelInput.value = prefs.model;
     renderSharing();
@@ -114,7 +116,7 @@ export function setupAssistant(ctx, workbench) {
         modelInput.value = prefs.model;
         savePrefs();
       }
-      if (!quiet) status(`${models.length} models on ${provider().name}`);
+      if (!quiet) status(trn(models.length, '{n} model on {provider}', '{n} models on {provider}', { provider: provider().name }));
     } catch (err) {
       list.replaceChildren();
       if (!quiet) status(`${provider().name}: ${err.message}`);
@@ -162,14 +164,14 @@ export function setupAssistant(ctx, workbench) {
         savePrefs();
         renderSharing();
       });
-      return h('label', { class: 'check', title: locked ? 'Not available to the assistant: it writes scripts, you run them.' : '' }, [cb, label]);
+      return h('label', { class: 'check', title: locked ? tr('Not available to the assistant: it writes scripts, you run them.') : '' }, [cb, tr(label)]);
     });
     const tools = h('input', { type: 'checkbox', checked: prefs.useTools });
     tools.addEventListener('change', () => {
       prefs.useTools = tools.checked;
       savePrefs();
     });
-    $('#ai-perms').replaceChildren(...perms, h('label', { class: 'check', title: 'Lets the model look up tables, check scripts and propose them' }, [tools, 'Use tools']));
+    $('#ai-perms').replaceChildren(...perms, h('label', { class: 'check', title: tr('Lets the model look up tables, check scripts and propose them') }, [tools, tr('Use tools')]));
   }
 
   // Row data may reach the model through samples, queries or validator results.
@@ -180,14 +182,14 @@ export function setupAssistant(ctx, workbench) {
     const p = provider();
     const el = $('#ai-sharing');
     const rows = mayShareRows();
-    const where = p ? (p.local ? 'local' : 'remote') : 'no provider';
-    el.textContent = `${where} · ${rows ? 'schema + row data' : 'schema only'}`;
+    const where = p ? (p.local ? tr('local') : tr('remote')) : tr('no provider');
+    el.textContent = `${where} · ${rows ? tr('schema + row data') : tr('schema only')}`;
     el.className = `ai-sharing ${rows ? (p?.local ? 'data' : 'data remote') : ''}`;
     el.title = rows
       ? p?.local
-        ? 'Row data may be sent to this local model.'
-        : `Row data may be sent to ${p?.baseUrl}. You will be asked to confirm.`
-      : 'Only the schema (table and column definitions) is sent.';
+        ? tr('Row data may be sent to this local model.')
+        : tr('Row data may be sent to {url}. You will be asked to confirm.', { url: p?.baseUrl })
+      : tr('Only the schema (table and column definitions) is sent.');
   }
 
   $('#ai-quick').replaceChildren(
@@ -209,8 +211,8 @@ export function setupAssistant(ctx, workbench) {
     if (conversation.length) return;
     log.replaceChildren(
       h('div', { class: 'ai-empty' }, [
-        h('strong', {}, 'Ask about your database or describe a script.'),
-        h('p', {}, 'The assistant sees the tables you select in the diagram or name in your question, and writes TypeScript scripts you review, dry-run and commit yourself.'),
+        h('strong', {}, tr('Ask about your database or describe a script.')),
+        h('p', {}, tr('The assistant sees the tables you select in the diagram or name in your question, and writes TypeScript scripts you review, dry-run and commit yourself.')),
       ])
     );
   }
@@ -234,7 +236,7 @@ export function setupAssistant(ctx, workbench) {
       if (block && part.startsWith('```')) el.append(codeCard(block, meta));
       else if (part.trim()) el.append(prose(part));
     }
-    if (meta.rowData) el.append(h('div', { class: 'ai-meta data' }, 'This answer used row data.'));
+    if (meta.rowData) el.append(h('div', { class: 'ai-meta data' }, tr('This answer used row data.')));
   }
 
   function prose(text) {
@@ -254,8 +256,8 @@ export function setupAssistant(ctx, workbench) {
 
   function guessType(prompt, code) {
     const t = `${prompt} ${code}`;
-    if (/validate\(/.test(code) || /validat/i.test(prompt)) return 'validator';
-    if (/seed\.fill|faker\.|insert/i.test(code) && /(generat|test data|fake|synthetic|datos de prueba)/i.test(t)) return 'generator';
+    if (/validate\(/.test(code) || /validat|validador/i.test(prompt)) return 'validator';
+    if (/seed\.fill|faker\.|insert/i.test(code) && /(generat|generador|test data|fake|synthetic|datos de prueba|ficticios)/i.test(t)) return 'generator';
     if (/\.insert(Many)?\(/.test(code)) return 'seeder';
     if (/ALTER|CREATE|DROP/i.test(code) && /db\.query/.test(code)) return 'migration';
     return 'query';
@@ -268,26 +270,26 @@ export function setupAssistant(ctx, workbench) {
     const actions = [];
     if (isScript) {
       actions.push(
-        btn('New script', 'script-new', () => {
+        btn(tr('New script'), 'script-new', () => {
           const type = guessType(meta.prompt ?? '', block.code);
           workbench.newFromCode({ name: suggestName(meta.prompt, type), type, source: block.code });
         }, 'primary'),
-        btn('Replace current', 'reset', () => workbench.replaceCode(block.code)),
-        btn('Insert', 'insert', () => workbench.insertCode(block.code))
+        btn(tr('Replace current'), 'reset', () => workbench.replaceCode(block.code)),
+        btn(tr('Insert'), 'insert', () => workbench.insertCode(block.code))
       );
     }
     if (block.lang === 'sql' || block.lang === 'postgresql' || block.lang === 'pgsql')
-      actions.push(btn('Open in Query tab', 'toggle-sql', () => ctx.openSql(block.code), 'primary'));
-    actions.push(btn('Copy', 'copy', async () => {
+      actions.push(btn(tr('Open in Query tab'), 'toggle-sql', () => ctx.openSql(block.code), 'primary'));
+    actions.push(btn(tr('Copy'), 'copy', async () => {
       await navigator.clipboard.writeText(block.code);
-      status('Copied');
+      status(tr('Copied'));
     }));
-    return h('div', { class: 'ai-code-card' }, [h('div', { class: 'ai-code-head' }, [h('span', { class: 'muted' }, block.lang || 'code'), h('span', { class: 'grow' }), ...actions]), pre]);
+    return h('div', { class: 'ai-code-card' }, [h('div', { class: 'ai-code-head' }, [h('span', { class: 'muted' }, block.lang || tr('code')), h('span', { class: 'grow' }), ...actions]), pre]);
   }
 
   function suggestName(prompt, type) {
     const words = String(prompt ?? '')
-      .replace(/^(please\s+)?(create|write|make|generate|build)\s+(a|an)?\s*/i, '')
+      .replace(/^(please\s+|por favor,?\s+)?(create|write|make|generate|build|crea|escribe|haz|genera|construye)\s+(a|an|un|una)?\s*/i, '')
       .split(/\s+/)
       .slice(0, 6)
       .join(' ');
@@ -296,17 +298,17 @@ export function setupAssistant(ctx, workbench) {
 
   function proposalCard(p) {
     const errs = (p.diagnostics ?? []).filter((d) => d.severity === 'error').length;
-    const check = errs ? h('span', { class: 'tag error' }, `${errs} type error${errs === 1 ? '' : 's'}`) : h('span', { class: 'tag ok' }, 'type-checks');
+    const check = errs ? h('span', { class: 'tag error' }, trn(errs, '{n} type error', '{n} type errors')) : h('span', { class: 'tag ok' }, tr('type-checks'));
     const open = p.action === 'create'
-      ? decorateButton(h('button', { type: 'button', class: 'primary', onclick: () => workbench.newFromCode(p) }, 'Open in editor'), 'script-new')
-      : decorateButton(h('button', { type: 'button', class: 'primary', onclick: () => workbench.replaceCode(p.source) }, 'Apply to current script'), 'ok');
+      ? decorateButton(h('button', { type: 'button', class: 'primary', onclick: () => workbench.newFromCode(p) }, tr('Open in editor')), 'script-new')
+      : decorateButton(h('button', { type: 'button', class: 'primary', onclick: () => workbench.replaceCode(p.source) }, tr('Apply to current script')), 'ok');
     return h('div', { class: 'ai-proposal' }, [
       h('div', { class: 'ai-proposal-head' }, [
-        h('strong', {}, p.action === 'create' ? `New ${p.type}: ${p.name}` : 'Change to the current script'),
+        h('strong', {}, p.action === 'create' ? `${tr('New script ({type}):', { type: tr(SCRIPT_TYPES[p.type]?.label ?? p.type).toLowerCase() })} ${p.name}` : tr('Change to the current script')),
         check,
       ]),
       p.description || p.summary ? h('div', { class: 'muted small' }, p.description || p.summary) : null,
-      h('details', {}, [h('summary', {}, 'Show code'), h('pre', { class: 'ai-code' }, p.source)]),
+      h('details', {}, [h('summary', {}, tr('Show code')), h('pre', { class: 'ai-code' }, p.source)]),
       h('div', { class: 'ai-proposal-actions' }, [open]),
     ]);
   }
@@ -317,7 +319,7 @@ export function setupAssistant(ctx, workbench) {
     switch (e.type) {
       case 'context':
         pending.meta.rowData = e.rowData;
-        $('#ai-context-info').textContent = `${e.tables.length ? `Context: ${e.tables.join(', ')}` : 'No tables in context'}${e.rowData ? ' · with row data' : ''}`;
+        $('#ai-context-info').textContent = `${e.tables.length ? `${tr('Context:')} ${e.tables.join(', ')}` : tr('No tables in context')}${e.rowData ? ` · ${tr('with row data')}` : ''}`;
         break;
       case 'token':
         pending.text += e.text;
@@ -359,14 +361,15 @@ export function setupAssistant(ctx, workbench) {
     if (!p) return openSettings();
     if (!prefs.model) {
       await loadModels({ quiet: true });
-      if (!prefs.model) return status('Choose a model first (type its name, or set up the provider).');
+      if (!prefs.model) return status(tr('Choose a model first (type its name, or set up the provider).'));
     }
     let shareRows = shareRowsConfirmed === p.id;
     if (mayShareRows() && !p.local && !shareRows) {
       const choice = await host.confirm({
-        message: `Share row data with ${p.name}?`,
-        detail: `${p.baseUrl} is a remote service. With the current settings the assistant may send rows from ${db.info()?.description ?? 'the database'} to it (samples, query results, validator output).\n\nChoose "Schema Only" to send table definitions only.`,
-        buttons: ['Share Row Data', 'Schema Only', 'Cancel'],
+        message: tr('Share row data with {provider}?', { provider: p.name }),
+        detail: tr('{url} is a remote service. With the current settings the assistant may send rows from {db} to it (samples, query results, validator output).', { url: p.baseUrl, db: db.info()?.description ?? tr('the database') }) +
+          `\n\n${tr('Choose "Schema Only" to send table definitions only.')}`,
+        buttons: [tr('Share Row Data'), tr('Schema Only'), tr('Cancel')],
       });
       if (choice === 2) return;
       shareRows = choice === 0;
@@ -402,7 +405,7 @@ export function setupAssistant(ctx, workbench) {
       });
       pending.stream.remove();
       const reply = h('div');
-      renderReply(reply, res.content || (pending.proposals.length ? '' : '(no answer)'), { ...pending.meta, rowData: res.rowData });
+      renderReply(reply, res.content || (pending.proposals.length ? '' : tr('(no answer)')), { ...pending.meta, rowData: res.rowData });
       el.append(reply);
       conversation.push({ role: 'user', content: prompt }, { role: 'assistant', content: res.content });
     } catch (err) {
@@ -447,7 +450,7 @@ export function setupAssistant(ctx, workbench) {
       ...providers.map((p) =>
         h('label', { class: `item${p.id === editing ? ' active' : ''}`, onclick: () => editProvider(p.id) }, [
           h('span', { class: 'grow' }, p.name),
-          h('span', { class: 'tag' }, `${p.type}${p.hasKey ? ' · key' : ''}${p.local ? '' : ' · remote'}`),
+          h('span', { class: 'tag' }, `${p.type}${p.hasKey ? ` · ${tr('key')}` : ''}${p.local ? '' : ` · ${tr('remote')}`}`),
         ])
       )
     );
@@ -462,13 +465,13 @@ export function setupAssistant(ctx, workbench) {
     f.type.value = p?.type ?? 'openai-compatible';
     f.baseUrl.value = p?.baseUrl ?? types[f.type.value]?.defaultUrl ?? '';
     f.apiKey.value = '';
-    f.apiKey.placeholder = p?.hasKey ? '•••••••• (stored — leave empty to keep)' : '(none)';
+    f.apiKey.placeholder = p?.hasKey ? `•••••••• ${tr('(stored — leave empty to keep)')}` : tr('(none)');
     f.clearKey.checked = false;
     f.clearKey.parentElement.hidden = !p?.hasKey;
     $('#ai-provider-delete').disabled = !p;
     $('#ai-provider-where').textContent = secureStorage
-      ? 'Keys are encrypted with the system credential store.'
-      : 'No system credential store is available: keys are kept in memory until the app quits.';
+      ? tr('Keys are encrypted with the system credential store.')
+      : tr('No system credential store is available: keys are kept in memory until the app quits.');
     setDialogStatus('');
     renderProviderList();
   }
@@ -501,17 +504,17 @@ export function setupAssistant(ctx, workbench) {
   $('#ai-provider-save').addEventListener('click', async () => {
     try {
       await saveProvider();
-      setDialogStatus('Saved', 'ok');
+      setDialogStatus(tr('Saved'), 'ok');
     } catch (err) {
       setDialogStatus(err.message, 'error');
     }
   });
   $('#ai-provider-test').addEventListener('click', async () => {
     try {
-      setDialogStatus('Connecting…');
+      setDialogStatus(tr('Connecting…'));
       const id = await saveProvider();
       const models = await call(host.ai.models, id);
-      setDialogStatus(`OK — ${models.length} model${models.length === 1 ? '' : 's'}: ${models.slice(0, 12).map((m) => m.id).join(', ')}${models.length > 12 ? ', …' : ''}`, 'ok');
+      setDialogStatus(`${tr('OK')} — ${trn(models.length, '{n} model', '{n} models')}: ${models.slice(0, 12).map((m) => m.id).join(', ')}${models.length > 12 ? ', …' : ''}`, 'ok');
     } catch (err) {
       setDialogStatus(err.message, 'error');
     }
@@ -519,7 +522,11 @@ export function setupAssistant(ctx, workbench) {
   $('#ai-provider-delete').addEventListener('click', async () => {
     const p = providers.find((x) => x.id === editing);
     if (!p) return;
-    const choice = await host.confirm({ message: `Delete the provider "${p.name}"?`, detail: 'Its stored API key is removed too.', buttons: ['Delete', 'Cancel'] });
+    const choice = await host.confirm({
+      message: tr('Delete the provider "{name}"?', { name: p.name }),
+      detail: tr('Its stored API key is removed too.'),
+      buttons: [tr('Delete'), tr('Cancel')],
+    });
     if (choice !== 0) return;
     await call(host.ai.deleteProvider, p.id);
     await loadProviders();
