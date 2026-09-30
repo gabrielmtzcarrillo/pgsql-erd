@@ -77,9 +77,11 @@ export function scriptLines(script, run) {
   return lines;
 }
 
-// titleWidth: measured width of the script name, so it isn't clipped (up to 360px).
-export const scriptSize = (lines, titleWidth = 0) => ({
-  width: Math.min(360, Math.max(SCRIPT_W, Math.ceil(titleWidth) + 44)),
+// titleWidth / lineWidth: measured widths of the script name and of the
+// widest line, so neither is clipped (up to 360px). Lines are longer in some
+// languages.
+export const scriptSize = (lines, titleWidth = 0, lineWidth = 0) => ({
+  width: Math.min(360, Math.max(SCRIPT_W, Math.ceil(titleWidth) + 44, Math.ceil(lineWidth) + 20)),
   height: SCRIPT_HEADER + lines.length * SCRIPT_ROW + PAD_BOTTOM,
 });
 

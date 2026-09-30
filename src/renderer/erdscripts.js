@@ -52,7 +52,8 @@ export function setupErdScripts(ctx) {
         const links = linkedTables(script, tables);
         const run = runs[script.path] ?? null;
         const lines = scriptLines(script, run);
-        return { script, run, links, lines, size: scriptSize(lines, ctx.measure(script.name, true)) };
+        const lineWidth = Math.max(0, ...lines.map((l) => ctx.measure(l.text, l.cls.includes('s-status'))));
+        return { script, run, links, lines, size: scriptSize(lines, ctx.measure(script.name, true), lineWidth) };
       })
       .filter((n) => n.links.length);
     const placed = placeScripts(

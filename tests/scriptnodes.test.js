@@ -36,6 +36,7 @@ test('box lines show the type and the last run', () => {
   assert.deepEqual(scriptSize(pass), { width: SCRIPT_W, height: 30 + 3 * 20 + 8 });
   assert.equal(scriptSize(pass, 250).width, 294);
   assert.equal(scriptSize(pass, 900).width, 360);
+  assert.equal(scriptSize(pass, 0, 250).width, 270);
   assert.equal(gen.at(-1)?.text.includes('checked'), false);
 });
 

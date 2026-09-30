@@ -541,7 +541,7 @@ function renderTablePanel(t) {
       onclick: (e) => { e.preventDefault(); addColumn(t); },
     }, tr('Add'))),
     section('relations', tr('Relationships'), outgoing.length + incoming.length, relations),
-    tableScriptsSection(t),
+    ...[tableScriptsSection(t)].filter(Boolean),
     h('div', { class: 'sb-footer' }, [
       h('button', { icon: 'toggle-tables', onclick: () => dataBrowser.open(tableKey(t)), title: tr('Open the rows of this table in a data tab') }, tr('Browse data')),
       h('button', { class: 'danger', icon: 'delete', onclick: deleteSelection }, tr('Delete table')),

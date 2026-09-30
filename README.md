@@ -1,5 +1,7 @@
 # pgsql-erd
 
+**English** · [Español](README-es.md)
+
 A desktop ERD (entity–relationship diagram) tool and database workbench for PostgreSQL, built with
 Node.js and Electron. It opens and saves **pgAdmin 4 `.pgerd` files**, so diagrams can move back and
 forth between pgAdmin's ERD tool and this app, and adds schema-aware TypeScript scripts (validators,
