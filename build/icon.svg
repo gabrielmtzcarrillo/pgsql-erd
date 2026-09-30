@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- pgsql-erd app icon. Rasterized into icon.ico (Windows) and icon.png. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b82d0"/>
+      <stop offset="1" stop-color="#2459a0"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+  <!-- relationship: one (left table) to many (right table) -->
+  <path d="M104 96 H124 V164 H150" fill="none" stroke="#ffffff" stroke-width="9" stroke-linejoin="round"/>
+  <path d="M130 164 L150 150 M130 164 L150 178" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round"/>
+  <!-- referenced table -->
+  <rect x="28" y="52" width="76" height="100" rx="12" fill="#ffffff"/>
+  <path d="M40 52 H92 A12 12 0 0 1 104 64 V78 H28 V64 A12 12 0 0 1 40 52 Z" fill="#f5b041"/>
+  <rect x="40" y="92" width="52" height="10" rx="5" fill="#b9cbe3"/>
+  <rect x="40" y="112" width="40" height="10" rx="5" fill="#b9cbe3"/>
+  <rect x="40" y="132" width="46" height="10" rx="5" fill="#b9cbe3"/>
+  <!-- referencing table -->
+  <rect x="156" y="116" width="72" height="100" rx="12" fill="#ffffff"/>
+  <path d="M168 116 H216 A12 12 0 0 1 228 128 V142 H156 V128 A12 12 0 0 1 168 116 Z" fill="#f5b041"/>
+  <rect x="168" y="156" width="48" height="10" rx="5" fill="#b9cbe3"/>
+  <rect x="168" y="176" width="36" height="10" rx="5" fill="#b9cbe3"/>
+  <rect x="168" y="196" width="42" height="10" rx="5" fill="#b9cbe3"/>
+</svg>

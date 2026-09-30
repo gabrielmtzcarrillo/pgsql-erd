@@ -117,7 +117,7 @@ To build only one target, pass `installer`, `portable` or `dir` (default `all`),
 `dist\` first). The same builds are available as npm scripts:
 `npm run dist:win` (installer + portable), `dist:win:installer`, `dist:win:portable` and `dist:win:dir`.
 
-The executables are unsigned, so Windows SmartScreen warns the first time they run. Building them on
+The app, installer and uninstaller use `build/icon.ico`. The executables are unsigned, so Windows SmartScreen warns the first time they run. Building them on
 Linux or macOS also works but needs [Wine](https://www.winehq.org/) (with 32-bit support for the
 installer).
 
@@ -138,6 +138,8 @@ src/renderer/lib/diff.js  database vs diagram comparison and migration SQL
 src/renderer/lib/sync.js  import / update diagram tables from the database
 src/renderer/lib/highlight.js SQL syntax highlighting
 samples/shop.pgerd        example diagram
+build/icon.svg            app icon source; icon.ico (Windows) and icon.png are rendered from it
+scripts/build-windows.bat Windows build script
 tests/                    node:test suites
 ```
 
