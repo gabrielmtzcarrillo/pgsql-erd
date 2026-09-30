@@ -686,6 +686,8 @@ export default {
   "Open file…": "Abrir archivo…",
   "Import Excel…": "Importar Excel…",
   "Add table": "Agregar tabla",
+  "Add table here": "Agregar tabla aquí",
+  "Drag to another table to add a relationship": "Arrastre hasta otra tabla para agregar una relación",
   "SQL preview": "Vista previa SQL",
   "Results": "Resultados",
   "Activity": "Actividad",

@@ -264,6 +264,10 @@ function renderTable(t) {
     ]));
   }
   if (t.description) g.append(el('title', {}, t.description));
+  // Drag from this handle onto another table to add a relationship.
+  g.append(el('circle', { class: 't-link-handle', cx: width, cy: HEADER_H / 2, r: 6 }, [
+    el('title', {}, tr('Drag to another table to add a relationship')),
+  ]));
 
   const fks = fkColumns(t);
   if (!t.columns.length) {
@@ -781,15 +785,17 @@ function snap(v, on = state.snap) {
   return Math.round(v / g) * g;
 }
 
-function addTable() {
+// Adds a table centered in the view, or with its top-left corner at `at`
+// (diagram coordinates).
+function addTable(at) {
   const c = viewCenter();
   const existing = new Set(state.model.tables.map((t) => t.name));
   let n = 1;
   while (existing.has(`table_${n}`)) n++;
   const t = newTable({
     name: `table_${n}`,
-    x: snap(c.x - 100),
-    y: snap(c.y - 50),
+    x: snap(at ? at.x : c.x - 100),
+    y: snap(at ? at.y : c.y - 50),
     columns: [newColumn({ name: 'id', type: 'bigserial', pk: true, notNull: true, attnum: 0 })],
   });
   commit(() => state.model.tables.push(t), { panel: false });
@@ -840,7 +846,7 @@ function refreshLinkDialogColumns() {
   fillSelect(f.localCol, localOpts, match ? String(match.attnum) : f.localCol.value || 'new');
 }
 
-function openLinkDialog({ localTable } = {}) {
+function openLinkDialog({ localTable, refTable } = {}) {
   if (!state.model.tables.length) return status(tr('Add a table first.'));
   const f = linkForm.elements;
   const opts = [...state.model.tables]
@@ -849,7 +855,7 @@ function openLinkDialog({ localTable } = {}) {
   const selTable = state.selection?.type === 'table' ? state.selection.id : undefined;
   fillSelect(f.localTable, opts, localTable ?? selTable);
   const other = opts.find(([id]) => id !== f.localTable.value)?.[0];
-  fillSelect(f.refTable, opts, other ?? f.localTable.value);
+  fillSelect(f.refTable, opts, refTable ?? other ?? f.localTable.value);
   f.localCol.value = '';
   f.refCol.value = '';
   f.fkName.value = '';
@@ -967,13 +973,53 @@ function centerOn(t) {
 
 let drag = null;
 
+// Screen (client) coordinates to diagram coordinates.
+function toDiagram(clientX, clientY) {
+  const r = svg.getBoundingClientRect();
+  const { offsetX, offsetY, zoom } = state.model.view;
+  return { x: (clientX - r.left - offsetX) / zoom, y: (clientY - r.top - offsetY) / zoom };
+}
+
+// The table under the pointer, if any. Works while the svg holds pointer capture.
+function tableAt(clientX, clientY) {
+  const g = document.elementFromPoint(clientX, clientY)?.closest?.('.erd-table');
+  return g ? tableById(g.dataset.id) : null;
+}
+
+// Dragging from a table's link handle draws a line; dropping it on another
+// table opens the relationship dialog with both tables filled in.
+function startLinkDrag(t) {
+  const s = state.sizes.get(t.id);
+  const x = t.x + s.width, y = t.y + HEADER_H / 2;
+  const line = el('line', { class: 'link-draft', x1: x, y1: y, x2: x, y2: y });
+  viewport.append(line);
+  svg.classList.add('linking');
+  return { kind: 'link', t, line, target: null, targetEl: null };
+}
+
+function moveLinkDrag(e) {
+  const p = toDiagram(e.clientX, e.clientY);
+  drag.line.setAttribute('x2', p.x);
+  drag.line.setAttribute('y2', p.y);
+  const hit = tableAt(e.clientX, e.clientY);
+  const target = hit && hit !== drag.t ? hit : null;
+  if (target === drag.target) return;
+  drag.targetEl?.classList.remove('link-target');
+  drag.target = target;
+  drag.targetEl = target ? tablesLayer.querySelector(`.erd-table[data-id="${CSS.escape(target.id)}"]`) : null;
+  drag.targetEl?.classList.add('link-target');
+}
+
 svg.addEventListener('pointerdown', (e) => {
+  closeContextMenu();
   if (e.button !== 0 && e.button !== 1) return;
   const tableEl = e.target.closest('.erd-table');
   const linkEl = e.target.closest('.erd-link');
   const scriptEl = e.target.closest('.erd-script');
   svg.setPointerCapture(e.pointerId);
-  if (scriptEl && e.button === 0) {
+  if (tableEl && e.button === 0 && e.target.closest('.t-link-handle')) {
+    drag = startLinkDrag(tableById(tableEl.dataset.id));
+  } else if (scriptEl && e.button === 0) {
     if (state.selection?.id !== scriptEl.dataset.path) select({ type: 'script', id: scriptEl.dataset.path });
     drag = erdScripts.startDrag(scriptEl, e);
   } else if (tableEl && e.button === 0) {
@@ -998,6 +1044,7 @@ svg.addEventListener('pointerdown', (e) => {
 
 svg.addEventListener('pointermove', (e) => {
   if (!drag) return;
+  if (drag.kind === 'link') return moveLinkDrag(e);
   const dx = e.clientX - drag.sx;
   const dy = e.clientY - drag.sy;
   if (drag.kind === 'pan') {
@@ -1050,7 +1097,16 @@ function ensureVisible(t) {
   applyView();
 }
 
-function endDrag() {
+function endDrag(e) {
+  if (drag?.kind === 'link') {
+    const { t, target, line } = drag;
+    line.remove();
+    svg.classList.remove('linking');
+    drag = null;
+    render();
+    if (target && e.type === 'pointerup') openLinkDialog({ localTable: t.id, refTable: target.id });
+    return;
+  }
   if (drag?.kind === 'script') erdScripts.endDrag(drag);
   if (drag?.kind === 'table' && drag.moved) setDirty(true);
   if (drag?.kind === 'table' && !drag.moved) ensureVisible(drag.t);
@@ -1060,6 +1116,75 @@ function endDrag() {
 }
 svg.addEventListener('pointerup', endDrag);
 svg.addEventListener('pointercancel', endDrag);
+
+// ---------------------------------------------------------------- context menu
+
+let contextMenu = null;
+
+function closeContextMenu() {
+  contextMenu?.remove();
+  contextMenu = null;
+}
+
+function showContextMenu(x, y, items) {
+  closeContextMenu();
+  contextMenu = h('div', { class: 'ctx-menu', role: 'menu' }, items.map((it) =>
+    it === '-'
+      ? h('div', { class: 'ctx-sep' })
+      : h('button', {
+        class: `ctx-item${it.danger ? ' danger' : ''}`,
+        role: 'menuitem',
+        icon: it.icon,
+        onclick: () => { closeContextMenu(); it.run(); },
+      }, it.label)
+  ));
+  document.body.append(contextMenu);
+  // Keep the menu inside the window.
+  const r = contextMenu.getBoundingClientRect();
+  contextMenu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - r.width - 4))}px`;
+  contextMenu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - r.height - 4))}px`;
+  contextMenu.querySelector('button')?.focus();
+}
+
+document.addEventListener('pointerdown', (e) => {
+  if (contextMenu && !contextMenu.contains(e.target)) closeContextMenu();
+}, true);
+document.addEventListener('keydown', (e) => {
+  if (contextMenu && e.key === 'Escape') {
+    e.stopPropagation();
+    closeContextMenu();
+  }
+}, true);
+window.addEventListener('blur', closeContextMenu);
+window.addEventListener('resize', closeContextMenu);
+
+svg.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  if (drag) return;
+  if (e.target.closest('.erd-script')) return;
+  const tableEl = e.target.closest('.erd-table');
+  const linkEl = e.target.closest('.erd-link');
+  let items;
+  if (tableEl) {
+    const t = tableById(tableEl.dataset.id);
+    select({ type: 'table', id: t.id });
+    items = [
+      { label: tr('New relationship'), icon: 'add-link', run: () => openLinkDialog({ localTable: t.id }) },
+      '-',
+      { label: tr('Delete table'), icon: 'delete', danger: true, run: deleteSelection },
+    ];
+  } else if (linkEl) {
+    select({ type: 'link', id: linkEl.dataset.id });
+    items = [{ label: tr('Delete relationship'), icon: 'delete', danger: true, run: deleteSelection }];
+  } else {
+    const at = toDiagram(e.clientX, e.clientY);
+    items = [
+      { label: tr('Add table here'), icon: 'add-table', run: () => addTable(at) },
+      { label: tr('New relationship'), icon: 'add-link', run: () => openLinkDialog() },
+    ];
+  }
+  showContextMenu(e.clientX, e.clientY, items);
+});
 
 // With pointer capture the dblclick target is the svg itself, so use the selection.
 svg.addEventListener('dblclick', () => {
@@ -1162,7 +1287,7 @@ function buildExportSVG() {
   const clone = viewport.cloneNode(true);
   clone.removeAttribute('transform');
   clone.querySelectorAll('.selected, .related, .focused').forEach((n) => n.classList.remove('selected', 'related', 'focused'));
-  clone.querySelectorAll('title').forEach((n) => n.remove());
+  clone.querySelectorAll('title, .t-link-handle, .link-draft').forEach((n) => n.remove());
   const bg = dark ? '#1b1e24' : '#ffffff';
   const out =
     `<svg xmlns="${SVG_NS}" width="${Math.ceil(b.width)}" height="${Math.ceil(b.height)}" ` +
