@@ -18,8 +18,15 @@ contextBridge.exposeInMainWorld('erdHost', {
   // Database access happens in the main process. The password is sent once,
   // with connect(); afterwards the window's connection is used implicitly.
   db: {
-    test: (conn) => ipcRenderer.invoke('db-test', conn),
-    connect: (conn, profile) => ipcRenderer.invoke('db-connect', conn, profile),
+    test: (conn, instanceId) => ipcRenderer.invoke('db-test', conn, instanceId),
+    connect: (conn, profile, opts) => ipcRenderer.invoke('db-connect', conn, profile, opts),
+    // Saved instances: passwords go in with connect() and never come back out.
+    instances: () => ipcRenderer.invoke('db-instances'),
+    connectInstance: (id) => ipcRenderer.invoke('db-connect-instance', id),
+    deleteInstance: (id) => ipcRenderer.invoke('db-instance-delete', id),
+    forgetPassword: (id) => ipcRenderer.invoke('db-instance-forget-password', id),
+    setReconnect: (on) => ipcRenderer.invoke('db-instances-reconnect', on),
+    startupInstance: () => ipcRenderer.invoke('db-startup-instance'),
     disconnect: () => ipcRenderer.invoke('db-disconnect'),
     info: () => ipcRenderer.invoke('db-info'),
     introspect: () => ipcRenderer.invoke('db-introspect'),

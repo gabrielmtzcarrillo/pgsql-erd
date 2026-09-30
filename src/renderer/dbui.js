@@ -78,7 +78,14 @@ export function setupDatabase(ctx) {
   const connectDialog = $('#db-connect-dialog');
   const connectForm = $('#db-connect-form');
   const connectStatus = $('#db-connect-status');
+  const instanceList = $('#db-instance-list');
+  const instanceFilter = $('#db-instance-filter');
   let afterConnect = null;
+  // Saved instances as the main process reports them: no passwords, only
+  // whether one is saved. selected is the instance shown in the form, or null
+  // for a new connection.
+  let saved = { instances: [], secureStorage: false, lastId: null, reconnect: false };
+  let selected = null;
 
   const formConn = () => {
     const f = connectForm.elements;
@@ -106,36 +113,163 @@ export function setupDatabase(ctx) {
     connectForm.elements.allowDDL.checked = !prod;
   });
 
-  function openConnect(then = null) {
-    afterConnect = then;
-    let saved = conn ? { ...conn.conn, profile: conn.profile } : null;
-    if (!saved) {
-      try {
-        saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-      } catch {
-        saved = null;
-      }
-    }
+  const instance = (id) => saved.instances.find((i) => i.id === id) ?? null;
+
+  function updateSaveOptions() {
     const f = connectForm.elements;
-    for (const k of ['host', 'port', 'database', 'user']) f[k].value = saved?.[k] ?? '';
-    // The password is never read back; leave it empty to reconnect with a new one.
+    f.rememberPassword.disabled = !f.saveInstance.checked;
+    if (!f.saveInstance.checked) f.rememberPassword.checked = false;
+  }
+  connectForm.elements.saveInstance.addEventListener('change', updateSaveOptions);
+
+  async function loadInstances() {
+    try {
+      saved = await call(host.db.instances);
+    } catch {
+      /* keep the last list */
+    }
+    if (selected && !instance(selected)) selected = null;
+  }
+
+  function renderInstances() {
+    const q = instanceFilter.value.trim().toLowerCase();
+    const shown = saved.instances.filter((i) => !q || `${i.name} ${describe(i)}`.toLowerCase().includes(q));
+    const items = shown.map((i) => {
+      const env = i.environment ?? 'development';
+      const item = h('label', { class: `item${i.id === selected ? ' active' : ''}`, role: 'option', 'aria-selected': String(i.id === selected), title: tr('Double-click to connect') }, [
+        h('span', { class: 'inst-name' }, [h('span', {}, i.name), h('span', { class: `tag env-${env}` }, envName(env))]),
+        h('span', { class: 'inst-target', title: describe(i) }, `${describe(i)}${i.hasPassword ? ` · ${tr('password saved')}` : ''}`),
+      ]);
+      item.addEventListener('click', () => {
+        selectInstance(i.id);
+        if (!i.hasPassword) connectForm.elements.password.focus();
+      });
+      item.addEventListener('dblclick', () => {
+        selectInstance(i.id);
+        connectForm.requestSubmit(connectForm.querySelector('button[value="ok"]'));
+      });
+      return item;
+    });
+    const empty = saved.instances.length ? tr('No matching instances.') : tr('No saved instances yet. Connect with "Save this instance" checked to add one.');
+    instanceList.replaceChildren(...(items.length ? items : [h('div', { class: 'db-empty' }, empty)]));
+  }
+
+  // Fills the form from saved settings: { host, port, …, profile } or an instance.
+  function fillForm(from, { hasPassword = false } = {}) {
+    const f = connectForm.elements;
+    for (const k of ['host', 'port', 'database', 'user']) f[k].value = from?.[k] ?? '';
+    // The password is never read back; leave it empty to use the saved one.
     f.password.value = '';
-    f.password.placeholder = conn ? tr('(re-enter to reconnect)') : '';
-    f.sslmode.value = saved?.sslmode ?? 'disable';
-    f.profileName.value = saved?.profile?.name && saved.profile.name !== describe(saved) ? saved.profile.name : '';
-    f.environment.value = saved?.profile?.environment ?? 'development';
+    f.password.placeholder = hasPassword ? `•••••••• ${tr('(saved — leave empty to use it)')}` : conn && !selected ? tr('(re-enter to reconnect)') : '';
+    f.sslmode.value = from?.sslmode || 'disable';
+    const profile = from?.profile ?? from;
+    f.profileName.value = profile?.name && profile.name !== describe(from ?? {}) ? profile.name : '';
+    f.environment.value = profile?.environment ?? 'development';
     const prod = f.environment.value === 'production';
-    f.allowWrites.checked = saved?.profile?.policy?.allowWrites ?? !prod;
-    f.allowDDL.checked = saved?.profile?.policy?.allowDDL ?? !prod;
+    f.allowWrites.checked = profile?.policy?.allowWrites ?? !prod;
+    f.allowDDL.checked = profile?.policy?.allowDDL ?? !prod;
+  }
+
+  function showSelection() {
+    const i = instance(selected);
+    const f = connectForm.elements;
+    f.saveInstance.checked = true;
+    f.rememberPassword.checked = !!i?.hasPassword;
+    updateSaveOptions();
+    $('#db-instance-forget').disabled = !i?.hasPassword;
+    $('#db-instance-delete').disabled = !i;
+    $('#db-password-where').textContent = saved.secureStorage
+      ? tr('Saved passwords are encrypted with the system credential store and never shown again.')
+      : tr('No system credential store is available: saved passwords are kept in memory until the app quits.');
+    $('#db-reconnect').checked = saved.reconnect;
+    renderInstances();
+  }
+
+  function selectInstance(id) {
+    selected = id;
+    const i = instance(id);
+    fillForm(i, { hasPassword: i?.hasPassword });
     setStatus(connectStatus, '');
+    showSelection();
+  }
+
+  function newConnection() {
+    selected = null;
+    fillForm(null);
+    setStatus(connectStatus, '');
+    showSelection();
+    connectForm.elements.host.focus();
+  }
+
+  async function openConnect(then = null) {
+    afterConnect = then;
+    await loadInstances();
+    instanceFilter.value = '';
+    const current = instance(conn?.instanceId) ? conn.instanceId : !conn && instance(saved.lastId) ? saved.lastId : null;
+    if (current) {
+      selectInstance(current);
+    } else {
+      // An unsaved connection, or settings remembered before instances were saved.
+      let from = conn ? { ...conn.conn, profile: conn.profile } : null;
+      if (!from) {
+        try {
+          from = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+        } catch {
+          from = null;
+        }
+      }
+      selected = null;
+      fillForm(from);
+      setStatus(connectStatus, '');
+      showSelection();
+    }
     connectDialog.returnValue = '';
     connectDialog.showModal();
-    (f.host.value ? f.password : f.host).focus();
+    const f = connectForm.elements;
+    (!f.host.value ? f.host : instance(selected)?.hasPassword ? f.database : f.password).focus();
   }
+
+  instanceFilter.addEventListener('input', renderInstances);
+  $('#db-instance-new').addEventListener('click', newConnection);
+  $('#db-instance-forget').addEventListener('click', async () => {
+    if (!selected) return;
+    try {
+      saved = await call(host.db.forgetPassword, selected);
+      selectInstance(selected);
+      setStatus(connectStatus, tr('Password forgotten'), 'ok');
+    } catch (err) {
+      setStatus(connectStatus, err.message, 'error');
+    }
+  });
+  $('#db-instance-delete').addEventListener('click', async () => {
+    const i = instance(selected);
+    if (!i) return;
+    const choice = await host.confirm({
+      message: tr('Delete the saved instance "{name}"?', { name: i.name }),
+      detail: tr('Its settings and saved password are removed. Open connections are not affected.'),
+      buttons: [tr('Delete'), tr('Cancel')],
+    });
+    if (choice !== 0) return;
+    try {
+      saved = await call(host.db.deleteInstance, i.id);
+      if (conn?.instanceId === i.id) conn.instanceId = null;
+      newConnection();
+      setStatus(connectStatus, tr('Deleted {name}', { name: i.name }), 'ok');
+    } catch (err) {
+      setStatus(connectStatus, err.message, 'error');
+    }
+  });
+  $('#db-reconnect').addEventListener('change', async (e) => {
+    try {
+      saved = await call(host.db.setReconnect, e.target.checked);
+    } catch (err) {
+      setStatus(connectStatus, err.message, 'error');
+    }
+  });
 
   async function test(c) {
     setStatus(connectStatus, tr('Connecting…'));
-    const info = await call(host.db.test, c);
+    const info = await call(host.db.test, c, selected);
     setStatus(connectStatus, `${tr('Connected to {db} as {user}', { db: info.database, user: info.user })}\n${info.version}`, 'ok');
     return info;
   }
@@ -144,31 +278,58 @@ export function setupDatabase(ctx) {
     test(formConn()).catch((err) => setStatus(connectStatus, err.message, 'error'))
   );
 
-  connectForm.addEventListener('submit', async (e) => {
-    if (e.submitter?.value !== 'ok') return;
-    e.preventDefault(); // keep the dialog open until the connection works
-    const c = formConn();
-    const profile = formProfile();
-    setStatus(connectStatus, tr('Connecting…'));
-    try {
-      conn = await call(host.db.connect, c, profile);
-    } catch (err) {
-      return setStatus(connectStatus, err.message, 'error');
-    }
-    connectForm.elements.password.value = '';
+  // Records the new connection and tells the rest of the page.
+  function connected(result) {
+    const { saved: list, ...info } = result;
+    conn = info;
+    if (list) saved = list;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...conn.conn, profile: conn.profile }));
     } catch {
       /* storage unavailable: settings just won't be remembered */
     }
     updateIndicator();
-    connectDialog.close('ok');
     status(tr('Connected to {db} ({env})', { db: conn.description, env: envName(conn.profile.environment) }));
     refreshSchema();
+  }
+
+  connectForm.addEventListener('submit', async (e) => {
+    if (e.submitter?.value !== 'ok') return;
+    e.preventDefault(); // keep the dialog open until the connection works
+    const f = connectForm.elements;
+    const opts = { instanceId: selected, save: f.saveInstance.checked, rememberPassword: f.saveInstance.checked && f.rememberPassword.checked };
+    setStatus(connectStatus, tr('Connecting…'));
+    let result;
+    try {
+      result = await call(host.db.connect, formConn(), formProfile(), opts);
+    } catch (err) {
+      return setStatus(connectStatus, err.message, 'error');
+    }
+    f.password.value = '';
+    selected = result.instanceId;
+    connected(result);
+    connectDialog.close('ok');
     const then = afterConnect;
     afterConnect = null;
     then?.();
   });
+
+  // Reopens the last session when the user asked for that and its password is saved.
+  async function reconnectLastSession() {
+    let id;
+    try {
+      id = await call(host.db.startupInstance);
+    } catch {
+      return;
+    }
+    if (!id || conn) return;
+    status(tr('Reconnecting to the last instance…'));
+    try {
+      connected(await call(host.db.connectInstance, id));
+    } catch (err) {
+      status(tr('Could not reconnect to the last instance: {message}', { message: err.message }));
+    }
+  }
 
   const requireConnection = (fn) => () => (conn ? fn() : openConnect(fn));
 
@@ -387,6 +548,7 @@ export function setupDatabase(ctx) {
   });
 
   updateIndicator();
+  reconnectLastSession();
 
   return {
     api: {
