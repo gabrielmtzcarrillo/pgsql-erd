@@ -100,7 +100,7 @@ const HTML_KEEP = new Set([
 function htmlKeys() {
   const html = fs.readFileSync(path.join(root, 'src/renderer/index.html'), 'utf8').replace(/<!--[\s\S]*?-->/g, '');
   const norm = (x) => x.replace(/\s+/g, ' ').trim();
-  const decode = (x) => x.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+  const decode = (x) => x.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
   const keys = new Set();
   const body = html.slice(html.indexOf('<body'));
   // data-i18n elements: the attribute's value, or else their inner HTML
