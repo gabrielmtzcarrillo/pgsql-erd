@@ -12,8 +12,8 @@ filters, and an AI assistant that works with Ollama, vLLM, OpenAI and other Open
 
 ## Screenshots
 
-**Ribbon and tabs:** commands are grouped Office-style (File, History, Diagram, View, Grid, Database,
-Scripts, SQL & Export) with two-tone colour icons; the native menus use the same icons. Below the ribbon,
+**Ribbon and tabs:** commands are grouped Office-style (File, History, Diagram, Grid, Database, Scripts,
+SQL & Export) with two-tone colour icons; the native menus use the same icons. Below the ribbon,
 tabs switch between the **Diagram**, **Scripts**, **Query**, **Graph** and **Assistant**, followed by one tab per
 table whose data you are browsing.
 
@@ -58,8 +58,9 @@ table whose data you are browsing.
   - edit columns: name, type, length/scale, NOT NULL, PK, default value, order
   - set schema, comment, note and header colour
   - add and remove relationships, optionally creating the FK column for you
-- Drag tables to move them. Drag the background to pan, scroll to zoom, and use **Fit** or
-  **Auto layout** to tidy up.
+- Drag tables to move them. Drag the background to pan and scroll to zoom. The status bar holds the
+  view controls, as in Word: a zoom slider (100% in the middle) with zoom out/in buttons and the
+  zoom level, plus **Fit** and **Auto layout** to tidy up.
 - A grid is drawn behind the diagram (**Grid**, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd>), with a
   heavier line every fifth cell. With **Snap** on (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>),
   dragged tables, arrow-key nudges, new tables and auto layout all land on grid lines; hold
