@@ -93,6 +93,30 @@ To build installers (AppImage/deb, NSIS, dmg) with the `.pgerd` file association
 npm run dist
 ```
 
+### Windows (.exe)
+
+On Windows, with Node.js 20+ installed, run from the repository root:
+
+```bat
+scripts\build-windows.cmd
+```
+
+This installs dependencies, runs the tests and writes to `dist\`:
+
+| File | What it is |
+| --- | --- |
+| `pgsql-erd-Setup-<version>.exe` | Installer: choose the install folder, adds Start menu and desktop shortcuts, registers `.pgerd` files |
+| `pgsql-erd-<version>-portable.exe` | Single executable that runs without installing |
+| `win-unpacked\pgsql-erd.exe` | The unpacked app the other two are made from |
+
+Options (also accepted by `scripts\build-windows.ps1` in PowerShell): `-Target installer|portable|dir|all`,
+`-SkipTests`, `-SkipInstall`, `-Clean`. The same builds are available as npm scripts:
+`npm run dist:win` (installer + portable), `dist:win:installer`, `dist:win:portable` and `dist:win:dir`.
+
+The executables are unsigned, so Windows SmartScreen warns the first time they run. Building them on
+Linux or macOS also works but needs [Wine](https://www.winehq.org/) (with 32-bit support for the
+installer).
+
 ## Project layout
 
 ```
