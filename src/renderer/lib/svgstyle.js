@@ -17,6 +17,11 @@ export const LIGHT_VARS = `
   --erd-fk: #2f6fb3;
   --erd-link: #7d8590;
   --erd-accent: #0a84ff;
+  --erd-script-bg: #fbfaff;
+  --erd-script-border: #b9acd9;
+  --erd-script-header: #6f4fb0;
+  --erd-pass: #1a7f37;
+  --erd-fail: #cf222e;
 `;
 
 export const DARK_VARS = `
@@ -31,6 +36,11 @@ export const DARK_VARS = `
   --erd-fk: #6cb6ff;
   --erd-link: #8b949e;
   --erd-accent: #4aa3ff;
+  --erd-script-bg: #262233;
+  --erd-script-border: #4d4466;
+  --erd-script-header: #5b4494;
+  --erd-pass: #4cc47d;
+  --erd-fail: #f07070;
 `;
 
 export const DIAGRAM_CSS = `
@@ -50,4 +60,20 @@ export const DIAGRAM_CSS = `
   .erd-link .l-line { fill: none; stroke: var(--erd-link); stroke-width: 1.4; }
   .erd-link .l-marker { fill: none; stroke: var(--erd-link); stroke-width: 1.4; }
   .erd-link .l-hit { fill: none; stroke: transparent; stroke-width: 12; }
+  .erd-script .s-body { fill: var(--erd-script-bg); stroke: var(--erd-script-border); stroke-width: 1; stroke-dasharray: 4 3; }
+  .erd-script .s-header { fill: var(--erd-script-header); }
+  .erd-script.type-validator .s-header { fill: #2c7a4b; }
+  .erd-script.type-migration .s-header { fill: #b35a1f; }
+  .erd-script.type-query .s-header, .erd-script.type-export .s-header { fill: #2f6fb3; }
+  .erd-script .s-icon { color: #ffffff; }
+  .erd-script .s-title { fill: #ffffff; font: ${FONT_BOLD}; }
+  .erd-script .s-line { fill: var(--erd-text); font: ${FONT}; }
+  .erd-script .muted { fill: var(--erd-muted); }
+  .erd-script .s-status { font: ${FONT_BOLD}; font-size: 12px; }
+  .erd-script .pass { fill: var(--erd-pass); }
+  .erd-script .fail { fill: var(--erd-fail); }
+  .erd-script-link .sl-line { fill: none; stroke: var(--erd-script-border); stroke-width: 1.4; stroke-dasharray: 5 4; }
+  .erd-script-link .sl-end { fill: var(--erd-script-border); }
+  .erd-script-link .sl-label-bg { fill: var(--erd-script-bg); stroke: var(--erd-script-border); stroke-width: 1; }
+  .erd-script-link .sl-label { fill: var(--erd-muted); font: italic 11px ${FONT_FAMILY}; }
 `;

@@ -80,6 +80,8 @@ class ProjectManager {
             profile: meta.profile,
             description: meta.description,
             tables: meta.tables,
+            // For linking scripts to diagram tables; very large files are left out.
+            source: meta.source.length <= 200000 ? meta.source : '',
             modified: stat.mtimeMs,
           });
         } catch {

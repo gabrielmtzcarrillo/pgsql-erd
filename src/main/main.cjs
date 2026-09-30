@@ -281,6 +281,7 @@ function buildMenu() {
       label: '&View',
       submenu: [
         { label: 'Diagram Tab', icon: menuIcon('toggle-tables'), accelerator: 'CmdOrCtrl+Alt+1', click: cmd('tab-erd') },
+        { label: 'Show Scripts in Diagram', icon: menuIcon('toggle-workbench'), click: cmd('toggle-erd-scripts') },
         { type: 'separator' },
         { label: 'Zoom In', icon: menuIcon('zoom-in'), accelerator: 'CmdOrCtrl+=', click: cmd('zoom-in') },
         { label: 'Zoom Out', icon: menuIcon('zoom-out'), accelerator: 'CmdOrCtrl+-', click: cmd('zoom-out') },

@@ -13,6 +13,7 @@ import { setupAssistant } from './assistant.js';
 import { setupTabs } from './tabs.js';
 import { setupDataBrowser } from './databrowser.js';
 import { setupQuery } from './query.js';
+import { setupErdScripts } from './erdscripts.js';
 import { tableKey } from './lib/catalog.js';
 import { setupSpreadsheetImport, SPREADSHEET_EXT } from './xlui.js';
 import { highlightSQL } from './lib/highlight.js';
@@ -34,6 +35,9 @@ const svg = $('#canvas');
 const viewport = $('#viewport');
 const tablesLayer = $('#tables-layer');
 const linksLayer = $('#links-layer');
+const scriptLinksLayer = $('#script-links-layer');
+const scriptsLayer = $('#scripts-layer');
+let erdScripts = null; // scripts drawn in the diagram, set up after the workbench
 const panel = $('#panel');
 
 decorateButtons(document.body);
@@ -312,12 +316,13 @@ function render() {
   applyView();
   tablesLayer.replaceChildren(...state.model.tables.map(renderTable));
   linksLayer.replaceChildren(...state.model.links.map(renderLink).filter(Boolean));
+  erdScripts?.render(scriptLinksLayer, scriptsLayer);
   $('#empty-hint').hidden = state.model.tables.length > 0;
   $('#status-count').textContent =
     `${state.model.tables.length} tables · ${state.model.links.length} relationships`;
   $('[data-cmd="undo"]').disabled = !state.undo.length;
   $('[data-cmd="redo"]').disabled = !state.redo.length;
-  $('[data-cmd="delete"]').disabled = !state.selection;
+  $('[data-cmd="delete"]').disabled = !state.selection || state.selection.type === 'script';
   if (state.showSql) highlightSQL($('#sql-text'), generateSQL(state.model));
 }
 
@@ -406,6 +411,8 @@ function renderPanel() {
   let visible = true;
   if (sel?.type === 'table' && tableById(sel.id)) renderTablePanel(tableById(sel.id));
   else if (sel?.type === 'link' && linkById(sel.id)) renderLinkPanel(linkById(sel.id));
+  else if (sel?.type === 'script' && erdScripts?.exists(sel.id))
+    panel.replaceChildren(sidebarHeader(erdScripts.title(sel.id), 'Script'), ...erdScripts.panel(sel.id));
   else if (state.showTables) renderDiagramPanel();
   else visible = false;
   sidebar.hidden = !visible;
@@ -505,11 +512,30 @@ function renderTablePanel(t) {
       onclick: (e) => { e.preventDefault(); addColumn(t); },
     }, 'Add')),
     section('relations', 'Relationships', outgoing.length + incoming.length, relations),
+    tableScriptsSection(t),
     h('div', { class: 'sb-footer' }, [
       h('button', { icon: 'toggle-tables', onclick: () => dataBrowser.open(tableKey(t)), title: 'Open the rows of this table in a data tab' }, 'Browse data'),
       h('button', { class: 'danger', icon: 'delete', onclick: deleteSelection }, 'Delete table'),
     ]),
   );
+}
+
+// Project scripts that use the table (validators, generators, …).
+function tableScriptsSection(t) {
+  const list = erdScripts?.forTable(t) ?? [];
+  if (!list.length) return null;
+  const badge = (run) => {
+    if (!run) return h('span', { class: 'flag' }, 'not run');
+    const fail = run.status === 'error' || (run.validations && run.passed < run.validations);
+    return h('span', { class: `flag ${fail ? 'fail' : 'pass'}` }, fail ? 'FAIL' : 'PASS');
+  };
+  return section('scripts', 'Scripts', list.length, [
+    h('ul', { class: 'list' }, list.map(({ script, run, relation }) =>
+      h('li', { class: 'clickable', title: `${script.path}\nClick to open`, onclick: () => erdScripts.open(script.path) }, [
+        h('span', { class: 'grow' }, [h('span', { class: 'muted' }, `${relation} · `), script.name]),
+        badge(run),
+      ]))),
+  ]);
 }
 
 // One column: a summary line, plus an editor when it's the expanded column.
@@ -742,7 +768,7 @@ function addTable() {
 
 function deleteSelection() {
   const sel = state.selection;
-  if (!sel) return;
+  if (!sel || sel.type === 'script') return;
   if (sel.type === 'table') {
     commit(() => {
       state.model.tables = state.model.tables.filter((t) => t.id !== sel.id);
@@ -859,10 +885,22 @@ function setZoom(zoom, cx, cy) {
   applyView();
 }
 
+// Everything drawn: tables plus, when shown, script boxes.
+function diagramBounds(margin = 40) {
+  const b = contentBounds(state.model, state.sizes, margin);
+  const extra = erdScripts?.boxes() ?? [];
+  if (!extra.length || !state.model.tables.length) return b;
+  const x0 = Math.min(b.x, ...extra.map((s) => s.x - margin));
+  const y0 = Math.min(b.y, ...extra.map((s) => s.y - margin));
+  const x1 = Math.max(b.x + b.width, ...extra.map((s) => s.x + s.width + margin));
+  const y1 = Math.max(b.y + b.height, ...extra.map((s) => s.y + s.height + margin));
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
 function fit() {
   computeSizes();
   if (!state.model.tables.length) return;
-  const b = contentBounds(state.model, state.sizes);
+  const b = diagramBounds();
   const r = svg.getBoundingClientRect();
   const z = Math.min(1.5, Math.max(0.1, Math.min(r.width / b.width, r.height / b.height)));
   const v = state.model.view;
@@ -889,8 +927,12 @@ svg.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 && e.button !== 1) return;
   const tableEl = e.target.closest('.erd-table');
   const linkEl = e.target.closest('.erd-link');
+  const scriptEl = e.target.closest('.erd-script');
   svg.setPointerCapture(e.pointerId);
-  if (tableEl && e.button === 0) {
+  if (scriptEl && e.button === 0) {
+    if (state.selection?.id !== scriptEl.dataset.path) select({ type: 'script', id: scriptEl.dataset.path });
+    drag = erdScripts.startDrag(scriptEl, e);
+  } else if (tableEl && e.button === 0) {
     const t = tableById(tableEl.dataset.id);
     const rowEl = e.target.closest('.t-row');
     const col = rowEl ? Number(rowEl.dataset.attnum) : undefined;
@@ -921,6 +963,15 @@ svg.addEventListener('pointermove', (e) => {
     return;
   }
   if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+  if (drag.kind === 'script') {
+    // Script boxes aren't part of the diagram file, so no undo step.
+    drag.moved = true;
+    const z = state.model.view.zoom;
+    const on = state.snap !== e.altKey;
+    erdScripts.moveDrag(drag, snap(drag.ox + dx / z, on), snap(drag.oy + dy / z, on));
+    scheduleRender();
+    return;
+  }
   if (!drag.moved) {
     pushUndo();
     drag.moved = true;
@@ -956,6 +1007,7 @@ function ensureVisible(t) {
 }
 
 function endDrag() {
+  if (drag?.kind === 'script') erdScripts.endDrag(drag);
   if (drag?.kind === 'table' && drag.moved) setDirty(true);
   if (drag?.kind === 'table' && !drag.moved) ensureVisible(drag.t);
   if (drag?.kind === 'pan') svg.classList.remove('panning');
@@ -967,7 +1019,8 @@ svg.addEventListener('pointercancel', endDrag);
 
 // With pointer capture the dblclick target is the svg itself, so use the selection.
 svg.addEventListener('dblclick', () => {
-  if (state.selection?.type === 'table') {
+  if (state.selection?.type === 'script') erdScripts.open(state.selection.id);
+  else if (state.selection?.type === 'table') {
     $('#table-name')?.focus();
     $('#table-name')?.select();
   }
@@ -1060,7 +1113,7 @@ async function exportSQL() {
 
 function buildExportSVG() {
   computeSizes();
-  const b = contentBounds(state.model, state.sizes);
+  const b = diagramBounds();
   const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   const clone = viewport.cloneNode(true);
   clone.removeAttribute('transform');
@@ -1208,6 +1261,7 @@ const workbench = setupWorkbench(workbenchCtx);
 const assistant = setupAssistant(workbenchCtx, workbench.api);
 const dataBrowser = setupDataBrowser(workbenchCtx);
 const query = setupQuery(workbenchCtx);
+erdScripts = setupErdScripts({ ...workbenchCtx, el, measure, workbench: workbench.api, select, render, focusTable });
 Object.assign(workbenchCtx, {
   aiConfig: assistant.aiConfig,
   askAssistant: assistant.ask,
@@ -1216,6 +1270,10 @@ Object.assign(workbenchCtx, {
 });
 Object.assign(commands, dbCommands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, {
   'tab-erd': () => tabs.show('erd'),
+  'toggle-erd-scripts': () => {
+    tabs.show('erd');
+    erdScripts.setShown(!erdScripts.shown());
+  },
 });
 // The diagram re-renders when its tab comes back (sizes are measured on screen).
 tabs.onShow((name) => {

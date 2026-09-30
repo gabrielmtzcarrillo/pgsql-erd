@@ -29,8 +29,8 @@ table whose data you are browsing.
 | ![Scripts](docs/screenshots/scripts.png) | ![Commit review](docs/screenshots/commit-review.png) |
 | **Query analyzer:** EXPLAIN ANALYZE as a tree, with time per node and index hints. | **Data tabs:** Excel-style filters with value lists, blanks and conditions. |
 | ![Query plan](docs/screenshots/query-plan.png) | ![Data filter](docs/screenshots/data-filter.png) |
-| **Assistant:** proposes scripts that open unsaved for review; they type-check against the schema. | |
-| ![Assistant](docs/screenshots/assistant.png) | |
+| **Assistant:** proposes scripts that open unsaved for review; they type-check against the schema. | **Scripts in the diagram:** each script linked to the tables it uses, with its last run. |
+| ![Assistant](docs/screenshots/assistant.png) | ![Scripts in the diagram](docs/screenshots/scripts-in-diagram.png) |
 
 ## Features
 
@@ -138,6 +138,21 @@ first line holds their metadata (`// @pgsql-erd {"type":"validator"}`).
   without write permissions run in a `READ ONLY` transaction, so PostgreSQL enforces it as well.
 - **Validators** list each `validate()` with pass/fail; clicking an error shows the offending row, the
   validation in the editor, and links to the table in the diagram and in a data tab.
+
+### Scripts in the diagram
+
+**Show scripts** (bottom left of the diagram, or **View → Show Scripts in Diagram**) draws the project's saved
+scripts as entities next to the tables they use. A script is linked to the tables named in its source or listed in
+its metadata, with a dashed line labelled by what it does: *validates*, *generates*, *seeds*, *migrates*,
+*imports into*, *exports from*, *queries*. Each box shows the script's type and its last run on this machine: PASS or
+FAIL with the number of validations, rows changed, rows checked.
+
+- Drag boxes to arrange them; their positions are saved in `pgsql-erd.json`, not in the `.pgerd` file, so the
+  diagram stays compatible with pgAdmin. Exported SVG and PNG images include the scripts while they are shown.
+- Click a box for its details and linked tables, with **Open script** and **Run validator** / **Dry run**;
+  double-click opens it in the Scripts tab.
+- A table's sidebar lists the scripts that use it, with their last result.
+- Scripts are hidden by default, to keep large diagrams readable.
 
 ### Query
 
