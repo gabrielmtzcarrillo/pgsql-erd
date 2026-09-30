@@ -100,6 +100,9 @@ textarea { resize: vertical; width: 100%; }
   background: var(--surface);
 }
 .toolbar .group { display: flex; align-items: center; gap: 4px; }
+.toolbar button { display: inline-flex; align-items: center; gap: 5px; }
+.toolbar button.icon-only { padding: 4px 6px; }
+.btn-icon { width: 15px; height: 15px; flex: none; }
 .zoom-label { min-width: 44px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .workspace { flex: 1; display: flex; min-height: 0; }

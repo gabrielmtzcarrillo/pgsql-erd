@@ -23,7 +23,7 @@ export function setupDatabase(ctx) {
 
   function updateIndicator() {
     $('#status-db').textContent = conn ? `DB: ${describe(conn)}` : 'Not connected';
-    $('#db-button').textContent = conn ? 'DB ✓' : 'Connect DB';
+    $('#db-button .label').textContent = conn ? 'DB ✓' : 'Connect DB';
     $('#db-button').title = conn ? `Connected to ${describe(conn)} (click to change)` : 'Connect to a PostgreSQL database';
   }
 

@@ -9,6 +9,7 @@ import {
 import { DIAGRAM_CSS, LIGHT_VARS, DARK_VARS, FONT, FONT_BOLD } from './lib/svgstyle.js';
 import { setupDatabase } from './dbui.js';
 import { highlightSQL } from './lib/highlight.js';
+import { decorateButtons } from './icons.js';
 
 const host = window.erdHost;
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -27,6 +28,8 @@ const viewport = $('#viewport');
 const tablesLayer = $('#tables-layer');
 const linksLayer = $('#links-layer');
 const panel = $('#panel');
+
+decorateButtons($('.toolbar'));
 
 const state = {
   model: emptyModel(),
