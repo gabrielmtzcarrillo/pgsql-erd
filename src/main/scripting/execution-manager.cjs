@@ -55,7 +55,7 @@ class ExecutionManager {
     return [...this.pending.values()].some((p) => p.windowId === windowId);
   }
 
-  // req: { runId, source, name, path, type, profile, overrides, mode, params, seed, ignoreTypeErrors, ai: { providerId, model } }
+  // req: { runId, source, name, path, type, profile, overrides, mode, params, seed, ignoreTypeErrors, ai: { providerId, model, shareData } }
   async run(windowId, req, emit = () => {}) {
     if (this.active.has(windowId)) throw new Error('A script is already running in this window.');
     if (this.hasPending(windowId)) throw new Error('Commit or discard the previous run first.');
@@ -109,7 +109,7 @@ class ExecutionManager {
     try {
       await session.begin();
       const ai = permissions.useAI && this.assistant
-        ? (msg) => this.assistant.scriptCall({ providerId: req.ai?.providerId, model: req.ai?.model, schema, signal }, msg)
+        ? (msg) => this.assistant.scriptCall({ providerId: req.ai?.providerId, model: req.ai?.model, shareData: req.ai?.shareData === true, schema, signal }, msg)
         : null;
       const res = await runInWorker({
         code,

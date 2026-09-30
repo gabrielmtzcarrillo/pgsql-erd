@@ -151,9 +151,12 @@ class Assistant {
   }
 
   // ai.chat() and ai.structured() from a running script.
-  async scriptCall({ providerId, model, schema, signal }, msg) {
+  // A script may send rows to a remote provider only when the user agreed
+  // to it for this run (shareData).
+  async scriptCall({ providerId, model, shareData = false, schema, signal }, msg) {
     if (!providerId || !model) throw new Error('Choose an AI provider and model in the Assistant panel first.');
     const provider = this.providers.get(providerId);
+    if (!provider.isLocal && !shareData) throw new Error(`${provider.name} is a remote provider: allow sending data to it when you run the script.`);
     this.audit?.log('ai-script-call', { provider: provider.id, local: provider.isLocal, model, kind: msg.kind });
     if (msg.kind === 'chat') {
       const o = msg.options ?? {};

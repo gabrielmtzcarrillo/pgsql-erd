@@ -108,12 +108,26 @@ validate("Rows in ${t} have the required values", async () => {
     }
     log(\`Checked \${rows.length} rows\`);
 });
+
+// Checks that need judgement can ask the AI (set up a provider in the Assistant tab):
+// validate("AI review of ${t}", async () => {
+//     const sample = await db.table("${t}").limit(50).select();
+//     const review = await ai.structured<{ problems: { row: number; column: string; message: string }[] }>({
+//         prompt: "List values that look wrong, inconsistent or fake in these rows:\\n" + JSON.stringify(sample),
+//         schema: { type: "object", properties: { problems: { type: "array", items: { type: "object", properties: { row: { type: "integer" }, column: { type: "string" }, message: { type: "string" } }, required: ["row", "column", "message"] } } }, required: ["problems"] },
+//     });
+//     for (const p of review.problems) report.warning({ table: "${t}", row: p.row, column: p.column, message: p.message });
+// });
 `;
     case 'generator':
       return `// Generates test data. Use "Dry run" to preview the inserts; nothing is saved until you commit.
 faker.seed(42);
 const rows = await seed.fill("${t}", 10);
 log(\`Inserted \${rows.length} rows into ${t}\`);
+
+// For realistic text, ask the AI for a row (validated against the table) and insert it:
+// const row = await ai.structured({ table: "${t}", prompt: "A realistic example row." });
+// await db.table("${t}").insert(row);
 `;
     case 'seeder':
       return `// Inserts fixed reference data.

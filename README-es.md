@@ -209,14 +209,17 @@ puedan estar en el control de versiones. La primera línea guarda sus metadatos
     `log()`
   - `faker` (datos ficticios con semilla), `seed.row(tabla)`, `seed.fill(tabla, n)` (valores verosímiles,
     claves foráneas válidas, valores únicos que no chocan con las filas existentes), `seed.check(tabla, fila)`
-  - `ai.chat(prompt)`, `ai.structured({ table | schema, prompt })` (JSON validado, ver abajo)
+  - `ai.chat(prompt)`, `ai.structured({ table | schema, prompt })` (JSON validado, ver abajo), para generar
+    datos o revisarlos (p. ej. un validador que pide al modelo señalar valores sospechosos). Usa el proveedor
+    y el modelo elegidos en la pestaña Asistente; con un proveedor remoto se pide confirmación antes de la
+    primera ejecución que llame a `ai.*`, porque el script puede enviarle filas.
 - **Simular** (F6) ejecuta el script en una transacción que siempre se revierte e informa de las inserciones,
   actualizaciones, eliminaciones y filas leídas por tabla. **Ejecutar** (F5) mantiene la transacción abierta si
   el script modificó datos y te pide confirmar o descartar (se revierte automáticamente a los 10 minutos).
 - **Permisos** por script, a partir de perfiles (Solo lectura, Validador, Generador de datos, Carga de datos,
   Migración, Acceso completo) más ajustes individuales: leer filas, SELECT directo, INSERT, UPDATE, DELETE, DDL,
   escrituras con SQL directo, IA. Los scripts sin permisos de escritura se ejecutan en una transacción
-  `READ ONLY`, así que PostgreSQL también lo impone.
+  `READ ONLY`, así que PostgreSQL también lo impone. Todos los perfiles salvo Migración permiten la IA.
 - **Validadores:** listan cada `validate()` como correcto o fallido; al hacer clic en un error se muestra la
   fila afectada, la validación en el editor y enlaces a la tabla en el diagrama y en una pestaña de datos.
 

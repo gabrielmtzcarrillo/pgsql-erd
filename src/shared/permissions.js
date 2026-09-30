@@ -20,11 +20,14 @@ export const SCRIPT_PERMISSION_LABELS = {
 
 const none = Object.fromEntries(SCRIPT_PERMISSION_KEYS.map((k) => [k, false]));
 
+// Scripts that read, review or generate data may call the AI (ai.chat /
+// ai.structured); migrations may not unless overridden. Sending data to a
+// remote provider still needs the user's consent when the script runs.
 export const SCRIPT_PROFILES = {
-  'read-only': { label: 'Read only', permissions: { ...none, readSchema: true, readData: true, executeSelect: true } },
-  validator: { label: 'Validator', permissions: { ...none, readSchema: true, readData: true, executeSelect: true } },
+  'read-only': { label: 'Read only', permissions: { ...none, readSchema: true, readData: true, executeSelect: true, useAI: true } },
+  validator: { label: 'Validator', permissions: { ...none, readSchema: true, readData: true, executeSelect: true, useAI: true } },
   generator: { label: 'Data generator', permissions: { ...none, readSchema: true, readData: true, executeSelect: true, insertData: true, useAI: true } },
-  seeder: { label: 'Seeder', permissions: { ...none, readSchema: true, readData: true, executeSelect: true, insertData: true, updateData: true } },
+  seeder: { label: 'Seeder', permissions: { ...none, readSchema: true, readData: true, executeSelect: true, insertData: true, updateData: true, useAI: true } },
   migration: { label: 'Migration', permissions: { ...none, readSchema: true, readData: true, executeSelect: true, insertData: true, updateData: true, deleteData: true, executeDDL: true, rawSql: true } },
   full: { label: 'Full access', permissions: Object.fromEntries(SCRIPT_PERMISSION_KEYS.map((k) => [k, true])) },
 };
