@@ -14,6 +14,7 @@
         <button data-cmd="new" title="New diagram (Ctrl+N)">New</button>
         <button data-cmd="open" title="Open .pgerd (Ctrl+O)">Open</button>
         <button data-cmd="save" title="Save (Ctrl+S)">Save</button>
+        <button data-cmd="import-spreadsheet" title="Import tables from an Excel workbook or CSV file (Ctrl+Alt+E)">Excel</button>
       </div>
       <div class="group-label">File</div>
     </div>
@@ -105,9 +106,10 @@
       </svg>
       <div id="empty-hint" class="empty-hint">
         <h2>No tables yet</h2>
-        <p>Open a pgAdmin <code>.pgerd</code> file, drop one here, or add a table.</p>
+        <p>Open a pgAdmin <code>.pgerd</code> file, drop one here (or an Excel/CSV file), or add a table.</p>
         <div>
           <button data-cmd="open">Open file…</button>
+          <button data-cmd="import-spreadsheet">Import Excel…</button>
           <button data-cmd="add-table">Add table</button>
         </div>
       </div>
@@ -229,6 +231,36 @@
         <button type="button" id="db-compare-save" data-icon="save">Save SQL…</button>
         <button type="button" id="db-compare-exec" class="danger" data-icon="run">Run on database…</button>
         <button value="close" class="primary" data-icon="close">Close</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="xl-import-dialog" class="wide">
+    <form method="dialog">
+      <h3>Import tables from Excel / CSV</h3>
+      <p class="muted">Each sheet becomes a table. A sheet whose first row has <em>Column</em> and <em>Type</em> headers
+        (optionally <em>Table, Length, Scale, Nullable, PK, Unique, Default, References, Comment</em>) is read as column
+        definitions, one row per column. Any other sheet is read as data: the first row names the columns and their types
+        are inferred from the values. Tables already in the diagram are updated; their position, color and note are kept.</p>
+      <div class="db-toolbar">
+        <button type="button" id="xl-choose" data-icon="open">Choose file…</button>
+        <span id="xl-file" class="muted">No file chosen</span>
+      </div>
+      <div class="db-toolbar">
+        <label class="check">Schema <input id="xl-schema" value="public" spellcheck="false" size="12"></label>
+        <label class="check"><input type="checkbox" id="xl-snake" checked> Convert names to snake_case</label>
+        <label class="check"><input type="checkbox" id="xl-notnull"> NOT NULL for data columns without blanks</label>
+        <button type="button" id="xl-all" data-icon="check-all">All</button>
+        <button type="button" id="xl-none" data-icon="check-none">None</button>
+      </div>
+      <div class="db-split">
+        <div id="xl-list" class="db-list"></div>
+        <pre id="xl-sql" class="db-sql"></pre>
+      </div>
+      <p id="xl-status" class="db-status"></p>
+      <menu>
+        <button value="cancel" formnovalidate data-icon="close">Cancel</button>
+        <button value="ok" class="primary" id="xl-import-ok" data-icon="import-spreadsheet">Import selected</button>
       </menu>
     </form>
   </dialog>

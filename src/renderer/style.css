@@ -390,6 +390,8 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
 .db-list label.item:hover { background: var(--accent-soft); }
 .db-list .tag { margin-left: auto; font-size: 11px; color: var(--muted); }
 .db-list .tag.new { color: #1a7f37; }
+.db-list .nowrap { white-space: nowrap; }
+.db-list input.xl-name { flex: 0 1 220px; min-width: 80px; padding: 1px 4px; }
 .db-split { display: grid; grid-template-columns: 2fr 3fr; gap: 10px; }
 .db-sql {
   margin: 0;

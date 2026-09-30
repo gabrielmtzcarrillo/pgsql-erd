@@ -52,6 +52,21 @@ SQL & Export) with two-tone colour icons; the native menus use the same icons.
 - Undo/redo, and a prompt about unsaved changes when you close the window.
 - Save back to `.pgerd`. Properties this app doesn't edit (tablespace, check constraints, and so
   on) are kept as they were.
+- Import tables from **Excel (`.xlsx`/`.xlsm`) or CSV** with **File → Import from Excel / CSV**
+  (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>E</kbd>), the **Excel** ribbon button, or by dropping the file on the window.
+  Each sheet is read in one of two layouts:
+  - **Column definitions:** a header row with *Column* and *Type* (plus any of *Table, Schema, Length, Scale,
+    Nullable / Not null, PK, Unique, Default, References, Comment*), one row per column. A *Table* column splits
+    the sheet into several tables (a blank cell continues the table above); *References* takes `table.column`,
+    `schema.table.column` or `table(column)` and becomes a foreign key. Common type spellings (`varchar(50)`,
+    `int`, `decimal(10,2)`, `datetime`, …) are mapped to PostgreSQL types. English and Spanish headers are recognised.
+  - **Data:** the first row names the columns and the rows below are data. Types (integer, bigint, numeric,
+    boolean, date, timestamp, time, uuid, jsonb, text) are inferred from the values, and an `id` column with
+    unique values becomes the primary key.
+
+  The dialog lets you pick and rename the tables, set the schema and preview the SQL. Names are converted to
+  snake_case unless you turn that off. Tables already in the diagram are updated and keep their position.
+  Old `.xls` files are not supported; save them as `.xlsx` first.
 - Live SQL preview with syntax highlighting, and export to PostgreSQL DDL (`CREATE TABLE`, primary keys, unique
   constraints, foreign keys, comments), SVG or PNG.
 - An Office-style ribbon with labelled command groups and two-tone colour icons, which the
@@ -140,12 +155,14 @@ src/main/preload.cjs      contextBridge API exposed to the renderer (window.erdH
 src/renderer/index.html   UI shell
 src/renderer/app.js       rendering, interaction, properties panel, commands
 src/renderer/dbui.js      connect / import / compare dialogs
+src/renderer/xlui.js      Excel / CSV import dialog
 src/renderer/lib/pgerd.js .pgerd parsing and serialization
 src/renderer/lib/sql.js   PostgreSQL DDL generation
 src/renderer/lib/layout.js table geometry, relationship routing, auto layout
 src/renderer/lib/catalog.js catalog rows -> diagram model
 src/renderer/lib/diff.js  database vs diagram comparison and migration SQL
 src/renderer/lib/sync.js  import / update diagram tables from the database
+src/renderer/lib/spreadsheet.js .xlsx / CSV reading and sheet -> table conversion
 src/renderer/lib/highlight.js SQL syntax highlighting
 samples/shop.pgerd        example diagram
 build/icon.svg            app icon source; icon.ico (Windows) and icon.png are rendered from it

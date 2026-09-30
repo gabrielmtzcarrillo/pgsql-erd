@@ -4,7 +4,7 @@
 import { modelFromCatalog, tableKey } from './lib/catalog.js';
 import { diffModels } from './lib/diff.js';
 import { mergeFromDb } from './lib/sync.js';
-import { autoLayout, contentBounds } from './lib/layout.js';
+import { autoLayout, contentBounds, placeBelow } from './lib/layout.js';
 import { highlightSQL } from './lib/highlight.js';
 
 const STORAGE_KEY = 'pgsql-erd.connection';
@@ -195,33 +195,12 @@ export function setupDatabase(ctx) {
       if (wasEmpty) {
         autoLayout(state.model, state.sizes);
       } else if (result.added.length) {
-        placeBelow(result.added, before);
+        placeBelow(state.model, state.sizes, result.added, before);
       }
     });
     if (wasEmpty || result.added.length) fit();
     status(`Imported ${result.added.length} new and updated ${result.updated.length} existing tables`);
   });
-
-  // Lay out newly added tables in rows under the existing diagram.
-  function placeBelow(ids, bounds) {
-    const maxWidth = Math.max(bounds.width, 1200);
-    let x = bounds.x + 40;
-    let y = bounds.y + bounds.height + 40;
-    let rowH = 0;
-    for (const id of ids) {
-      const t = state.model.tables.find((x) => x.id === id);
-      const s = state.sizes.get(id);
-      if (x > bounds.x + 40 && x + s.width > bounds.x + maxWidth) {
-        x = bounds.x + 40;
-        y += rowH + 50;
-        rowH = 0;
-      }
-      t.x = x;
-      t.y = y;
-      x += s.width + 60;
-      rowH = Math.max(rowH, s.height);
-    }
-  }
 
   // ------------------------------------------------------------ compare
 

@@ -116,6 +116,21 @@ async function showOpenDialog(win) {
 
 ipcMain.handle('open-dialog', (e) => showOpenDialog(BrowserWindow.fromWebContents(e.sender)));
 
+// Pick a spreadsheet for "Import from Excel"; the renderer parses its bytes.
+ipcMain.handle('open-spreadsheet', async (e) => {
+  const res = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), {
+    title: 'Import tables from Excel / CSV',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Spreadsheets', extensions: ['xlsx', 'xlsm', 'csv', 'tsv'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  const filePath = res.filePaths[0];
+  return { filePath, data: new Uint8Array(await fs.readFile(filePath)) };
+});
+
 ipcMain.handle('save-file', async (e, { filePath, text, saveAs, defaultName, kind }) => {
   const win = BrowserWindow.fromWebContents(e.sender);
   const filters = {
@@ -213,6 +228,8 @@ function buildMenu() {
         { type: 'separator' },
         { label: 'Save', icon: menuIcon('save'), accelerator: 'CmdOrCtrl+S', click: cmd('save') },
         { label: 'Save As…', icon: menuIcon('save-as'), accelerator: 'CmdOrCtrl+Shift+S', click: cmd('save-as') },
+        { type: 'separator' },
+        { label: 'Import from Excel / CSV…', icon: menuIcon('import-spreadsheet'), accelerator: 'CmdOrCtrl+Alt+E', click: cmd('import-spreadsheet') },
         { type: 'separator' },
         { label: 'Export SQL…', icon: menuIcon('export-sql'), accelerator: 'CmdOrCtrl+Alt+S', click: cmd('export-sql') },
         { label: 'Export SVG…', icon: menuIcon('export-svg'), click: cmd('export-svg') },
