@@ -74,11 +74,29 @@ class ScriptSession {
     return c;
   }
 
+  vectorKind(col) {
+    return col && !col.isArray ? this.shared.vectorKind?.(col.baseType) ?? null : null;
+  }
+
   // Values that node-postgres would convert wrongly.
   value(col, v) {
     if (typeof v === 'bigint') return v.toString();
     if (col && (col.baseType === 'json' || col.baseType === 'jsonb') && v !== null && v !== undefined) return JSON.stringify(v);
+    // pgvector: number arrays -> '[1,2,3]' (node-postgres would send '{1,2,3}').
+    const vec = this.vectorKind(col);
+    if (vec && v !== null && v !== undefined) return this.shared.toVectorText(vec, v);
     return v;
+  }
+
+  // pgvector: vector / halfvec values come back as '[1,2,3]'; scripts get number arrays.
+  decode(t, rows) {
+    const cols = t.columns.filter((c) => {
+      const k = this.vectorKind(c);
+      return k === 'vector' || k === 'halfvec';
+    });
+    if (!cols.length) return rows;
+    for (const r of rows) for (const c of cols) if (typeof r[c.name] === 'string') r[c.name] = this.shared.parseVectorText(r[c.name]);
+    return rows;
   }
 
   // where: array of filter objects, combined with AND.
@@ -92,15 +110,24 @@ class ScriptSession {
           params.push(this.value(col, x));
           return `$${params.length}`;
         };
+        // A vector column compares with one vector (an array of numbers); a list of them is IN.
+        const vec = this.vectorKind(col);
+        const isVectorValue = (x) => vec && (ArrayBuffer.isView(x) || (Array.isArray(x) && x.every((y) => typeof y === 'number')));
+        // IN lists: vectors are encoded one by one, so the list itself isn't encoded again.
+        const pList = (list) => {
+          if (!vec) return p(list.map((x) => this.value(null, x)));
+          params.push(list.map((x) => this.value(col, x)));
+          return `$${params.length}`;
+        };
         if (v === null) parts.push(`${c} IS NULL`);
-        else if (Array.isArray(v)) parts.push(v.length ? `${c} = ANY(${p(v.map((x) => this.value(null, x)))})` : 'FALSE');
+        else if (Array.isArray(v) && !isVectorValue(v)) parts.push(v.length ? `${c} = ANY(${pList(v)})` : 'FALSE');
         else if (isPlainObject(v) && Object.keys(v).length && Object.keys(v).every((k) => OPS.has(k))) {
           for (const [op, x] of Object.entries(v)) {
             if (op === 'isNull') parts.push(`${c} IS ${x ? '' : 'NOT '}NULL`);
             else if (op === 'in' || op === 'notIn') {
               const list = Array.isArray(x) ? x : [x];
               if (!list.length) parts.push(op === 'in' ? 'FALSE' : 'TRUE');
-              else parts.push(`${op === 'notIn' ? 'NOT ' : ''}(${c} = ANY(${p(list.map((y) => this.value(null, y)))}))`);
+              else parts.push(`${op === 'notIn' ? 'NOT ' : ''}(${c} = ANY(${pList(list)}))`);
             } else if ((op === 'eq' || op === 'ne') && x === null) parts.push(`${c} IS ${op === 'ne' ? 'NOT ' : ''}NULL`);
             else if (op === 'ne') parts.push(`${c} IS DISTINCT FROM ${p(x)}`);
             else parts.push(`${c} ${CMP[op]} ${p(x)}`);
@@ -158,7 +185,7 @@ class ScriptSession {
     if (wanted === null && res.rows.length > max)
       throw new Error(`${t.id} returned more than ${max} rows. Use .limit() and .offset() to read it in pages.`);
     this.counters.rowsRead += res.rows.length;
-    return res.rows;
+    return this.decode(t, res.rows);
   }
 
   async countRows({ table, where }) {
@@ -204,7 +231,7 @@ class ScriptSession {
       out.push(...res.rows);
     }
     this.count(t.id, 'insert', out.length);
-    return out;
+    return this.decode(t, out);
   }
 
   async update({ table, where, values }) {

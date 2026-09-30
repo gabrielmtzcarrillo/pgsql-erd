@@ -23,6 +23,7 @@ export const tableKey = (t) => `${t.schema || 'public'}.${t.name}`;
 // catalog: { tables, columns, constraints } rows as returned by db.cjs introspect().
 export function modelFromCatalog(catalog) {
   const model = emptyModel();
+  if (catalog.extensions) model.extensions = catalog.extensions.map((e) => e.name);
   const byOid = new Map();
 
   for (const r of catalog.tables) {

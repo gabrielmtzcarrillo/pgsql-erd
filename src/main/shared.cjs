@@ -5,7 +5,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 const dir = path.join(__dirname, '..', 'shared');
-const MODULES = ['schema-model', 'typegen', 'permissions', 'scripts', 'json-schema', 'context-builder', 'fake', 'seed'];
+const MODULES = ['schema-model', 'typegen', 'permissions', 'scripts', 'json-schema', 'context-builder', 'fake', 'seed', 'pgvector', 'age'];
 
 let loading = null;
 

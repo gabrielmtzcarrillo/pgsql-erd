@@ -1,6 +1,7 @@
 // PostgreSQL DDL generation from the internal ERD model.
 
 import { foreignKeysOf } from './pgerd.js';
+import { usesPgvector, CREATE_VECTOR_EXTENSION } from '../../shared/pgvector.js';
 
 const RESERVED = new Set(
   `all analyse analyze and any array as asc asymmetric authorization binary both case cast
@@ -132,6 +133,8 @@ export function generateSQL(model) {
   );
   for (const s of schemas) out.push(`CREATE SCHEMA IF NOT EXISTS ${quoteIdent(s)};`);
   if (schemas.length) out.push('');
+  // vector / halfvec / sparsevec columns need the pgvector extension.
+  if (usesPgvector(model.tables)) out.push(CREATE_VECTOR_EXTENSION, '');
 
   for (const t of model.tables) out.push(createTableSQL(t), '');
 

@@ -2,6 +2,8 @@
 // the script runner. Picks by column type first and refines by column name
 // (email, name, phone, city, …, in English and Spanish).
 
+import { vectorKind, vectorDimensions, randomVector, toVectorText } from './pgvector.js';
+
 const RULES = [
   [/(^|_)(e?mail|correo)/i, (f, i, u) => (u ? `${f.internet.userName()}.${i}@example.com` : f.internet.email())],
   [/(first_?name|nombres?$|primer_?nombre)/i, (f) => f.person.firstName()],
@@ -57,6 +59,12 @@ export function valueForColumn(col, faker, { index = 0, unique = false, enums = 
     if (base === 'json' || base === 'jsonb') return {};
     if (base === 'inet' || base === 'cidr') return `10.${faker.number.int(255)}.${faker.number.int(255)}.${faker.number.int({ min: 1, max: 254 })}`;
     if (base === 'bytea') return null;
+    // pgvector: a random unit vector with the column's dimensions.
+    const vec = vectorKind(base);
+    if (vec) {
+      const v = randomVector(faker, vectorDimensions(col.databaseType) ?? 3);
+      return vec === 'sparsevec' ? toVectorText(vec, v) : v;
+    }
     // Text and anything else PostgreSQL accepts as a string literal.
     const rule = RULES.find(([re]) => re.test(col.name));
     let v = rule ? rule[1](faker, index + 1, unique) : faker.lorem.words(faker.number.int({ min: 1, max: 3 }));

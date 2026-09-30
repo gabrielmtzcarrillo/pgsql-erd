@@ -3,6 +3,8 @@
 // (with counts, "(Blanks)" and search), and text / number / date conditions.
 // Rows are read by the main process in read-only transactions.
 
+import { vectorKind, abbreviateVector } from '../shared/pgvector.js';
+
 const $ = (sel) => document.querySelector(sel);
 
 const NUMERIC = /^(smallint|integer|bigint|int[248]?|numeric|decimal|real|double precision|float[48]|money|serial|bigserial|smallserial|oid)$/;
@@ -175,6 +177,8 @@ export function setupDataBrowser(ctx) {
           ...d.columns.map((c) => {
             const v = r[c.name];
             if (v === null) return h('td', { class: 'null' }, 'NULL');
+            // pgvector values: the first elements and the dimension count.
+            if (vectorKind(c.baseType) && !/\[\]$/.test(c.type)) return h('td', { class: 'dt-vector', title: v.length > 2000 ? `${v.slice(0, 2000)}…` : v }, abbreviateVector(v));
             return h('td', { class: kindOf(c) === 'number' ? 'num' : '', title: v.length > 60 ? v.slice(0, 2000) : '' }, v.length > 300 ? `${v.slice(0, 300)}…` : v);
           }),
         ])

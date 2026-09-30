@@ -4,6 +4,7 @@
 // helpers that derive schemas from tables and check rows against tables.
 
 import { tsType } from './typegen.js';
+import { vectorKind, vectorDimensions, parseVectorText } from './pgvector.js';
 
 const typeOf = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : Number.isInteger(v) ? 'integer' : typeof v);
 
@@ -95,8 +96,11 @@ const lengthOf = (databaseType) => Number(databaseType.match(/\((\d+)/)?.[1]) ||
 
 function columnSchema(col, enums) {
   const t = tsType(col, enums, 'insert');
+  const vec = !col.isArray && vectorKind(col.baseType);
+  const dims = vec && vectorDimensions(col.databaseType);
   let s;
-  if (col.isArray) s = { type: 'array' };
+  if (vec) s = { type: 'array', items: { type: 'number' }, ...(dims ? { minItems: dims, maxItems: dims } : {}) };
+  else if (col.isArray) s = { type: 'array' };
   else if (t === 'number') s = { type: /int|serial|oid/.test(col.baseType) ? 'integer' : 'number' };
   else if (t === 'boolean') s = { type: 'boolean' };
   else if (t.startsWith('string | number')) s = { type: ['string', 'number'] };
@@ -166,7 +170,15 @@ export function checkRowAgainstTable(table, row, schema = null) {
       continue;
     }
     const s = columnSchema({ ...c, nullable: false }, enums);
-    const errs = validateJson(v instanceof Date ? v.toISOString() : v, s, c.name).map((e) => e.replace(/^[^:]+: /, `${c.name}: `));
+    let value = v instanceof Date ? v.toISOString() : v;
+    const vec = !c.isArray && vectorKind(c.baseType);
+    if (vec && ArrayBuffer.isView(value)) value = Array.from(value);
+    if (vec && typeof value === 'string') {
+      // pgvector text: check the dimensions of '[…]'; sparsevec text is left to the database.
+      value = parseVectorText(value);
+      if (typeof value === 'string') continue;
+    }
+    const errs = validateJson(value, s, c.name).map((e) => e.replace(/^[^:]+: /, `${c.name}: `));
     problems.push(...errs);
   }
   return problems;

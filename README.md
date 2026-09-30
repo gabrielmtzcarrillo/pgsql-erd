@@ -108,6 +108,57 @@ PostgreSQL 10+ server:
     option. Otherwise they appear as comments at the end of the script.
   - Renamed tables or columns can't be detected: they show up as a drop plus an add.
 
+## pgvector
+
+[pgvector](https://github.com/pgvector/pgvector) columns (`vector`, `halfvec`, `sparsevec`) are supported
+throughout:
+
+- **Diagram:** the types are in the column type list, and their length is the number of dimensions
+  (`vector(1536)`). The column editor shows the HNSW index for cosine search, ready to copy. Vectors
+  with more than 2,000 dimensions get a `halfvec` expression index, which works up to 4,000.
+- **SQL export and migrations** add `CREATE EXTENSION IF NOT EXISTS vector;` when the diagram uses vector
+  types. Compare / Sync only adds it when the database doesn't have the extension yet.
+- **Scripts:** `vector` and `halfvec` values are read as `number[]` and can be written as `number[]`,
+  `Float32Array` or pgvector text (`'[1,2,3]'`). `sparsevec` values are strings (`'{1:0.5,3:1}/5'`), and
+  you can write them as dense arrays. `where({ embedding: [1, 2, 3] })` compares with one vector.
+  `seed.row()` / `seed.fill()` generate random unit vectors, and `seed.check()` checks the dimensions.
+- **Query analyzer:** a nearest-neighbour query (`ORDER BY embedding <=> $1 LIMIT n`) that sorts every
+  row gets a suggestion for an HNSW index with the operator class for its operator (`<->`, `<=>`, `<#>`,
+  `<+>`). It also points out an existing vector index built for a different operator.
+- **Data tabs** show long vectors shortened as `[0.1,0.2,…] (1536 dims)`; hover over a cell to see the full value.
+
+## Apache AGE graphs
+
+The **Graph** tab (Database → Graphs, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>H</kbd>) manages
+[Apache AGE](https://age.apache.org) property graphs in the connected database:
+
+- **Sidebar:** the database's graphs with their vertex labels and relationship types, and how many
+  vertices or relationships each one has. You can create and drop graphs and labels here. If the server has
+  AGE available but the database doesn't use it yet, **Install AGE** runs `CREATE EXTENSION age`.
+- **Relationships:** every relationship, shown as *from — TYPE → to*. You can filter by type, search
+  properties and labels of the relationship and both vertices, and page through the list. **New
+  relationship** picks the two vertices by search-as-you-type and sets the type (a new type is created
+  automatically) and JSON properties. Each row can be edited in place or deleted.
+- **Vertices:** vertices with their relationship counts. You can create, edit and delete them (deleting
+  one also deletes its relationships). **Connect** starts a relationship from that vertex, and clicking the
+  count lists that vertex's relationships.
+- **Explorer:** a force-directed view. Load a sample of the graph or search for a vertex, then double-click
+  a vertex to expand its neighbours and drag, pan and zoom as needed. Select a vertex or relationship to
+  edit its properties. To connect two vertices, use **Connect…** and click the target, or Shift+click it.
+- **Cypher:** runs Cypher queries on the selected graph. Result columns come from the `RETURN` clause, or
+  you can list them for `RETURN *`. Vertices, edges and paths are shown readably and can be opened in the
+  explorer.
+
+Changes are committed immediately, need a connection whose policy allows writes (graphs and labels also
+need schema changes), and are recorded in the audit log. Deletes and drops ask for confirmation. Cypher
+queries that change the graph (`CREATE`, `MERGE`, `SET`, `DELETE`, `REMOVE`) only run when you tick
+**Allow changes**; other queries run in a read-only transaction. Graph element ids are 64-bit, so they are
+kept as strings and never rounded. AGE's own schemas (`ag_catalog` and one per graph) are left out of
+**Import** and **Compare**.
+
+The session runs `LOAD 'age'`, falling back to `$libdir/plugins/age` for non-superusers, unless AGE is
+already in `shared_preload_libraries`.
+
 ## Workbench tabs
 
 ### Scripts
@@ -267,19 +318,22 @@ src/main/main.cjs         Electron main process: windows, menus, file dialogs, f
 src/main/db.cjs           PostgreSQL connection, catalog introspection, migration execution (pg)
 src/main/preload.cjs      contextBridge API exposed to the renderer (window.erdHost)
 src/main/ipc/             IPC for connections, scripts, queries, data tabs, the assistant, the audit log
-src/main/database/        per-window connections and policies, query tab runner, data browser queries
+src/main/database/        per-window connections and policies, query tab runner, data browser queries,
+                          Apache AGE graphs (age.cjs)
 src/main/scripting/       type checking and transpiling (TypeScript), script runs, the script-side database API
 src/main/ai/              providers (Ollama, OpenAI-compatible, OpenAI), keys, tools, structured output
 src/main/projects/        scripts and settings in the project folder
 src/runner/               the isolated script process
 src/shared/               schema model, typings generator, permissions, context builder, JSON schema,
-                          fake data, plan analyzer (used by the main process, the runner and the page)
+                          fake data, plan analyzer, pgvector and Apache AGE helpers (used by the main
+                          process, the runner and the page)
 src/renderer/index.html   UI shell
 src/renderer/app.js       rendering, interaction, properties panel, commands
 src/renderer/dbui.js      connect / import / compare dialogs
 src/renderer/tabs.js      main tabs
 src/renderer/workbench.js Scripts tab
 src/renderer/query.js     Query tab
+src/renderer/graph.js     Graph tab (Apache AGE)
 src/renderer/databrowser.js data tabs and filters
 src/renderer/assistant.js Assistant tab and AI provider settings
 src/renderer/xlui.js      Excel / CSV import dialog

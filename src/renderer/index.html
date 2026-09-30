@@ -107,6 +107,7 @@
     <button type="button" data-main-tab="erd" data-icon="toggle-tables" class="active">Diagram</button>
     <button type="button" data-main-tab="scripts" data-icon="toggle-workbench">Scripts</button>
     <button type="button" data-main-tab="query" data-icon="toggle-sql">Query</button>
+    <button type="button" data-main-tab="graph" data-icon="graph" title="Apache AGE graphs: relationships, vertices, explorer and Cypher">Graph</button>
     <button type="button" data-main-tab="assistant" data-icon="ai-assistant">Assistant</button>
     <span id="data-tabs" class="data-tabs"></span>
     <button type="button" id="data-tab-add" class="data-add" data-icon="plus" title="Browse the data of a table">Data</button>
@@ -217,6 +218,31 @@
       <div id="q-plan" class="q-pane" data-qpane="plan" hidden></div>
       <div id="q-messages" class="q-pane" data-qpane="messages" hidden></div>
     </div>
+  </section>
+
+  <section id="graph-page" class="tab-page graph-page" data-page="graph" hidden>
+    <aside class="gr-side">
+      <div class="gr-side-head">
+        <strong class="grow">Graphs</strong>
+        <button type="button" id="gr-refresh" data-icon="refresh" title="Reload graphs and counts"></button>
+        <button type="button" id="gr-new-graph" data-icon="plus" title="New graph"></button>
+      </div>
+      <div id="gr-side-body" class="gr-side-body"></div>
+    </aside>
+    <section class="gr-main">
+      <div class="wb-tabs" role="tablist">
+        <button type="button" data-gtab="edges" class="active">Relationships</button>
+        <button type="button" data-gtab="vertices">Vertices</button>
+        <button type="button" data-gtab="explore">Explorer</button>
+        <button type="button" data-gtab="cypher">Cypher</button>
+        <span class="grow"></span>
+        <span id="gr-status" class="muted small"></span>
+      </div>
+      <div class="gr-pane" data-gpane="edges"></div>
+      <div class="gr-pane" data-gpane="vertices" hidden></div>
+      <div class="gr-pane" data-gpane="explore" hidden></div>
+      <div class="gr-pane" data-gpane="cypher" hidden></div>
+    </section>
   </section>
 
   <section id="assistant-page" class="tab-page assistant-page" data-page="assistant" hidden>

@@ -13,10 +13,12 @@ import { setupAssistant } from './assistant.js';
 import { setupTabs } from './tabs.js';
 import { setupDataBrowser } from './databrowser.js';
 import { setupQuery } from './query.js';
+import { setupGraph } from './graph.js';
 import { setupErdScripts } from './erdscripts.js';
 import { tableKey } from './lib/catalog.js';
 import { setupSpreadsheetImport, SPREADSHEET_EXT } from './xlui.js';
 import { highlightSQL } from './lib/highlight.js';
+import { vectorKind, vectorIndexSQL } from '../shared/pgvector.js';
 import { ICONS, decorateButton, decorateButtons, iconElement } from './icons.js';
 
 const host = window.erdHost;
@@ -28,6 +30,8 @@ const PG_TYPES = [
   'polygon', 'real', 'smallint', 'smallserial', 'serial', 'text', 'time without time zone',
   'time with time zone', 'timestamp without time zone', 'timestamp with time zone', 'tsquery',
   'tsvector', 'uuid', 'xml', 'integer[]', 'text[]', 'character varying[]', 'uuid[]',
+  // pgvector; the length is the number of dimensions.
+  'vector', 'halfvec', 'sparsevec',
 ];
 
 const $ = (sel) => document.querySelector(sel);
@@ -370,8 +374,26 @@ function boundText(obj, prop, key, rows = 2) {
   return ta;
 }
 
-// Types that take a length/precision modifier, e.g. varchar(20), numeric(10,2).
-const SIZED_TYPE = /^(character varying|varchar|character|char|bpchar|bit|bit varying|varbit|numeric|decimal|time|timestamp|timetz|timestamptz|interval)\b/i;
+// Types that take a length/precision modifier, e.g. varchar(20), numeric(10,2),
+// vector(1536) (pgvector dimensions).
+const SIZED_TYPE = /^(character varying|varchar|character|char|bpchar|bit|bit varying|varbit|numeric|decimal|time|timestamp|timetz|timestamptz|interval|(?:[\w"]+\.)?(?:vector|halfvec|sparsevec))\b/i;
+
+// pgvector column: what the length means and the index for similarity search.
+function vectorHint(t, c) {
+  const kind = vectorKind(c.type);
+  if (!kind) return null;
+  const idx = vectorIndexSQL(t, c, { metric: 'cosine' });
+  const sql = idx?.sql;
+  return h('div', { class: 'sb-vector muted small' }, [
+    h('p', {}, `pgvector ${kind}: the length is the number of dimensions${c.length ? '' : ' (set it to match your embedding model)'}. Exporting SQL adds CREATE EXTENSION vector.`),
+    sql ? h('p', {}, ['Index for cosine (<=>) nearest-neighbour search:']) : null,
+    sql ? h('code', { class: 'sb-vector-sql', title: 'Click to copy', onclick: async () => {
+      await navigator.clipboard.writeText(sql);
+      status('Index SQL copied to clipboard');
+    } }, sql) : null,
+    idx?.note ? h('p', {}, idx.note) : null,
+  ]);
+}
 
 function section(id, title, count, body, action) {
   const d = h('details', { class: 'sb-section', open: openSections.get(id) !== false });
@@ -599,9 +621,10 @@ function columnEditor(t, c, i) {
       })),
     ]),
     h('div', { class: 'sb-grid' }, [
-      field('Length / precision', bound(c, 'length', 'col-length', { type: 'number' })),
+      field(vectorKind(c.type) ? 'Dimensions' : 'Length / precision', bound(c, 'length', 'col-length', { type: 'number' })),
       field('Scale', bound(c, 'precision', 'col-scale', { type: 'number' })),
     ]),
+    vectorHint(t, c),
     field('Default', bound(c, 'default', 'col-default', { placeholder: 'e.g. now() or \'text\'' })),
     h('div', { class: 'sb-inline' }, [
       check('notNull', 'NOT NULL', 'col-nn'),
@@ -1261,6 +1284,7 @@ const workbench = setupWorkbench(workbenchCtx);
 const assistant = setupAssistant(workbenchCtx, workbench.api);
 const dataBrowser = setupDataBrowser(workbenchCtx);
 const query = setupQuery(workbenchCtx);
+const graph = setupGraph(workbenchCtx);
 erdScripts = setupErdScripts({ ...workbenchCtx, el, measure, workbench: workbench.api, select, render, focusTable });
 Object.assign(workbenchCtx, {
   aiConfig: assistant.aiConfig,
@@ -1268,7 +1292,7 @@ Object.assign(workbenchCtx, {
   openData: dataBrowser.open,
   openSql: query.setSql,
 });
-Object.assign(commands, dbCommands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, {
+Object.assign(commands, dbCommands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, graph.commands, {
   'tab-erd': () => tabs.show('erd'),
   'toggle-erd-scripts': () => {
     tabs.show('erd');
