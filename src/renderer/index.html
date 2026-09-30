@@ -305,40 +305,57 @@
     </form>
   </dialog>
 
-  <dialog id="db-connect-dialog">
+  <dialog id="db-connect-dialog" class="medium">
     <form method="dialog" id="db-connect-form">
       <h3>Connect to PostgreSQL</h3>
-      <div class="grid2">
-        <label>Host<input name="host" placeholder="localhost" autocomplete="off"></label>
-        <label>Port<input name="port" placeholder="5432" inputmode="numeric"></label>
-        <label>Database<input name="database" placeholder="postgres" autocomplete="off"></label>
-        <label>User<input name="user" placeholder="postgres" autocomplete="off"></label>
-        <label>Password<input name="password" type="password" autocomplete="off"></label>
-        <label>SSL
-          <select name="sslmode">
-            <option value="disable">disable</option>
-            <option value="require">require (no certificate check)</option>
-            <option value="verify-full">verify-full</option>
-          </select>
-        </label>
+      <div class="db-connect">
+        <div class="db-instances">
+          <input id="db-instance-filter" type="search" placeholder="Filter instances…" aria-label="Filter instances">
+          <div id="db-instance-list" class="db-list" role="listbox" aria-label="Saved instances"></div>
+          <button type="button" id="db-instance-new" data-icon="plus">New connection</button>
+        </div>
+        <div class="db-connect-form">
+          <div class="grid2">
+            <label>Host<input name="host" placeholder="localhost" autocomplete="off"></label>
+            <label>Port<input name="port" placeholder="5432" inputmode="numeric"></label>
+            <label>Database<input name="database" placeholder="postgres" autocomplete="off"></label>
+            <label>User<input name="user" placeholder="postgres" autocomplete="off"></label>
+            <label>Password<input name="password" type="password" autocomplete="off"></label>
+            <label>SSL
+              <select name="sslmode">
+                <option value="disable">disable</option>
+                <option value="require">require (no certificate check)</option>
+                <option value="verify-full">verify-full</option>
+              </select>
+            </label>
+          </div>
+          <div class="grid2">
+            <label>Name<input name="profileName" placeholder="(host/database)" autocomplete="off"></label>
+            <label>Environment
+              <select name="environment">
+                <option value="development">Development</option>
+                <option value="testing">Testing</option>
+                <option value="staging">Staging</option>
+                <option value="production">Production</option>
+              </select>
+            </label>
+          </div>
+          <div class="db-toolbar">
+            <label class="check"><input type="checkbox" name="allowWrites"> Allow scripts to write data</label>
+            <label class="check"><input type="checkbox" name="allowDDL"> Allow schema changes (DDL, migrations)</label>
+          </div>
+          <div class="db-toolbar">
+            <label class="check"><input type="checkbox" name="saveInstance" checked> Save this instance</label>
+            <label class="check"><input type="checkbox" name="rememberPassword"> Remember the password</label>
+          </div>
+          <p id="db-password-where" class="muted small"></p>
+          <div class="db-toolbar">
+            <button type="button" id="db-instance-forget" data-icon="reset">Forget password</button>
+            <button type="button" id="db-instance-delete" class="danger" data-icon="delete">Delete instance</button>
+          </div>
+        </div>
       </div>
-      <div class="grid2">
-        <label>Name<input name="profileName" placeholder="(host/database)" autocomplete="off"></label>
-        <label>Environment
-          <select name="environment">
-            <option value="development">Development</option>
-            <option value="testing">Testing</option>
-            <option value="staging">Staging</option>
-            <option value="production">Production</option>
-          </select>
-        </label>
-      </div>
-      <div class="db-toolbar">
-        <label class="check"><input type="checkbox" name="allowWrites"> Allow scripts to write data</label>
-        <label class="check"><input type="checkbox" name="allowDDL"> Allow schema changes (DDL, migrations)</label>
-      </div>
-      <p class="muted small">The password is sent to the app's main process and kept in memory for this window only; the
-        page never sees it again. Other settings are remembered. Production connections are read-only by default.</p>
+      <label class="check"><input type="checkbox" id="db-reconnect"> Reconnect to the last instance when a window opens (needs a remembered password)</label>
       <p id="db-connect-status" class="db-status"></p>
       <menu>
         <button type="button" id="db-test" data-icon="test">Test</button>

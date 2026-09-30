@@ -7,6 +7,7 @@ const path = require('node:path');
 const { loadShared } = require('../shared.cjs');
 const db = require('../db.cjs');
 const { ConnectionManager } = require('../database/connection-manager.cjs');
+const { SavedInstances } = require('../database/saved-instances.cjs');
 const { ProjectManager } = require('../projects/project-manager.cjs');
 const { ExecutionManager } = require('../scripting/execution-manager.cjs');
 const { ProviderManager } = require('../ai/provider-manager.cjs');
@@ -27,6 +28,7 @@ function registerWorkbench({ ipcMain, app, safeStorage, shell }) {
     decrypt: (buf) => safeStorage.decryptString(buf),
   };
   const providers = new ProviderManager({ dir: userData, crypto });
+  const instances = new SavedInstances({ dir: userData, crypto });
 
   // Services need the shared ES modules, which load asynchronously.
   const ready = loadShared().then((shared) => {
@@ -81,8 +83,56 @@ function registerWorkbench({ ipcMain, app, safeStorage, shell }) {
 
   // ------------------------------------------------------------ database
 
-  handle('db-test', (_s, _id, _sender, conn) => db.testConnection(conn));
-  handle('db-connect', ({ connections }, id, _sender, conn, profile) => connections.connect(id, conn, profile));
+  // A saved password is only used for the server and user it was saved for,
+  // so editing the host of a saved instance can't send it somewhere else.
+  const withSavedPassword = (conn, instanceId) => {
+    const saved = instanceId && instances.get(instanceId);
+    if (conn.password || !saved) return conn;
+    const same = ['host', 'port', 'user'].every((k) => String(conn[k] ?? '').trim() === saved[k]);
+    return same ? { ...conn, password: instances.getPassword(instanceId) ?? '' } : conn;
+  };
+  handle('db-test', (_s, _id, _sender, conn, instanceId) => db.testConnection(withSavedPassword(conn, instanceId)));
+  // opts: { instanceId, save, rememberPassword }. The instance is saved (or
+  // updated) only after the connection works.
+  handle('db-connect', async ({ connections }, id, _sender, conn, profile, opts = {}) => {
+    const c = withSavedPassword(conn, opts.instanceId);
+    const info = await connections.connect(id, c, profile);
+    let instanceId = null;
+    if (opts.save) {
+      const { password, ...settings } = c;
+      instanceId = instances.upsert(
+        { ...settings, id: opts.instanceId, name: profile?.name, environment: info.profile.environment, policy: info.profile.policy },
+        opts.rememberPassword ? password : null
+      );
+      instances.touch(instanceId);
+      audit.log('instance-saved', { windowId: id, instance: instanceId, target: info.description, passwordSaved: !!(opts.rememberPassword && password) });
+    }
+    return { ...info, instanceId, saved: instances.list() };
+  });
+  // Reconnects to a saved instance with its saved password.
+  handle('db-connect-instance', async ({ connections }, id, _sender, instanceId) => {
+    const { conn, profile } = instances.resolve(instanceId);
+    if (!conn.password) throw new Error('No password is saved for this instance.');
+    const info = await connections.connect(id, conn, profile);
+    instances.touch(instanceId);
+    return { ...info, instanceId, saved: instances.list() };
+  });
+  handle('db-instances', () => instances.list());
+  handle('db-instance-delete', (_s, id, _sender, instanceId) => {
+    instances.remove(instanceId);
+    audit.log('instance-deleted', { windowId: id, instance: instanceId });
+    return instances.list();
+  });
+  handle('db-instance-forget-password', (_s, id, _sender, instanceId) => {
+    instances.setPassword(instanceId, null);
+    audit.log('instance-password-forgotten', { windowId: id, instance: instanceId });
+    return instances.list();
+  });
+  handle('db-instances-reconnect', (_s, _id, _sender, on) => {
+    instances.setReconnect(on);
+    return instances.list();
+  });
+  handle('db-startup-instance', () => instances.startup());
   handle('db-disconnect', async ({ connections, executions }, id) => {
     await executions.closeWindow(id);
     connections.disconnect(id);

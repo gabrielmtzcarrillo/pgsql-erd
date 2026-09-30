@@ -96,8 +96,12 @@ table whose data you are browsing.
 The **Database** menu (and the *Connect / Import / Compare* buttons in the ribbon) works with a live
 PostgreSQL 10+ server:
 
-- **Connect:** host, port, database, user, password and SSL mode. The password stays in memory for the
-  window; the other settings are remembered.
+- **Connect:** host, port, database, user, password and SSL mode. Connections can be saved as named
+  instances (with their environment and policy) and picked from a list; double-click one to connect.
+  Tick **Remember the password** to store it encrypted with the operating system's credential store
+  (DPAPI, Keychain, libsecret/kwallet); without a credential store it is kept in memory until the app quits.
+  A saved password is only sent to the host, port and user it was saved for. **Reconnect to the last
+  instance** reopens the last session when a window opens.
 - **Import tables:** lists every table in the database by schema, with its column count and whether it's
   already in the diagram. Selected tables that are new are added to the diagram with their columns, primary
   keys, unique constraints and foreign keys. Tables already in the diagram are updated from the database;
@@ -259,7 +263,8 @@ in the editor, labelled with whether they type-check. Nothing the assistant writ
 ## Safety model
 
 - The page (renderer) never runs scripts or sees credentials: the database password is sent once when
-  connecting and stays in the main process; API keys likewise.
+  connecting and stays in the main process; API keys likewise. Saved passwords are encrypted with the
+  operating system's credential store and never sent back to the page.
 - Scripts run in a separate process (Electron's Node) with an empty environment, a memory limit, a
   timeout and Node's permission model: no file writes, no reads outside the app, no child processes. The
   process holds no database connection; every `db.*` call goes to the main process, which checks the

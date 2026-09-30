@@ -102,8 +102,12 @@ y **Asistente**, seguidas de una pestaña por cada tabla cuyos datos estés expl
 El menú **Base de datos** (y los botones *Conectar / Importar / Comparar* de la cinta) trabaja con un servidor
 PostgreSQL 10+ en vivo:
 
-- **Conectar:** servidor, puerto, base de datos, usuario, contraseña y modo SSL. La contraseña se queda en
-  memoria para esa ventana; el resto de la configuración se recuerda.
+- **Conectar:** servidor, puerto, base de datos, usuario, contraseña y modo SSL. Las conexiones se pueden
+  guardar como instancias con nombre (con su entorno y su política) y elegir de una lista; doble clic en una
+  para conectar. Marca **Recordar la contraseña** para guardarla cifrada con el almacén de credenciales del
+  sistema operativo (DPAPI, Llavero, libsecret/kwallet); sin almacén de credenciales se conserva en memoria
+  hasta que se cierra la aplicación. Una contraseña guardada solo se envía al servidor, puerto y usuario para
+  los que se guardó. **Reconectar a la última instancia** reabre la última sesión al abrir una ventana.
 - **Importar tablas:** lista todas las tablas de la base de datos por esquema, con su número de columnas e
   indicando si ya están en el diagrama. Las tablas seleccionadas que son nuevas se agregan al diagrama con sus
   columnas, claves primarias, restricciones únicas y claves foráneas. Las que ya están en el diagrama se
@@ -288,7 +292,8 @@ se ejecuta por sí solo.
 ## Modelo de seguridad
 
 - La página (renderer) nunca ejecuta scripts ni ve credenciales: la contraseña de la base de datos se envía
-  una vez al conectar y se queda en el proceso principal; lo mismo con las claves de API.
+  una vez al conectar y se queda en el proceso principal; lo mismo con las claves de API. Las contraseñas
+  guardadas se cifran con el almacén de credenciales del sistema operativo y nunca se devuelven a la página.
 - Los scripts se ejecutan en un proceso aparte (el Node de Electron) con un entorno vacío, un límite de
   memoria, un tiempo máximo y el modelo de permisos de Node: sin escritura de archivos, sin lecturas fuera de
   la aplicación y sin procesos hijos. El proceso no tiene conexión a la base de datos; cada llamada `db.*` va al
