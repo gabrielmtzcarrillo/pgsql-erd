@@ -8,6 +8,11 @@ pgAdmin's ERD tool and this app.
 
 ## Screenshots
 
+**Ribbon:** commands are grouped Office-style (File, History, Diagram, View, Grid, Database,
+SQL & Export) with two-tone colour icons; the native menus use the same icons.
+
+![Ribbon](docs/screenshots/ribbon.png)
+
 | | |
 |---|---|
 | **Table sidebar:** select a table to see and edit its properties, columns and relationships. Clicking a column in the diagram opens its editor. | **SQL preview:** live PostgreSQL DDL with syntax highlighting. |
@@ -22,16 +27,16 @@ pgAdmin's ERD tool and this app.
 - Open `.pgerd` files from **File → Open**, by dragging them onto the window, from the command
   line (`npm start -- path/to/file.pgerd`), or by double-clicking them once the app is installed
   (the packaged app registers the `.pgerd` file type).
-- Draws tables with columns, types, primary keys (PK) and foreign keys (FK). Relationships use
+- Draws tables with columns, types, primary keys (key icon) and foreign keys (link icon). Relationships use
   crow's-foot notation.
 - A sidebar opens when you select a table. It shows:
   - the table's name, schema and column count
   - its properties (name, schema, comment, note, header colour, primary key)
-  - its columns, with PK/FK, NOT NULL and default markers; click one to edit it
+  - its columns, with PK/FK icons and NOT NULL and default markers; click one to edit it
   - its relationships, in both directions
 
   Click a column in the diagram to jump to it. Drag the sidebar's edge to resize it, and press
-  <kbd>Esc</kbd> or × to close it. **Tables** in the toolbar shows a filterable list of all tables.
+  <kbd>Esc</kbd> or × to close it. **Tables** in the ribbon shows a filterable list of all tables.
 - Editing:
   - add, rename and delete tables
   - edit columns: name, type, length/scale, NOT NULL, PK, default value, order
@@ -43,17 +48,19 @@ pgAdmin's ERD tool and this app.
   heavier line every fifth cell. With **Snap** on (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>),
   dragged tables, arrow-key nudges, new tables and auto layout all land on grid lines; hold
   <kbd>Alt</kbd> while dragging to invert snapping for that move, and <kbd>Shift</kbd>+arrow nudges
-  by 1px. The grid size is picked next to the Snap button and saved in the file's `gridSize`.
+  by 1px. The grid size is picked with **Size**, next to the Snap button and saved in the file's `gridSize`.
 - Undo/redo, and a prompt about unsaved changes when you close the window.
 - Save back to `.pgerd`. Properties this app doesn't edit (tablespace, check constraints, and so
   on) are kept as they were.
 - Live SQL preview with syntax highlighting, and export to PostgreSQL DDL (`CREATE TABLE`, primary keys, unique
   constraints, foreign keys, comments), SVG or PNG.
+- An Office-style ribbon with labelled command groups and two-tone colour icons, which the
+  native menus and dialogs share.
 - Follows the system's light or dark theme.
 
 ## Database sync
 
-The **Database** menu (and the *Connect DB / Import / Compare / Sync* toolbar buttons) works with a live
+The **Database** menu (and the *Connect / Import / Compare* buttons in the ribbon) works with a live
 PostgreSQL 10+ server:
 
 - **Connect:** host, port, database, user, password and SSL mode. The password stays in memory for the
@@ -86,6 +93,9 @@ npm test                           # unit tests
 # integration tests against a real server (creates and drops a temporary database):
 PGERD_TEST_HOST=127.0.0.1 PGERD_TEST_PORT=5432 PGERD_TEST_USER=postgres npm test
 ```
+
+Icons live in `src/renderer/icons.js`. After changing them, run `npm run menu-icons` to re-render
+the PNG icons of the native menus into `src/main/menu-icons/`.
 
 To build installers (AppImage/deb, NSIS, dmg) with the `.pgerd` file association:
 

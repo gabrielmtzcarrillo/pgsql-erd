@@ -1,6 +1,6 @@
 // Electron main process: windows, menus, native file dialogs and file I/O.
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, nativeTheme, shell } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const db = require('./db.cjs');
@@ -183,6 +183,14 @@ ipcMain.on('close-window', (e) => {
   win.close();
 });
 
+// Menu item icons, rendered from src/renderer/icons.js by `npm run menu-icons`,
+// in the variant that suits the menu's light or dark background.
+function menuIcon(name) {
+  const variant = nativeTheme.shouldUseDarkColors ? '-dark' : '';
+  const image = nativeImage.createFromPath(path.join(__dirname, 'menu-icons', `${name}${variant}.png`));
+  return image.isEmpty() ? undefined : image;
+}
+
 function buildMenu() {
   const cmd = (name) => () => send(focusedWindow(), 'menu', name);
   const isMac = process.platform === 'darwin';
@@ -191,19 +199,19 @@ function buildMenu() {
     {
       label: '&File',
       submenu: [
-        { label: 'New Diagram', accelerator: 'CmdOrCtrl+N', click: cmd('new') },
-        { label: 'New Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => createWindow() },
-        { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => showOpenDialog(focusedWindow()) },
+        { label: 'New Diagram', icon: menuIcon('new'), accelerator: 'CmdOrCtrl+N', click: cmd('new') },
+        { label: 'New Window', icon: menuIcon('new-window'), accelerator: 'CmdOrCtrl+Shift+N', click: () => createWindow() },
+        { label: 'Open…', icon: menuIcon('open'), accelerator: 'CmdOrCtrl+O', click: () => showOpenDialog(focusedWindow()) },
         ...(isMac ? [{ role: 'recentDocuments', submenu: [{ role: 'clearRecentDocuments' }] }] : []),
         { type: 'separator' },
-        { label: 'Save', accelerator: 'CmdOrCtrl+S', click: cmd('save') },
-        { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S', click: cmd('save-as') },
+        { label: 'Save', icon: menuIcon('save'), accelerator: 'CmdOrCtrl+S', click: cmd('save') },
+        { label: 'Save As…', icon: menuIcon('save-as'), accelerator: 'CmdOrCtrl+Shift+S', click: cmd('save-as') },
         { type: 'separator' },
-        { label: 'Export SQL…', accelerator: 'CmdOrCtrl+Alt+S', click: cmd('export-sql') },
-        { label: 'Export SVG…', click: cmd('export-svg') },
-        { label: 'Export PNG…', click: cmd('export-png') },
+        { label: 'Export SQL…', icon: menuIcon('export-sql'), accelerator: 'CmdOrCtrl+Alt+S', click: cmd('export-sql') },
+        { label: 'Export SVG…', icon: menuIcon('export-svg'), click: cmd('export-svg') },
+        { label: 'Export PNG…', icon: menuIcon('export-png'), click: cmd('export-png') },
         { type: 'separator' },
-        isMac ? { role: 'close' } : { role: 'quit' },
+        isMac ? { role: 'close', icon: menuIcon('close') } : { role: 'quit', icon: menuIcon('quit') },
       ],
     },
     {
@@ -211,39 +219,39 @@ function buildMenu() {
       submenu: [
         // Native roles keep text-field undo working; the renderer handles
         // diagram undo/redo when no text field is focused.
-        { role: 'undo' },
-        { role: 'redo' },
+        { role: 'undo', icon: menuIcon('undo') },
+        { role: 'redo', icon: menuIcon('redo') },
         { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' },
+        { role: 'cut', icon: menuIcon('cut') },
+        { role: 'copy', icon: menuIcon('copy') },
+        { role: 'paste', icon: menuIcon('paste') },
+        { role: 'selectAll', icon: menuIcon('select-all') },
         { type: 'separator' },
-        { label: 'Add Table', accelerator: 'CmdOrCtrl+Alt+T', click: cmd('add-table') },
-        { label: 'Add Relationship…', accelerator: 'CmdOrCtrl+Alt+R', click: cmd('add-link') },
+        { label: 'Add Table', icon: menuIcon('add-table'), accelerator: 'CmdOrCtrl+Alt+T', click: cmd('add-table') },
+        { label: 'Add Relationship…', icon: menuIcon('add-link'), accelerator: 'CmdOrCtrl+Alt+R', click: cmd('add-link') },
       ],
     },
     {
       label: '&Database',
       submenu: [
-        { label: 'Connect…', click: cmd('db-connect') },
-        { label: 'Import Tables from Database…', accelerator: 'CmdOrCtrl+Alt+I', click: cmd('db-import') },
-        { label: 'Compare with Database / Generate Migration…', accelerator: 'CmdOrCtrl+Alt+D', click: cmd('db-compare') },
+        { label: 'Connect…', icon: menuIcon('db-connect'), click: cmd('db-connect') },
+        { label: 'Import Tables from Database…', icon: menuIcon('db-import'), accelerator: 'CmdOrCtrl+Alt+I', click: cmd('db-import') },
+        { label: 'Compare with Database / Generate Migration…', icon: menuIcon('db-compare'), accelerator: 'CmdOrCtrl+Alt+D', click: cmd('db-compare') },
       ],
     },
     {
       label: '&View',
       submenu: [
-        { label: 'Zoom In', accelerator: 'CmdOrCtrl+=', click: cmd('zoom-in') },
-        { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', click: cmd('zoom-out') },
-        { label: 'Fit to Window', accelerator: 'CmdOrCtrl+0', click: cmd('fit') },
-        { label: 'Auto Layout', accelerator: 'CmdOrCtrl+L', click: cmd('auto-layout') },
-        { label: 'Show Grid', accelerator: 'CmdOrCtrl+Alt+G', click: cmd('toggle-grid') },
-        { label: 'Snap to Grid', accelerator: 'CmdOrCtrl+Shift+G', click: cmd('toggle-snap') },
-        { label: 'Show SQL Preview', accelerator: 'CmdOrCtrl+Alt+P', click: cmd('toggle-sql') },
+        { label: 'Zoom In', icon: menuIcon('zoom-in'), accelerator: 'CmdOrCtrl+=', click: cmd('zoom-in') },
+        { label: 'Zoom Out', icon: menuIcon('zoom-out'), accelerator: 'CmdOrCtrl+-', click: cmd('zoom-out') },
+        { label: 'Fit to Window', icon: menuIcon('fit'), accelerator: 'CmdOrCtrl+0', click: cmd('fit') },
+        { label: 'Auto Layout', icon: menuIcon('auto-layout'), accelerator: 'CmdOrCtrl+L', click: cmd('auto-layout') },
+        { label: 'Show Grid', icon: menuIcon('toggle-grid'), accelerator: 'CmdOrCtrl+Alt+G', click: cmd('toggle-grid') },
+        { label: 'Snap to Grid', icon: menuIcon('toggle-snap'), accelerator: 'CmdOrCtrl+Shift+G', click: cmd('toggle-snap') },
+        { label: 'Show SQL Preview', icon: menuIcon('toggle-sql'), accelerator: 'CmdOrCtrl+Alt+P', click: cmd('toggle-sql') },
         { type: 'separator' },
-        { role: 'toggleDevTools' },
-        { role: 'togglefullscreen' },
+        { role: 'toggleDevTools', icon: menuIcon('devtools') },
+        { role: 'togglefullscreen', icon: menuIcon('fullscreen') },
       ],
     },
     {
@@ -251,6 +259,7 @@ function buildMenu() {
       submenu: [
         {
           label: 'About pgsql-erd',
+          icon: menuIcon('about'),
           click: () =>
             dialog.showMessageBox(focusedWindow(), {
               message: `pgsql-erd ${app.getVersion()}`,
@@ -281,6 +290,8 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     buildMenu();
+    // Swap menu icons between the light and dark variants with the theme.
+    nativeTheme.on('updated', buildMenu);
     const files = [...pendingOpen, ...pgerdArgs(process.argv)];
     pendingOpen = [];
     if (files.length) files.forEach((f) => createWindow(f));
