@@ -238,6 +238,8 @@ function buildMenu() {
         { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', click: cmd('zoom-out') },
         { label: 'Fit to Window', accelerator: 'CmdOrCtrl+0', click: cmd('fit') },
         { label: 'Auto Layout', accelerator: 'CmdOrCtrl+L', click: cmd('auto-layout') },
+        { label: 'Show Grid', accelerator: 'CmdOrCtrl+Alt+G', click: cmd('toggle-grid') },
+        { label: 'Snap to Grid', accelerator: 'CmdOrCtrl+Shift+G', click: cmd('toggle-snap') },
         { label: 'Show SQL Preview', accelerator: 'CmdOrCtrl+Alt+P', click: cmd('toggle-sql') },
         { type: 'separator' },
         { role: 'toggleDevTools' },

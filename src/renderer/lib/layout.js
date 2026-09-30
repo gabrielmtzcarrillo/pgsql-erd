@@ -82,7 +82,10 @@ export function oneMarker({ x, y, dir }) {
 }
 
 // Layered layout: referenced tables to the left of the tables referencing them.
-export function autoLayout(model, sizes, { gapX = 120, gapY = 50 } = {}) {
+// With `grid`, every table is placed on a grid line. Positions are rounded
+// up, so the gaps between tables never shrink below gapX / gapY.
+export function autoLayout(model, sizes, { gapX = 120, gapY = 50, grid = 0 } = {}) {
+  const up = (v) => (grid > 0 ? Math.ceil(v / grid) * grid : v);
   const rank = new Map();
   const refsOf = new Map(model.tables.map((t) => [t.id, new Set()]));
   for (const l of model.links) {
@@ -130,12 +133,13 @@ export function autoLayout(model, sizes, { gapX = 120, gapY = 50 } = {}) {
     let w = 0;
     for (const t of col) {
       const s = sizes.get(t.id);
-      t.x = x;
+      y = up(y);
+      t.x = up(x);
       t.y = y;
       y += s.height + gapY;
       w = Math.max(w, s.width);
     }
-    x += w + gapX;
+    x = up(x) + w + gapX;
   }
 }
 

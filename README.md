@@ -37,8 +37,13 @@ pgAdmin's ERD tool and this app.
   - edit columns: name, type, length/scale, NOT NULL, PK, default value, order
   - set schema, comment, note and header colour
   - add and remove relationships, optionally creating the FK column for you
-- Drag tables to move them (snaps to the grid; hold <kbd>Alt</kbd> for free placement). Drag the
-  background to pan, scroll to zoom, and use **Fit** or **Auto layout** to tidy up.
+- Drag tables to move them. Drag the background to pan, scroll to zoom, and use **Fit** or
+  **Auto layout** to tidy up.
+- A grid is drawn behind the diagram (**Grid**, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd>), with a
+  heavier line every fifth cell. With **Snap** on (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>),
+  dragged tables, arrow-key nudges, new tables and auto layout all land on grid lines; hold
+  <kbd>Alt</kbd> while dragging to invert snapping for that move, and <kbd>Shift</kbd>+arrow nudges
+  by 1px. The grid size is picked next to the Snap button and saved in the file's `gridSize`.
 - Undo/redo, and a prompt about unsaved changes when you close the window.
 - Save back to `.pgerd`. Properties this app doesn't edit (tablespace, check constraints, and so
   on) are kept as they were.
