@@ -7,6 +7,8 @@ import {
   contentBounds,
 } from './lib/layout.js';
 import { DIAGRAM_CSS, LIGHT_VARS, DARK_VARS, FONT, FONT_BOLD } from './lib/svgstyle.js';
+import { setupDatabase } from './dbui.js';
+import { highlightSQL } from './lib/highlight.js';
 
 const host = window.erdHost;
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -35,6 +37,9 @@ const state = {
   undo: [],
   redo: [],
   showSql: false,
+  showTables: false, // table list in the sidebar when nothing is selected
+  tableFilter: '',
+  expandedCol: null, // attnum of the column open in the sidebar editor
 };
 
 // ---------------------------------------------------------------- helpers
@@ -182,7 +187,8 @@ function renderTable(t) {
   }
   t.columns.forEach((c, i) => {
     const y = HEADER_H + i * ROW_H;
-    const row = el('g', { class: 't-row', 'data-attnum': c.attnum });
+    const focused = sel && state.expandedCol === c.attnum;
+    const row = el('g', { class: `t-row${focused ? ' focused' : ''}`, 'data-attnum': c.attnum });
     row.append(el('rect', { class: 't-row-bg', x: 1, y, width: width - 2, height: ROW_H }));
     const badge = c.pk ? 'PK' : fks.has(c.attnum) ? 'FK' : '';
     if (badge) {
@@ -232,152 +238,275 @@ function render() {
   $('[data-cmd="undo"]').disabled = !state.undo.length;
   $('[data-cmd="redo"]').disabled = !state.redo.length;
   $('[data-cmd="delete"]').disabled = !state.selection;
-  if (state.showSql) $('#sql-text').textContent = generateSQL(state.model);
+  if (state.showSql) highlightSQL($('#sql-text'), generateSQL(state.model));
 }
 
-// ---------------------------------------------------------------- properties panel
+// ---------------------------------------------------------------- sidebar
 
-function field(label, input) {
-  return h('label', { class: 'field' }, [h('span', {}, label), input]);
+// The sidebar shows the selected table or relationship; with nothing selected
+// it is hidden unless the table list was opened from the toolbar.
+const sidebar = $('#sidebar');
+const openSections = new Map([['props', true], ['columns', true], ['relations', true]]);
+
+function field(label, input, cls = '') {
+  return h('label', { class: `field ${cls}` }, [h('span', {}, label), input]);
 }
 
-// Text input bound to an object property; commits on change.
-function bound(obj, key, { type = 'text', placeholder = '', onCommit, rerender = false } = {}) {
-  const input = h('input', { type, placeholder, value: obj[key] ?? '' });
+// A field edit commits on 'change', which fires while focus is moving (Tab,
+// click elsewhere). Re-render the sidebar once focus has landed so the newly
+// focused field can be restored by its data-key.
+let panelTimer = null;
+function commitField(fn) {
+  commit(fn, { panel: false });
+  clearTimeout(panelTimer);
+  panelTimer = setTimeout(renderPanel);
+}
+
+// Input bound to an object property. `key` identifies the input so focus
+// survives the sidebar being re-rendered.
+function bound(obj, prop, key, { type = 'text', placeholder = '', list, after } = {}) {
+  const input = h('input', { type, placeholder, value: obj[prop] ?? '', 'data-key': key });
+  if (list) input.setAttribute('list', list);
   input.addEventListener('change', () => {
     let v = input.value;
     if (type === 'number') v = v === '' ? null : Number(v);
-    commit(() => {
-      obj[key] = v;
-      onCommit?.(v);
-    }, { panel: rerender });
+    commitField(() => {
+      obj[prop] = v;
+      after?.(v);
+    });
   });
   return input;
 }
 
+function boundText(obj, prop, key, rows = 2) {
+  const ta = h('textarea', { rows, 'data-key': key });
+  ta.value = obj[prop] ?? '';
+  ta.addEventListener('change', () => commitField(() => (obj[prop] = ta.value)));
+  return ta;
+}
+
+// Types that take a length/precision modifier, e.g. varchar(20), numeric(10,2).
+const SIZED_TYPE = /^(character varying|varchar|character|char|bpchar|bit|bit varying|varbit|numeric|decimal|time|timestamp|timetz|timestamptz|interval)\b/i;
+
+function section(id, title, count, body, action) {
+  const d = h('details', { class: 'sb-section', open: openSections.get(id) !== false });
+  d.addEventListener('toggle', () => openSections.set(id, d.open));
+  d.append(
+    h('summary', {}, [
+      h('span', { class: 'sb-title' }, title),
+      count !== null && count !== undefined ? h('span', { class: 'sb-count' }, String(count)) : null,
+      action ?? null,
+    ]),
+    h('div', { class: 'sb-body' }, body)
+  );
+  return d;
+}
+
+function sidebarHeader(title, subtitle, color) {
+  return h('header', { class: 'sb-header' }, [
+    color !== undefined ? h('span', { class: 'sb-swatch', style: `background:${color || 'var(--erd-header-bg)'}` }) : null,
+    h('div', { class: 'sb-heading' }, [h('h3', {}, title), h('div', { class: 'muted' }, subtitle)]),
+    h('button', { class: 'icon sb-close', title: 'Close (Esc)', onclick: () => closeSidebar() }, '×'),
+  ]);
+}
+
+function closeSidebar() {
+  state.showTables = false;
+  select(null);
+}
+
 function renderPanel() {
+  // Keep focus and caret position across re-renders.
+  const active = document.activeElement;
+  const key = panel.contains(active) ? active.dataset.key : null;
+  const caret = key && 'selectionStart' in active ? [active.selectionStart, active.selectionEnd] : null;
+  const scroll = panel.scrollTop;
+
   const sel = state.selection;
-  if (sel?.type === 'table' && tableById(sel.id)) return renderTablePanel(tableById(sel.id));
-  if (sel?.type === 'link' && linkById(sel.id)) return renderLinkPanel(linkById(sel.id));
-  renderDiagramPanel();
+  let visible = true;
+  if (sel?.type === 'table' && tableById(sel.id)) renderTablePanel(tableById(sel.id));
+  else if (sel?.type === 'link' && linkById(sel.id)) renderLinkPanel(linkById(sel.id));
+  else if (state.showTables) renderDiagramPanel();
+  else visible = false;
+  sidebar.hidden = !visible;
+  $('[data-cmd="toggle-tables"]').classList.toggle('active', !sel && state.showTables);
+
+  panel.scrollTop = scroll;
+  if (key) {
+    const again = panel.querySelector(`[data-key="${key}"]`);
+    if (again) {
+      again.focus();
+      if (caret) try { again.setSelectionRange(...caret); } catch { /* not a text input */ }
+    }
+  }
 }
 
 function renderDiagramPanel() {
   const m = state.model;
-  const tables = [...m.tables].sort((a, b) => fullName(a).localeCompare(fullName(b)));
-  panel.replaceChildren(
-    h('h3', {}, 'Diagram'),
-    h('p', { class: 'muted' },
-      `${m.tables.length} tables, ${m.links.length} relationships. Click a table or relationship to edit it. ` +
-      'Drag tables to move them, drag the background to pan, and scroll to zoom.'),
-    h('h4', {}, 'Tables'),
-    tables.length
-      ? h('ul', { class: 'list' }, tables.map((t) =>
+  const filter = h('input', { type: 'search', placeholder: 'Filter tables…', 'data-key': 'table-filter', value: state.tableFilter ?? '' });
+  const list = h('ul', { class: 'list' });
+  const fill = () => {
+    const q = filter.value.trim().toLowerCase();
+    state.tableFilter = filter.value;
+    const tables = [...m.tables]
+      .filter((t) => fullName(t).toLowerCase().includes(q))
+      .sort((a, b) => fullName(a).localeCompare(fullName(b)));
+    list.replaceChildren(...(tables.length
+      ? tables.map((t) =>
           h('li', { class: 'clickable', onclick: () => { select({ type: 'table', id: t.id }); centerOn(t); } }, [
-            h('span', {}, fullName(t)),
+            h('span', { class: 'sb-swatch small', style: `background:${t.color || 'var(--erd-header-bg)'}` }),
+            h('span', { class: 'grow' }, fullName(t)),
             h('span', { class: 'muted' }, `${t.columns.length} cols`),
-          ])))
-      : h('p', { class: 'muted' }, 'No tables.'),
+          ]))
+      : [h('li', { class: 'muted' }, m.tables.length ? 'No matching tables.' : 'No tables yet.')]));
+  };
+  filter.addEventListener('input', fill);
+  fill();
+  panel.replaceChildren(
+    sidebarHeader('Tables', `${m.tables.length} tables · ${m.links.length} relationships`),
+    h('div', { class: 'sb-pad' }, [filter, list]),
   );
 }
 
 function renderTablePanel(t) {
-  const colsTable = h('table', { class: 'cols' }, [
-    h('thead', {}, h('tr', {}, [
-      h('th', {}, 'Name'), h('th', {}, 'Type'), h('th', { title: 'Length / precision' }, 'Len'),
-      h('th', { title: 'Scale' }, 'Sc'), h('th', { title: 'Not null' }, 'NN'),
-      h('th', { title: 'Primary key' }, 'PK'), h('th', {}, ''),
-    ])),
-    h('tbody', {}, t.columns.map((c, i) => columnRow(t, c, i))),
-  ]);
-
-  const outgoing = foreignKeysOf(state.model, t);
+  const fks = fkColumns(t);
+  const outgoing = state.model.links.filter((l) => l.localTable === t.id);
   const incoming = state.model.links.filter((l) => l.refTable === t.id && l.localTable !== t.id);
+  const pk = t.columns.filter((c) => c.pk).map((c) => c.name);
 
-  const colorInput = h('input', { type: 'color', value: t.color ?? '#2f6fb3' });
-  colorInput.addEventListener('change', () => commit(() => (t.color = colorInput.value), { panel: false }));
+  const colorInput = h('input', { type: 'color', value: t.color ?? '#2f6fb3', 'data-key': 'table-color' });
+  colorInput.addEventListener('change', () => commitField(() => (t.color = colorInput.value)));
 
-  const descr = h('textarea', { rows: 2 }, []);
-  descr.value = t.description ?? '';
-  descr.addEventListener('change', () => commit(() => (t.description = descr.value), { panel: false }));
-  const note = h('textarea', { rows: 2 });
-  note.value = t.note ?? '';
-  note.addEventListener('change', () => commit(() => (t.note = note.value), { panel: false }));
+  const props = [
+    h('div', { class: 'sb-grid' }, [
+      field('Name', Object.assign(bound(t, 'name', 'table-name'), { id: 'table-name' })),
+      field('Schema', bound(t, 'schema', 'table-schema')),
+    ]),
+    field('Comment', boundText(t, 'description', 'table-comment')),
+    field('Note', boundText(t, 'note', 'table-note')),
+    h('div', { class: 'sb-inline' }, [
+      h('span', { class: 'muted' }, 'Header color'),
+      colorInput,
+      t.color ? h('button', { onclick: () => commit(() => (t.color = null)) }, 'Reset') : null,
+    ]),
+    h('dl', { class: 'sb-facts' }, [
+      h('dt', {}, 'Primary key'), h('dd', {}, pk.length ? pk.join(', ') : '—'),
+    ]),
+  ];
 
-  panel.replaceChildren(
-    h('h3', {}, 'Table'),
-    h('div', { class: 'row' }, [
-      field('Schema', bound(t, 'schema')),
-      field('Name', Object.assign(bound(t, 'name'), { id: 'table-name' })),
-    ]),
-    h('div', { class: 'row' }, [
-      field('Header color', colorInput),
-      h('button', { onclick: () => commit(() => (t.color = null)) }, 'Default color'),
-    ]),
-    field('Comment', descr),
-    field('Note', note),
-    h('h4', {}, 'Columns'),
-    colsTable,
-    h('div', { class: 'actions' }, [
-      h('button', { onclick: () => addColumn(t) }, '+ Column'),
-    ]),
-    h('h4', {}, 'Foreign keys'),
+  const columns = h('ul', { class: 'sb-cols' }, t.columns.map((c, i) => columnItem(t, c, i, fks)));
+  const relations = [
+    h('div', { class: 'sb-sub' }, 'References'),
     outgoing.length
-      ? h('ul', { class: 'list' }, outgoing.flatMap((links) => links.map((l) => linkItem(l, 'out'))))
-      : h('p', { class: 'muted' }, 'None.'),
+      ? h('ul', { class: 'list' }, outgoing.map((l) => linkItem(l, 'out')))
+      : h('p', { class: 'muted small' }, 'No foreign keys.'),
+    h('div', { class: 'sb-sub' }, 'Referenced by'),
+    incoming.length
+      ? h('ul', { class: 'list' }, incoming.map((l) => linkItem(l, 'in')))
+      : h('p', { class: 'muted small' }, 'Not referenced.'),
     h('div', { class: 'actions' }, [
       h('button', { onclick: () => openLinkDialog({ localTable: t.id }) }, '+ Foreign key'),
     ]),
-    h('h4', {}, 'Referenced by'),
-    incoming.length
-      ? h('ul', { class: 'list' }, incoming.map((l) => linkItem(l, 'in')))
-      : h('p', { class: 'muted' }, 'None.'),
-    h('div', { class: 'actions' }, [
+  ];
+
+  const subtitle = [
+    t.schema || 'public',
+    `${t.columns.length} column${t.columns.length === 1 ? '' : 's'}`,
+    outgoing.length ? `${outgoing.length} FK` : null,
+  ].filter(Boolean).join(' · ');
+
+  panel.replaceChildren(
+    sidebarHeader(t.name, subtitle, t.color),
+    section('props', 'Properties', null, props),
+    section('columns', 'Columns', t.columns.length, [
+      t.columns.length ? columns : h('p', { class: 'muted small' }, 'No columns yet.'),
+    ], h('button', {
+      class: 'sb-add', title: 'Add column',
+      onclick: (e) => { e.preventDefault(); addColumn(t); },
+    }, '+ Add')),
+    section('relations', 'Relationships', outgoing.length + incoming.length, relations),
+    h('div', { class: 'sb-footer' }, [
       h('button', { class: 'danger', onclick: deleteSelection }, 'Delete table'),
     ]),
   );
 }
 
-function columnRow(t, c, i) {
-  const check = (key) => {
-    const cb = h('input', { type: 'checkbox', checked: !!c[key] });
-    cb.addEventListener('change', () => commit(() => {
-      c[key] = cb.checked;
-      if (key === 'pk' && cb.checked) c.notNull = true;
-    }));
-    return cb;
-  };
-  const name = bound(c, 'name');
-  name.className = 'c-name';
-  const type = bound(c, 'type', { rerender: false });
-  type.setAttribute('list', 'pg-types');
-  const len = bound(c, 'length', { type: 'number' });
-  len.className = 'c-len';
-  const prec = bound(c, 'precision', { type: 'number' });
-  prec.className = 'c-len';
-  const def = bound(c, 'default', { placeholder: 'default' });
+// One column: a summary line, plus an editor when it's the expanded column.
+function columnItem(t, c, i, fks) {
+  const open = state.expandedCol === c.attnum;
+  const badges = [];
+  if (c.pk) badges.push(h('span', { class: 'badge pk', title: 'Primary key' }, 'PK'));
+  if (fks.has(c.attnum)) badges.push(h('span', { class: 'badge fk', title: 'Foreign key' }, 'FK'));
+  const flags = [];
+  if (c.notNull || c.pk) flags.push(h('span', { class: 'flag', title: 'NOT NULL' }, 'NN'));
+  if (c.default) flags.push(h('span', { class: 'flag def', title: `DEFAULT ${c.default}` }, `= ${c.default}`));
 
+  const summary = h('div', {
+    class: 'sb-col-row',
+    role: 'button',
+    tabindex: 0,
+    title: open ? 'Collapse' : 'Edit column',
+    onclick: () => toggleColumn(c.attnum),
+    onkeydown: (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleColumn(c.attnum); }
+    },
+  }, [
+    h('span', { class: 'sb-badges' }, badges),
+    h('span', { class: 'sb-col-name' }, c.name),
+    h('span', { class: 'sb-col-type' }, formatType(c)),
+    h('span', { class: 'sb-flags' }, flags),
+    h('span', { class: 'sb-chevron' }, open ? '▾' : '▸'),
+  ]);
+  const item = h('li', { class: `sb-col${open ? ' open' : ''}`, 'data-attnum': c.attnum }, summary);
+  if (open) item.append(columnEditor(t, c, i));
+  return item;
+}
+
+function toggleColumn(attnum) {
+  state.expandedCol = state.expandedCol === attnum ? null : attnum;
+  render();
+  renderPanel();
+}
+
+function columnEditor(t, c, i) {
+  const check = (prop, label, key) => {
+    const cb = h('input', { type: 'checkbox', checked: !!c[prop], 'data-key': key });
+    cb.addEventListener('change', () => commitField(() => {
+      c[prop] = cb.checked;
+      if (prop === 'pk' && cb.checked) c.notNull = true;
+    }));
+    return h('label', { class: 'check' }, [cb, label]);
+  };
   const move = (d) => commit(() => {
     const j = i + d;
     [t.columns[i], t.columns[j]] = [t.columns[j], t.columns[i]];
   });
-
-  return [
-    h('tr', {}, [
-      h('td', {}, name),
-      h('td', {}, type),
-      h('td', {}, len),
-      h('td', {}, prec),
-      h('td', { class: 'chk' }, check('notNull')),
-      h('td', { class: 'chk' }, check('pk')),
-      h('td', { class: 'btns' }, [
-        h('button', { class: 'icon', title: 'Move up', disabled: i === 0, onclick: () => move(-1) }, '↑'),
-        h('button', { class: 'icon', title: 'Move down', disabled: i === t.columns.length - 1, onclick: () => move(1) }, '↓'),
-        h('button', { class: 'icon danger', title: 'Delete column', onclick: () => deleteColumn(t, c) }, '×'),
-      ]),
+  return h('div', { class: 'sb-col-editor' }, [
+    h('div', { class: 'sb-grid' }, [
+      field('Name', bound(c, 'name', 'col-name')),
+      field('Type', bound(c, 'type', 'col-type', {
+        list: 'pg-types',
+        after: (v) => {
+          if (!SIZED_TYPE.test(String(v).trim())) c.length = c.precision = null;
+        },
+      })),
     ]),
-    h('tr', {}, [h('td', { colspan: 7 }, def)]),
-  ].reduce((frag, tr) => (frag.append(tr), frag), document.createDocumentFragment());
+    h('div', { class: 'sb-grid' }, [
+      field('Length / precision', bound(c, 'length', 'col-length', { type: 'number' })),
+      field('Scale', bound(c, 'precision', 'col-scale', { type: 'number' })),
+    ]),
+    field('Default', bound(c, 'default', 'col-default', { placeholder: 'e.g. now() or \'text\'' })),
+    h('div', { class: 'sb-inline' }, [
+      check('notNull', 'NOT NULL', 'col-nn'),
+      check('pk', 'Primary key', 'col-pk'),
+    ]),
+    h('div', { class: 'sb-inline end' }, [
+      h('button', { class: 'icon', title: 'Move up', disabled: i === 0, onclick: () => move(-1) }, '↑'),
+      h('button', { class: 'icon', title: 'Move down', disabled: i === t.columns.length - 1, onclick: () => move(1) }, '↓'),
+      h('span', { class: 'grow' }),
+      h('button', { class: 'danger', onclick: () => deleteColumn(t, c) }, 'Delete column'),
+    ]),
+  ]);
 }
 
 function linkItem(l, dir) {
@@ -386,8 +515,8 @@ function linkItem(l, dir) {
   const text = dir === 'out'
     ? `${colOf(local, l.localCol)?.name} → ${fullName(ref)}.${colOf(ref, l.refCol)?.name}`
     : `${fullName(local)}.${colOf(local, l.localCol)?.name} → ${colOf(ref, l.refCol)?.name}`;
-  return h('li', { class: 'clickable', onclick: () => select({ type: 'link', id: l.id }) }, [
-    h('code', {}, text),
+  return h('li', { class: 'clickable', title: 'Show relationship', onclick: () => select({ type: 'link', id: l.id }) }, [
+    h('code', { class: 'grow' }, text),
     h('button', {
       class: 'icon danger',
       title: 'Delete relationship',
@@ -399,43 +528,79 @@ function linkItem(l, dir) {
 function renderLinkPanel(l) {
   const local = tableById(l.localTable);
   const ref = tableById(l.refTable);
-  const typeSel = h('select', {}, [
+  const typeSel = h('select', { 'data-key': 'link-type' }, [
     h('option', { value: 'onetomany' }, 'One to many'),
     h('option', { value: 'onetoone' }, 'One to one'),
   ]);
   typeSel.value = l.type === 'onetoone' ? 'onetoone' : 'onetomany';
-  typeSel.addEventListener('change', () => commit(() => {
+  typeSel.addEventListener('change', () => commitField(() => {
     for (const x of state.model.links) if (x.group === l.group) x.type = typeSel.value;
-  }, { panel: false }));
+  }));
 
-  const fkName = h('input', { value: l.fkName ?? '', placeholder: '(unnamed)' });
-  fkName.addEventListener('change', () => commit(() => {
+  const fkName = h('input', { value: l.fkName ?? '', placeholder: '(unnamed)', 'data-key': 'link-name' });
+  fkName.addEventListener('change', () => commitField(() => {
     for (const x of state.model.links) if (x.group === l.group) x.fkName = fkName.value;
-  }, { panel: false }));
+  }));
 
   panel.replaceChildren(
-    h('h3', {}, 'Relationship'),
-    h('p', {}, [
-      h('code', {}, `${fullName(local)}.${colOf(local, l.localCol)?.name}`),
-      ' references ',
-      h('code', {}, `${fullName(ref)}.${colOf(ref, l.refCol)?.name}`),
+    sidebarHeader('Relationship', l.fkName || 'Foreign key'),
+    section('link', 'Properties', null, [
+      h('p', {}, [
+        h('code', {}, `${fullName(local)}.${colOf(local, l.localCol)?.name}`),
+        ' references ',
+        h('code', {}, `${fullName(ref)}.${colOf(ref, l.refCol)?.name}`),
+      ]),
+      field('Constraint name', fkName),
+      field('Cardinality', typeSel),
+      h('div', { class: 'actions' }, [
+        h('button', { onclick: () => select({ type: 'table', id: local.id }) }, `Go to ${local.name}`),
+        h('button', { onclick: () => select({ type: 'table', id: ref.id }) }, `Go to ${ref.name}`),
+      ]),
     ]),
-    field('Constraint name', fkName),
-    field('Cardinality', typeSel),
-    h('div', { class: 'actions' }, [
-      h('button', { onclick: () => select({ type: 'table', id: local.id }) }, `Go to ${local.name}`),
-      h('button', { onclick: () => select({ type: 'table', id: ref.id }) }, `Go to ${ref.name}`),
+    h('div', { class: 'sb-footer' }, [
       h('button', { class: 'danger', onclick: deleteSelection }, 'Delete relationship'),
     ]),
   );
 }
 
+// Drag the sidebar's left edge to resize it; the width is remembered.
+(function setupSidebarResize() {
+  const handle = $('#sidebar-resize');
+  const apply = (w) => sidebar.style.setProperty('--sidebar-w', `${Math.round(w)}px`);
+  try {
+    const saved = Number(localStorage.getItem('pgsql-erd.sidebar-width'));
+    if (saved) apply(saved);
+  } catch { /* storage unavailable */ }
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const startW = sidebar.getBoundingClientRect().width;
+    const move = (ev) => apply(Math.min(Math.max(300, startW + startX - ev.clientX), window.innerWidth * 0.6));
+    const up = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      try {
+        localStorage.setItem('pgsql-erd.sidebar-width', String(Math.round(sidebar.getBoundingClientRect().width)));
+      } catch { /* storage unavailable */ }
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+  });
+})();
+
 // ---------------------------------------------------------------- model edits
 
-function select(sel) {
+// `col` expands that column's editor in the sidebar.
+function select(sel, { col } = {}) {
+  if (sel?.id !== state.selection?.id) state.expandedCol = null;
+  if (col !== undefined) state.expandedCol = col;
   state.selection = sel;
   render();
   renderPanel();
+  if (col !== undefined) {
+    panel.querySelector(`.sb-col[data-attnum="${col}"]`)?.scrollIntoView({ block: 'nearest' });
+  }
 }
 
 function removeLinks(pred) {
@@ -443,15 +608,17 @@ function removeLinks(pred) {
 }
 
 function addColumn(t) {
-  commit(() => {
-    const attnum = nextAttnum(t);
-    t.columns.push(newColumn({ name: `column_${t.columns.length + 1}`, attnum }));
-  });
-  const inputs = panel.querySelectorAll('.cols input.c-name');
-  inputs[inputs.length - 1]?.select();
+  const attnum = nextAttnum(t);
+  openSections.set('columns', true);
+  state.expandedCol = attnum;
+  commit(() => t.columns.push(newColumn({ name: `column_${t.columns.length + 1}`, attnum })));
+  const name = panel.querySelector('[data-key="col-name"]');
+  name?.scrollIntoView({ block: 'nearest' });
+  name?.select();
 }
 
 function deleteColumn(t, c) {
+  if (state.expandedCol === c.attnum) state.expandedCol = null;
   commit(() => {
     t.columns = t.columns.filter((x) => x !== c);
     removeLinks(
@@ -639,7 +806,11 @@ svg.addEventListener('pointerdown', (e) => {
   svg.setPointerCapture(e.pointerId);
   if (tableEl && e.button === 0) {
     const t = tableById(tableEl.dataset.id);
-    if (state.selection?.id !== t.id) select({ type: 'table', id: t.id });
+    const rowEl = e.target.closest('.t-row');
+    const col = rowEl ? Number(rowEl.dataset.attnum) : undefined;
+    if (state.selection?.id !== t.id || (col !== undefined && col !== state.expandedCol)) {
+      select({ type: 'table', id: t.id }, { col });
+    }
     // Bring to front.
     state.model.tables = [...state.model.tables.filter((x) => x !== t), t];
     drag = { kind: 'table', t, sx: e.clientX, sy: e.clientY, ox: t.x, oy: t.y, moved: false };
@@ -676,8 +847,29 @@ svg.addEventListener('pointermove', (e) => {
   scheduleRender();
 });
 
+// Pan just enough to show the whole table (e.g. after the sidebar opened
+// and narrowed the canvas).
+function ensureVisible(t) {
+  const s = state.sizes.get(t.id);
+  const r = svg.getBoundingClientRect();
+  const v = state.model.view;
+  const m = 20;
+  const x0 = t.x * v.zoom + v.offsetX, x1 = (t.x + s.width) * v.zoom + v.offsetX;
+  const y0 = t.y * v.zoom + v.offsetY, y1 = (t.y + s.height) * v.zoom + v.offsetY;
+  let dx = 0, dy = 0;
+  if (x1 > r.width - m) dx = r.width - m - x1;
+  if (x0 + dx < m) dx = m - x0;
+  if (y1 > r.height - m) dy = r.height - m - y1;
+  if (y0 + dy < m) dy = m - y0;
+  if (!dx && !dy) return;
+  v.offsetX += dx;
+  v.offsetY += dy;
+  applyView();
+}
+
 function endDrag() {
   if (drag?.kind === 'table' && drag.moved) setDirty(true);
+  if (drag?.kind === 'table' && !drag.moved) ensureVisible(drag.t);
   if (drag?.kind === 'pan') svg.classList.remove('panning');
   drag = null;
   render();
@@ -780,7 +972,7 @@ function buildExportSVG() {
   const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   const clone = viewport.cloneNode(true);
   clone.removeAttribute('transform');
-  clone.querySelectorAll('.selected, .related').forEach((n) => n.classList.remove('selected', 'related'));
+  clone.querySelectorAll('.selected, .related, .focused').forEach((n) => n.classList.remove('selected', 'related', 'focused'));
   clone.querySelectorAll('title').forEach((n) => n.remove());
   const bg = dark ? '#1b1e24' : '#ffffff';
   const out =
@@ -853,12 +1045,25 @@ const commands = {
     }, { panel: false });
     fit();
   },
+  'toggle-tables'() {
+    state.showTables = !(state.showTables && !state.selection);
+    if (state.selection) {
+      state.selection = null;
+      render();
+    }
+    renderPanel();
+  },
   'toggle-sql'() {
     state.showSql = !state.showSql;
     $('#sql-panel').hidden = !state.showSql;
     render();
   },
 };
+
+Object.assign(
+  commands,
+  setupDatabase({ host, state, h, commit, computeSizes, fit, status })
+);
 
 function runCommand(name) {
   const fn = commands[name];
@@ -878,7 +1083,7 @@ $('#sql-copy').addEventListener('click', async () => {
 const isEditing = (e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
 
 document.addEventListener('keydown', (e) => {
-  if (isEditing(e) || linkDialog.open) return;
+  if (isEditing(e) || document.querySelector('dialog[open]')) return;
   const mod = e.ctrlKey || e.metaKey;
   if (e.key === 'Delete' || e.key === 'Backspace') {
     e.preventDefault();

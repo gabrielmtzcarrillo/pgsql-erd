@@ -11,7 +11,13 @@
     "dist": "electron-builder",
     "dist:dir": "electron-builder --dir"
   },
-  "keywords": ["postgresql", "erd", "pgadmin", "pgerd", "electron"],
+  "keywords": [
+    "postgresql",
+    "erd",
+    "pgadmin",
+    "pgerd",
+    "electron"
+  ],
   "license": "MIT",
   "devDependencies": {
     "electron": "^44.5.0",
@@ -20,7 +26,10 @@
   "build": {
     "appId": "com.github.pgsql-erd",
     "productName": "pgsql-erd",
-    "files": ["src/**/*", "package.json"],
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
     "fileAssociations": [
       {
         "ext": "pgerd",
@@ -30,8 +39,26 @@
         "mimeType": "application/x-pgerd"
       }
     ],
-    "linux": { "target": ["AppImage", "deb"], "category": "Development" },
-    "win": { "target": ["nsis"] },
-    "mac": { "target": ["dmg"], "category": "public.app-category.developer-tools" }
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.developer-tools"
+    }
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
   }
 }

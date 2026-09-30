@@ -10,6 +10,11 @@ contextBridge.exposeInMainWorld('erdHost', {
   setState: (state) => ipcRenderer.send('state', state),
   closeWindow: () => ipcRenderer.send('close-window'),
   pathForFile: (file) => webUtils.getPathForFile(file),
+  db: {
+    test: (conn) => ipcRenderer.invoke('db-test', conn),
+    introspect: (conn) => ipcRenderer.invoke('db-introspect', conn),
+    execute: (conn, sql) => ipcRenderer.invoke('db-execute', conn, sql),
+  },
   onFileOpened: (cb) => ipcRenderer.on('file-opened', (_e, payload) => cb(payload)),
   onMenu: (cb) => ipcRenderer.on('menu', (_e, name) => cb(name)),
 });
