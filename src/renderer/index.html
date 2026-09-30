@@ -31,6 +31,11 @@
       <button data-cmd="auto-layout" title="Auto layout (Ctrl+L)">Auto layout</button>
     </div>
     <div class="group">
+      <button data-cmd="db-connect" id="db-button" title="Connect to a PostgreSQL database">Connect DB</button>
+      <button data-cmd="db-import" title="Import tables from the database (Ctrl+Alt+I)">Import</button>
+      <button data-cmd="db-compare" title="Compare with the database and generate migration SQL (Ctrl+Alt+D)">Compare / Sync</button>
+    </div>
+    <div class="group">
       <button data-cmd="toggle-sql" title="Show SQL preview (Ctrl+Alt+P)">SQL</button>
       <button data-cmd="export-sql" title="Export SQL DDL">Export SQL</button>
       <button data-cmd="export-svg" title="Export SVG image">SVG</button>
@@ -76,6 +81,7 @@
 
   <footer class="statusbar">
     <span id="status-file">Untitled</span>
+    <span id="status-db">Not connected</span>
     <span id="status-msg"></span>
     <span id="status-count"></span>
   </footer>
@@ -100,6 +106,80 @@
       <menu>
         <button value="cancel" formnovalidate>Cancel</button>
         <button value="ok" class="primary">Create</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="db-connect-dialog">
+    <form method="dialog" id="db-connect-form">
+      <h3>Connect to PostgreSQL</h3>
+      <div class="grid2">
+        <label>Host<input name="host" placeholder="localhost" autocomplete="off"></label>
+        <label>Port<input name="port" placeholder="5432" inputmode="numeric"></label>
+        <label>Database<input name="database" placeholder="postgres" autocomplete="off"></label>
+        <label>User<input name="user" placeholder="postgres" autocomplete="off"></label>
+        <label>Password<input name="password" type="password" autocomplete="off"></label>
+        <label>SSL
+          <select name="sslmode">
+            <option value="disable">disable</option>
+            <option value="require">require (no certificate check)</option>
+            <option value="verify-full">verify-full</option>
+          </select>
+        </label>
+      </div>
+      <p class="muted small">The password is kept in memory for this window only; other settings are remembered.</p>
+      <p id="db-connect-status" class="db-status"></p>
+      <menu>
+        <button type="button" id="db-test">Test</button>
+        <button value="cancel" formnovalidate>Cancel</button>
+        <button value="ok" class="primary">Connect</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="db-import-dialog" class="wide">
+    <form method="dialog">
+      <h3>Import tables from database</h3>
+      <p class="muted">New tables are added to the diagram. Tables already in the diagram are updated from the
+        database (columns, keys, comment); their position, color and note are kept.</p>
+      <div class="db-toolbar">
+        <input id="db-import-filter" type="search" placeholder="Filter tables…">
+        <button type="button" id="db-import-all">All</button>
+        <button type="button" id="db-import-none">None</button>
+        <button type="button" id="db-import-refresh">Refresh</button>
+      </div>
+      <div id="db-import-list" class="db-list"></div>
+      <p id="db-import-status" class="db-status"></p>
+      <menu>
+        <button value="cancel" formnovalidate>Cancel</button>
+        <button value="ok" class="primary" id="db-import-ok">Import selected</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="db-compare-dialog" class="wide">
+    <form method="dialog">
+      <h3>Compare with database</h3>
+      <p class="muted">Lists what differs between the database and the diagram, and generates the SQL that changes the
+        database to match the diagram.</p>
+      <div class="db-toolbar">
+        <span id="db-compare-schemas" class="db-schemas"></span>
+      </div>
+      <div class="db-toolbar">
+        <label class="check"><input type="checkbox" id="db-opt-destructive"> Include DROP COLUMN / key changes on dropped columns</label>
+        <label class="check"><input type="checkbox" id="db-opt-droptables"> Drop tables that are not in the diagram</label>
+      </div>
+      <div class="db-split">
+        <div id="db-compare-list" class="db-list"></div>
+        <pre id="db-compare-sql" class="db-sql"></pre>
+      </div>
+      <p id="db-compare-status" class="db-status"></p>
+      <menu>
+        <button type="button" id="db-compare-refresh">Refresh</button>
+        <button type="button" id="db-compare-copy">Copy SQL</button>
+        <button type="button" id="db-compare-save">Save SQL…</button>
+        <button type="button" id="db-compare-exec" class="danger">Run on database…</button>
+        <button value="close" class="primary">Close</button>
       </menu>
     </form>
   </dialog>

@@ -25,13 +25,40 @@ pgAdmin's ERD tool and this app.
   constraints, foreign keys, comments), SVG or PNG.
 - Follows the system's light or dark theme.
 
+## Database sync
+
+The **Database** menu (and the *Connect DB / Import / Compare / Sync* toolbar buttons) works with a live
+PostgreSQL 10+ server:
+
+- **Connect:** host, port, database, user, password and SSL mode. The password stays in memory for the
+  window; the other settings are remembered.
+- **Import tables:** lists every table in the database by schema, with its column count and whether it's
+  already in the diagram. Selected tables that are new are added to the diagram with their columns, primary
+  keys, unique constraints and foreign keys. Tables already in the diagram are updated from the database;
+  their position, colour and note are kept. Serial columns come back as `serial`/`bigserial`.
+- **Compare / Sync:** compares the diagram with the database (per schema) and lists every difference:
+  - new and dropped tables and columns
+  - type, `NOT NULL`, default and identity changes
+  - primary keys, unique constraints and foreign keys (including `ON DELETE`/`ON UPDATE` changes)
+  - table comments
+
+  It then generates the migration SQL that makes the database match the diagram. You can copy or save it,
+  or run it on the database in a single transaction; if any statement fails, nothing is applied.
+  - Statements are ordered so they work: dependent foreign keys are dropped before a key they reference and
+    re-created afterwards.
+  - Destructive statements (`DROP COLUMN`, `DROP TABLE`) are only included when you tick the matching
+    option. Otherwise they appear as comments at the end of the script.
+  - Renamed tables or columns can't be detected: they show up as a drop plus an add.
+
 ## Getting started
 
 ```bash
 npm install
 npm start                          # empty diagram
 npm start -- samples/shop.pgerd    # open a file
-npm test                           # parser / SQL / layout tests
+npm test                           # unit tests
+# integration tests against a real server (creates and drops a temporary database):
+PGERD_TEST_HOST=127.0.0.1 PGERD_TEST_PORT=5432 PGERD_TEST_USER=postgres npm test
 ```
 
 To build installers (AppImage/deb, NSIS, dmg) with the `.pgerd` file association:
@@ -44,12 +71,17 @@ npm run dist
 
 ```
 src/main/main.cjs         Electron main process: windows, menus, file dialogs, file I/O
+src/main/db.cjs           PostgreSQL connection, catalog introspection, migration execution (pg)
 src/main/preload.cjs      contextBridge API exposed to the renderer (window.erdHost)
 src/renderer/index.html   UI shell
 src/renderer/app.js       rendering, interaction, properties panel, commands
+src/renderer/dbui.js      connect / import / compare dialogs
 src/renderer/lib/pgerd.js .pgerd parsing and serialization
 src/renderer/lib/sql.js   PostgreSQL DDL generation
 src/renderer/lib/layout.js table geometry, relationship routing, auto layout
+src/renderer/lib/catalog.js catalog rows -> diagram model
+src/renderer/lib/diff.js  database vs diagram comparison and migration SQL
+src/renderer/lib/sync.js  import / update diagram tables from the database
 samples/shop.pgerd        example diagram
 tests/                    node:test suites
 ```

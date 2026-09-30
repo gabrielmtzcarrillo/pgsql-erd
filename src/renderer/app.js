@@ -7,6 +7,7 @@ import {
   contentBounds,
 } from './lib/layout.js';
 import { DIAGRAM_CSS, LIGHT_VARS, DARK_VARS, FONT, FONT_BOLD } from './lib/svgstyle.js';
+import { setupDatabase } from './dbui.js';
 
 const host = window.erdHost;
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -860,6 +861,11 @@ const commands = {
   },
 };
 
+Object.assign(
+  commands,
+  setupDatabase({ host, state, h, commit, computeSizes, fit, status })
+);
+
 function runCommand(name) {
   const fn = commands[name];
   if (fn) Promise.resolve(fn()).catch((err) => status(`Error: ${err.message}`));
@@ -878,7 +884,7 @@ $('#sql-copy').addEventListener('click', async () => {
 const isEditing = (e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
 
 document.addEventListener('keydown', (e) => {
-  if (isEditing(e) || linkDialog.open) return;
+  if (isEditing(e) || document.querySelector('dialog[open]')) return;
   const mod = e.ctrlKey || e.metaKey;
   if (e.key === 'Delete' || e.key === 'Backspace') {
     e.preventDefault();

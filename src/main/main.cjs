@@ -3,6 +3,7 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const db = require('./db.cjs');
 
 const windows = new Set();
 let pendingOpen = []; // files requested before the app was ready (macOS open-file)
@@ -142,6 +143,19 @@ ipcMain.handle('save-binary', async (e, { defaultName, data, name, extensions })
   return res.filePath;
 });
 
+// Database access. Errors are returned as values so the renderer can show
+// the server's message instead of Electron's wrapped IPC error.
+const dbCall = (fn) => async (_e, ...args) => {
+  try {
+    return { ok: true, result: await fn(...args) };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+};
+ipcMain.handle('db-test', dbCall((conn) => db.testConnection(conn)));
+ipcMain.handle('db-introspect', dbCall((conn) => db.introspect(conn)));
+ipcMain.handle('db-execute', dbCall((conn, sql) => db.execute(conn, sql)));
+
 ipcMain.handle('confirm', (e, { message, detail, buttons }) => {
   const win = BrowserWindow.fromWebContents(e.sender);
   return dialog.showMessageBoxSync(win, {
@@ -207,6 +221,14 @@ function buildMenu() {
         { type: 'separator' },
         { label: 'Add Table', accelerator: 'CmdOrCtrl+Alt+T', click: cmd('add-table') },
         { label: 'Add Relationship…', accelerator: 'CmdOrCtrl+Alt+R', click: cmd('add-link') },
+      ],
+    },
+    {
+      label: '&Database',
+      submenu: [
+        { label: 'Connect…', click: cmd('db-connect') },
+        { label: 'Import Tables from Database…', accelerator: 'CmdOrCtrl+Alt+I', click: cmd('db-import') },
+        { label: 'Compare with Database / Generate Migration…', accelerator: 'CmdOrCtrl+Alt+D', click: cmd('db-compare') },
       ],
     },
     {

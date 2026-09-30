@@ -214,3 +214,45 @@ dialog h3 { margin: 0 0 4px; }
 dialog .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
 dialog label { display: flex; flex-direction: column; gap: 3px; color: var(--muted); font-size: 12px; }
 dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 8px 0 0; }
+
+/* Database dialogs */
+dialog.wide { width: min(1100px, 94vw); }
+.small { font-size: 12px; }
+.db-status { min-height: 1.2em; margin: 6px 0 0; font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+.db-status.error { color: var(--danger); }
+.db-status.ok { color: #1a7f37; }
+.db-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 8px 0; }
+.db-toolbar input[type="search"] { flex: 1; min-width: 200px; }
+.db-schemas { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--text); font-size: 13px; display: inline-flex; }
+.db-list {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  height: 46vh;
+  overflow: auto;
+  padding: 4px 0;
+}
+.db-list .schema { padding: 6px 10px 2px; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.db-list label.item { display: flex; flex-direction: row; align-items: center; gap: 8px; padding: 3px 10px; color: var(--text); font-size: 13px; }
+.db-list label.item:hover { background: var(--accent-soft); }
+.db-list .tag { margin-left: auto; font-size: 11px; color: var(--muted); }
+.db-list .tag.new { color: #1a7f37; }
+.db-split { display: grid; grid-template-columns: 2fr 3fr; gap: 10px; }
+.db-sql {
+  margin: 0;
+  height: 46vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: 12px ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+  user-select: text;
+}
+.chg { display: flex; gap: 8px; padding: 2px 10px; font-size: 12.5px; }
+.chg .sym { width: 14px; text-align: center; font-weight: 700; flex: none; }
+.chg.add .sym { color: #1a7f37; }
+.chg.drop .sym { color: var(--danger); }
+.chg.alter .sym { color: #b7791f; }
+.chg.skipped { opacity: 0.5; text-decoration: line-through; }
+.chg-table { padding: 6px 10px 2px; font-weight: 600; font-size: 12.5px; }
+.db-empty { padding: 20px; color: var(--muted); text-align: center; }
