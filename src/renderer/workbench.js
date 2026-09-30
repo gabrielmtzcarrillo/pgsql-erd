@@ -468,6 +468,9 @@ export function setupWorkbench(ctx) {
     await ensureEditor();
     if (!current.source.trim()) return status(tr('The script is empty.'));
     if (!db.connected()) return db.openConnect(() => run(mode));
+    const usesAI = resolveScriptPermissions(current.profile, current.overrides).useAI && /\bai\s*\.\s*(chat|structured)\b/.test(current.source);
+    const ai = (await ctx.aiConfig?.({ usesAI })) ?? null;
+    if (ai === false) return status(tr('Run cancelled.'));
     setOpen();
     showTab('results');
     const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -486,7 +489,7 @@ export function setupWorkbench(ctx) {
         overrides: current.overrides,
         mode,
         ignoreTypeErrors,
-        ai: ctx.aiConfig?.() ?? null,
+        ai,
       });
     } catch (err) {
       running = null;

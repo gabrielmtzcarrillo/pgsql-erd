@@ -192,13 +192,17 @@ first line holds their metadata (`// @pgsql-erd {"type":"validator"}`).
   - `validate(name, async () => { report.error({ table, row, column, message }) })`, `report.warning/info`, `log()`
   - `faker` (seeded fake data), `seed.row(table)`, `seed.fill(table, n)` (plausible values, valid foreign keys,
     unique values that don't collide with existing rows), `seed.check(table, row)`
-  - `ai.chat(prompt)`, `ai.structured({ table | schema, prompt })` (validated JSON, see below)
+  - `ai.chat(prompt)`, `ai.structured({ table | schema, prompt })` (validated JSON, see below), to generate
+    data or review it (e.g. a validator that asks the model to flag suspicious values). Uses the provider and
+    model chosen in the Assistant tab; with a remote provider you confirm before the first run that calls
+    `ai.*`, since the script may send it rows.
 - **Dry run** (F6) runs the script in a transaction that is always rolled back and reports inserts, updates,
   deletes and rows read per table. **Run** (F5) keeps the transaction open when the script changed data and
   asks you to commit or discard (rolled back automatically after 10 minutes).
 - **Permissions** per script, from profiles (Read only, Validator, Data generator, Seeder, Migration, Full
   access) plus overrides: read rows, raw SELECT, INSERT, UPDATE, DELETE, DDL, raw SQL writes, AI. Scripts
-  without write permissions run in a `READ ONLY` transaction, so PostgreSQL enforces it as well.
+  without write permissions run in a `READ ONLY` transaction, so PostgreSQL enforces it as well. Every
+  profile except Migration allows AI.
 - **Validators** list each `validate()` with pass/fail; clicking an error shows the offending row, the
   validation in the editor, and links to the table in the diagram and in a data tab.
 

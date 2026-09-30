@@ -114,6 +114,9 @@ test('permissions: profiles, overrides and connection policy', () => {
   assert.equal(p.insertData, true);
   assert.equal(p.bogus, undefined);
   assert.equal(resolveScriptPermissions('unknown').insertData, false);
+  for (const profile of ['read-only', 'validator', 'generator', 'seeder']) assert.equal(resolveScriptPermissions(profile).useAI, true);
+  assert.equal(resolveScriptPermissions('migration').useAI, false);
+  assert.equal(resolveScriptPermissions('validator', { useAI: false }).useAI, false);
   const prod = normalizePolicy('production');
   assert.deepEqual(prod, { allowWrites: false, allowDDL: false, requireDryRun: true });
   const eff = effectivePermissions(resolveScriptPermissions('full'), prod);

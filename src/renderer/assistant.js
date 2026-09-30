@@ -579,7 +579,26 @@ export function setupAssistant(ctx, workbench) {
       ta.value = prompt;
       ta.focus();
     },
-    aiConfig: () => (prefs.provider && prefs.model ? { providerId: prefs.provider, model: prefs.model } : null),
+    // AI settings for a script run, or null when none is set up. A script
+    // that calls ai.* may send rows to the provider, so a remote one needs
+    // the user's agreement (once per provider, shared with the chat).
+    // Resolves to false when the user cancels.
+    async aiConfig({ usesAI = false } = {}) {
+      const p = provider();
+      if (!p || !prefs.model) return null;
+      let shareData = p.local || shareRowsConfirmed === p.id;
+      if (usesAI && !shareData) {
+        const choice = await host.confirm({
+          message: tr('Let this script send data to {provider}?', { provider: p.name }),
+          detail: tr('{url} is a remote service. The script calls ai.chat / ai.structured and may send rows from {db} in its prompts.', { url: p.baseUrl, db: db.info()?.description ?? tr('the database') }),
+          buttons: [tr('Allow'), tr('Cancel')],
+        });
+        if (choice !== 0) return false;
+        shareRowsConfirmed = p.id;
+        shareData = true;
+      }
+      return { providerId: p.id, model: prefs.model, shareData };
+    },
     commands: {
       'ai-assistant': () => ctx.tabs.show('assistant'),
       'ai-settings': openSettings,

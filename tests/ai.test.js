@@ -301,6 +301,16 @@ test('assistant: row data needs permission, a connection and consent for remote 
   assert.equal(log.at(-1).e, 'ai-query-with-row-data');
 });
 
+test('assistant: scripts may use a remote provider only with consent', async () => {
+  const { a, log } = assistant();
+  const call = { kind: 'chat', prompt: 'Review these rows' };
+  await assert.rejects(a.scriptCall({ model: 'm' }, call), /Choose an AI provider/);
+  await assert.rejects(a.scriptCall({ providerId: 'remote', model: 'm' }, call), /remote provider/);
+  queue.push(ollamaReply({ content: 'looks fine' }));
+  assert.equal(await a.scriptCall({ providerId: 'o', model: 'm' }, call), 'looks fine');
+  assert.equal(log.at(-1).e, 'ai-script-call');
+});
+
 test('assistant: tools refuse writes', async () => {
   const { executeTool } = require('../src/main/ai/ai-tools.cjs');
   const ctx = { windowId: 1, shared, schema: schema(), permissions: shared.normalizeAiPermissions({ executeSelect: true, readData: true, executeWrites: true }), connected: true, rowsAllowed: true, services: { readOnly: async () => [] }, emit: () => {} };
