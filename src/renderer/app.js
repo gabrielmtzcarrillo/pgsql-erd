@@ -40,9 +40,28 @@ const state = {
   showTables: false, // table list in the sidebar when nothing is selected
   tableFilter: '',
   expandedCol: null, // attnum of the column open in the sidebar editor
+  showGrid: loadPref('pgsql-erd.show-grid', true),
+  snap: loadPref('pgsql-erd.snap', true),
 };
 
 // ---------------------------------------------------------------- helpers
+
+function loadPref(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v === 'true';
+  } catch {
+    return fallback;
+  }
+}
+
+function savePref(key, value) {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    // Preferences are a convenience; ignore storage failures.
+  }
+}
 
 const measureCtx = document.createElement('canvas').getContext('2d');
 function measure(text, bold = false) {
@@ -139,11 +158,45 @@ function scheduleRender() {
 function applyView() {
   const { offsetX, offsetY, zoom, gridSize } = state.model.view;
   viewport.setAttribute('transform', `translate(${offsetX},${offsetY}) scale(${zoom})`);
-  const pattern = $('#grid');
-  pattern.setAttribute('width', gridSize);
-  pattern.setAttribute('height', gridSize);
-  pattern.setAttribute('patternTransform', `translate(${offsetX},${offsetY}) scale(${zoom})`);
+  renderGrid(offsetX, offsetY, zoom, gridSize || 15);
   $('#zoom-label').textContent = `${Math.round(zoom * 100)}%`;
+}
+
+// The grid is drawn in screen space so lines stay 1px at every zoom level.
+// Minor lines mark every grid cell and major lines every fifth; when zoomed
+// out far enough that cells get cramped, both step up by a factor of 5.
+function renderGrid(offsetX, offsetY, zoom, gridSize) {
+  $('#grid-bg').classList.toggle('hidden', !state.showGrid);
+  $('[data-cmd="toggle-grid"]').classList.toggle('active', state.showGrid);
+  $('[data-cmd="toggle-snap"]').classList.toggle('active', state.snap);
+  syncGridSizeSelect(gridSize);
+  if (!state.showGrid) return;
+  let minor = gridSize * zoom;
+  while (minor < 8) minor *= 5;
+  const major = minor * 5;
+  const pattern = $('#grid');
+  pattern.setAttribute('width', major);
+  pattern.setAttribute('height', major);
+  pattern.setAttribute('patternTransform', `translate(${offsetX},${offsetY})`);
+  let d = '';
+  for (let i = 1; i < 5; i++) {
+    const p = i * minor;
+    d += `M${p} 0V${major}M0 ${p}H${major}`;
+  }
+  $('#grid-minor').setAttribute('d', d);
+  $('#grid-major').setAttribute('d', `M0 0V${major}M0 0H${major}`);
+}
+
+function syncGridSizeSelect(gridSize) {
+  const select = $('#grid-size');
+  const value = String(gridSize);
+  if (select.value === value) return;
+  if (![...select.options].some((o) => o.value === value)) {
+    const opts = [...select.options, h('option', { value }, value)];
+    opts.sort((a, b) => Number(a.value) - Number(b.value));
+    select.replaceChildren(...opts);
+  }
+  select.value = value;
 }
 
 function computeSizes() {
@@ -633,8 +686,12 @@ function viewCenter() {
   return { x: (r.width / 2 - offsetX) / zoom, y: (r.height / 2 - offsetY) / zoom };
 }
 
-function snap(v) {
-  const g = state.model.view.gridSize || 15;
+const gridSize = () => state.model.view.gridSize || 15;
+
+// Round to the nearest grid line when snapping is on (`on` overrides it).
+function snap(v, on = state.snap) {
+  if (!on) return v;
+  const g = gridSize();
   return Math.round(v / g) * g;
 }
 
@@ -842,8 +899,10 @@ svg.addEventListener('pointermove', (e) => {
   const z = state.model.view.zoom;
   const nx = drag.ox + dx / z;
   const ny = drag.oy + dy / z;
-  drag.t.x = e.altKey ? nx : snap(nx);
-  drag.t.y = e.altKey ? ny : snap(ny);
+  // Alt inverts the snap setting for this move.
+  const on = state.snap !== e.altKey;
+  drag.t.x = snap(nx, on);
+  drag.t.y = snap(ny, on);
   scheduleRender();
 });
 
@@ -1041,7 +1100,7 @@ const commands = {
     if (!state.model.tables.length) return;
     commit(() => {
       computeSizes();
-      autoLayout(state.model, state.sizes);
+      autoLayout(state.model, state.sizes, { grid: state.snap ? gridSize() : 0 });
     }, { panel: false });
     fit();
   },
@@ -1052,6 +1111,17 @@ const commands = {
       render();
     }
     renderPanel();
+  },
+  'toggle-grid'() {
+    state.showGrid = !state.showGrid;
+    savePref('pgsql-erd.show-grid', state.showGrid);
+    applyView();
+  },
+  'toggle-snap'() {
+    state.snap = !state.snap;
+    savePref('pgsql-erd.snap', state.snap);
+    applyView();
+    status(state.snap ? 'Snap to grid on' : 'Snap to grid off');
   },
   'toggle-sql'() {
     state.showSql = !state.showSql;
@@ -1073,6 +1143,15 @@ function runCommand(name) {
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-cmd]');
   if (btn) runCommand(btn.dataset.cmd);
+});
+
+$('#grid-size').addEventListener('change', (e) => {
+  const size = Number(e.target.value);
+  if (!size || size === state.model.view.gridSize) return;
+  state.model.view.gridSize = size;
+  setDirty(true);
+  applyView();
+  e.target.blur();
 });
 
 $('#sql-copy').addEventListener('click', async () => {
@@ -1100,12 +1179,19 @@ document.addEventListener('keydown', (e) => {
   } else if (state.selection?.type === 'table' && e.key.startsWith('Arrow')) {
     e.preventDefault();
     const t = tableById(state.selection.id);
-    const step = e.shiftKey ? 1 : state.model.view.gridSize || 15;
+    // Shift nudges by 1px; otherwise move one cell, landing on the next grid
+    // line when snapping is on.
+    const g = gridSize();
+    const move = (v, dir) => {
+      if (e.shiftKey) return v + dir;
+      if (!state.snap) return v + dir * g;
+      return dir > 0 ? Math.floor(v / g) * g + g : Math.ceil(v / g) * g - g;
+    };
     commit(() => {
-      if (e.key === 'ArrowLeft') t.x -= step;
-      if (e.key === 'ArrowRight') t.x += step;
-      if (e.key === 'ArrowUp') t.y -= step;
-      if (e.key === 'ArrowDown') t.y += step;
+      if (e.key === 'ArrowLeft') t.x = move(t.x, -1);
+      if (e.key === 'ArrowRight') t.x = move(t.x, 1);
+      if (e.key === 'ArrowUp') t.y = move(t.y, -1);
+      if (e.key === 'ArrowDown') t.y = move(t.y, 1);
     }, { panel: false });
   }
 });

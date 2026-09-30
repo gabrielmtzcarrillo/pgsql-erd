@@ -37,8 +37,13 @@ pgAdmin's ERD tool and this app.
   - edit columns: name, type, length/scale, NOT NULL, PK, default value, order
   - set schema, comment, note and header colour
   - add and remove relationships, optionally creating the FK column for you
-- Drag tables to move them (snaps to the grid; hold <kbd>Alt</kbd> for free placement). Drag the
-  background to pan, scroll to zoom, and use **Fit** or **Auto layout** to tidy up.
+- Drag tables to move them. Drag the background to pan, scroll to zoom, and use **Fit** or
+  **Auto layout** to tidy up.
+- A grid is drawn behind the diagram (**Grid**, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd>), with a
+  heavier line every fifth cell. With **Snap** on (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>),
+  dragged tables, arrow-key nudges, new tables and auto layout all land on grid lines; hold
+  <kbd>Alt</kbd> while dragging to invert snapping for that move, and <kbd>Shift</kbd>+arrow nudges
+  by 1px. The grid size is picked next to the Snap button and saved in the file's `gridSize`.
 - Undo/redo, and a prompt about unsaved changes when you close the window.
 - Save back to `.pgerd`. Properties this app doesn't edit (tablespace, check constraints, and so
   on) are kept as they were.
@@ -88,6 +93,34 @@ To build installers (AppImage/deb, NSIS, dmg) with the `.pgerd` file association
 npm run dist
 ```
 
+### Windows (.exe)
+
+On Windows, with Node.js 20+ installed, run from the repository root:
+
+```bat
+scripts\build-windows.bat
+```
+
+It is a plain batch file, so it runs from Command Prompt or by double-clicking, without changing the
+PowerShell execution policy.
+
+This installs dependencies, runs the tests and writes to `dist\`:
+
+| File | What it is |
+| --- | --- |
+| `pgsql-erd-Setup-<version>.exe` | Installer: choose the install folder, adds Start menu and desktop shortcuts, registers `.pgerd` files |
+| `pgsql-erd-<version>-portable.exe` | Single executable that runs without installing |
+| `win-unpacked\pgsql-erd.exe` | The unpacked app the other two are made from |
+
+To build only one target, pass `installer`, `portable` or `dir` (default `all`), e.g.
+`scripts\build-windows.bat portable`. Options: `--skip-tests`, `--skip-install`, `--clean` (delete
+`dist\` first). The same builds are available as npm scripts:
+`npm run dist:win` (installer + portable), `dist:win:installer`, `dist:win:portable` and `dist:win:dir`.
+
+The app, installer and uninstaller use `build/icon.ico`. The executables are unsigned, so Windows SmartScreen warns the first time they run. Building them on
+Linux or macOS also works but needs [Wine](https://www.winehq.org/) (with 32-bit support for the
+installer).
+
 ## Project layout
 
 ```
@@ -105,6 +138,8 @@ src/renderer/lib/diff.js  database vs diagram comparison and migration SQL
 src/renderer/lib/sync.js  import / update diagram tables from the database
 src/renderer/lib/highlight.js SQL syntax highlighting
 samples/shop.pgerd        example diagram
+build/icon.svg            app icon source; icon.ico (Windows) and icon.png are rendered from it
+scripts/build-windows.bat Windows build script
 tests/                    node:test suites
 ```
 

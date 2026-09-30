@@ -117,3 +117,19 @@ test('layout places referenced tables before referencing ones', () => {
     assert.match(r.path, /^M[-\d.]+,[-\d.]+ L/);
   }
 });
+
+test('layout with a grid puts every table on a grid line without shrinking gaps', () => {
+  const m = parsePgerd(sample);
+  const sizes = new Map(m.tables.map((t) => [t.id, tableSize(t, measure)]));
+  autoLayout(m, sizes, { grid: 20, gapX: 120, gapY: 50 });
+  for (const t of m.tables) {
+    assert.equal(t.x % 20, 0, `${t.name}.x`);
+    assert.equal(t.y % 20, 0, `${t.name}.y`);
+  }
+  for (const a of m.tables) {
+    for (const b of m.tables) {
+      if (a === b || a.x !== b.x || a.y >= b.y) continue;
+      assert.ok(b.y - (a.y + sizes.get(a.id).height) >= 50);
+    }
+  }
+});
