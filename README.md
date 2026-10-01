@@ -42,7 +42,8 @@ table whose data you are browsing.
 
 - Open `.pgerd` files from **File → Open**, by dragging them onto the window, from the command
   line (`npm start -- path/to/file.pgerd`), or by double-clicking them once the app is installed
-  (the packaged app registers the `.pgerd` file type).
+  (the packaged app registers the `.pgerd` file type). The last 10 diagrams opened or saved are in
+  **File → Open Recent** and on the start screen of an empty diagram.
 - Draws tables with columns, types, primary keys (key icon) and foreign keys (link icon). Relationships use
   crow's-foot notation.
 - A sidebar opens when you select a table. It shows:
@@ -106,6 +107,10 @@ PostgreSQL 10+ server:
   already in the diagram. Selected tables that are new are added to the diagram with their columns, primary
   keys, unique constraints and foreign keys. Tables already in the diagram are updated from the database;
   their position, colour and note are kept. Serial columns come back as `serial`/`bigserial`.
+- **Explorer:** a panel left of the diagram with a tree of the connected database's schemas, tables and
+  columns. Drag a table onto the diagram (or double-click it) to add it where it's dropped; its foreign
+  keys to and from tables already in the diagram are drawn as relationships. Tables already in the
+  diagram are ticked. Toggle the panel with **Explorer** in the Database group.
 - **Compare / Sync:** compares the diagram with the database (per schema) and lists every difference:
   - new and dropped tables and columns
   - type, `NOT NULL`, default and identity changes

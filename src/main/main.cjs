@@ -117,12 +117,41 @@ function focusedWindow() {
   return BrowserWindow.getFocusedWindow() ?? [...windows][0] ?? null;
 }
 
+// Recently opened or saved diagrams, newest first, kept in settings.json.
+// File → Open Recent and the empty diagram's start screen list them.
+const RECENT_MAX = 10;
+const samePath = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
+const recentFiles = () => (Array.isArray(settings.recentFiles) ? settings.recentFiles : []);
+
+function setRecentFiles(list) {
+  settings.recentFiles = list.slice(0, RECENT_MAX);
+  saveSettings();
+  buildMenu();
+  for (const win of windows) send(win, 'recent-files', recentFiles());
+}
+
+function addRecentFile(filePath) {
+  app.addRecentDocument(filePath);
+  setRecentFiles([filePath, ...recentFiles().filter((f) => !samePath(f, filePath))]);
+}
+
+function removeRecentFile(filePath) {
+  setRecentFiles(recentFiles().filter((f) => !samePath(f, filePath)));
+}
+
+function clearRecentFiles() {
+  app.clearRecentDocuments();
+  setRecentFiles([]);
+}
+
 async function openFileInWindow(win, filePath) {
   try {
     const text = await fs.readFile(filePath, 'utf8');
     send(win, 'file-opened', { filePath, text });
-    app.addRecentDocument(filePath);
+    addRecentFile(filePath);
   } catch (err) {
+    // A recent file that was moved or deleted drops off the list.
+    if (err.code === 'ENOENT') removeRecentFile(filePath);
     dialog.showErrorBox(tr('Could not open file'), `${filePath}\n\n${err.message}`);
   }
 }
@@ -150,6 +179,16 @@ async function showOpenDialog(win) {
 }
 
 ipcMain.handle('open-dialog', (e) => showOpenDialog(BrowserWindow.fromWebContents(e.sender)));
+
+ipcMain.handle('recent-files', () => recentFiles());
+// Opens a file from the recent list in the asking window; the page asks about
+// unsaved changes when the file arrives. Only listed paths are opened.
+ipcMain.handle('recent-open', (e, filePath) => {
+  const known = recentFiles().find((f) => samePath(f, String(filePath)));
+  if (known) openFileInWindow(BrowserWindow.fromWebContents(e.sender), known);
+});
+ipcMain.handle('recent-remove', (e, filePath) => removeRecentFile(String(filePath)));
+ipcMain.handle('recent-clear', () => clearRecentFiles());
 
 // Pick a spreadsheet for "Import from Excel"; the renderer parses its bytes.
 ipcMain.handle('open-spreadsheet', async (e) => {
@@ -184,7 +223,7 @@ ipcMain.handle('save-file', async (e, { filePath, text, saveAs, defaultName, kin
     target = res.filePath;
   }
   await fs.writeFile(target, text, 'utf8');
-  if (!kind || kind === 'pgerd') app.addRecentDocument(target);
+  if (!kind || kind === 'pgerd') addRecentFile(target);
   return target;
 });
 
@@ -277,6 +316,21 @@ function setLanguage(code) {
   }
 }
 
+// File → Open Recent. Labels escape '&', which marks mnemonics on Windows/Linux.
+function recentMenu() {
+  const files = recentFiles();
+  return [
+    ...(files.length
+      ? files.map((f, i) => ({
+          label: `${i < 9 ? `&${i + 1} ` : ''}${f.replace(/&/g, '&&')}`,
+          click: () => openFile(f),
+        }))
+      : [{ label: tr('No recent files'), enabled: false }]),
+    { type: 'separator' },
+    { label: tr('Clear Recently Opened'), enabled: files.length > 0, click: clearRecentFiles },
+  ];
+}
+
 function buildMenu() {
   const cmd = (name) => () => send(focusedWindow(), 'menu', name);
   const isMac = process.platform === 'darwin';
@@ -288,7 +342,7 @@ function buildMenu() {
         { label: tr('New Diagram'), icon: menuIcon('new'), accelerator: 'CmdOrCtrl+N', click: cmd('new') },
         { label: tr('New Window'), icon: menuIcon('new-window'), accelerator: 'CmdOrCtrl+Shift+N', click: () => createWindow() },
         { label: tr('Open…'), icon: menuIcon('open'), accelerator: 'CmdOrCtrl+O', click: () => showOpenDialog(focusedWindow()) },
-        ...(isMac ? [{ role: 'recentDocuments', submenu: [{ role: 'clearRecentDocuments' }] }] : []),
+        { label: tr('Open Recent'), submenu: recentMenu() },
         { type: 'separator' },
         { label: tr('Save'), icon: menuIcon('save'), accelerator: 'CmdOrCtrl+S', click: cmd('save') },
         { label: tr('Save As…'), icon: menuIcon('save-as'), accelerator: 'CmdOrCtrl+Shift+S', click: cmd('save-as') },

@@ -15,6 +15,14 @@ contextBridge.exposeInMainWorld('erdHost', {
   setState: (state) => ipcRenderer.send('state', state),
   closeWindow: () => ipcRenderer.send('close-window'),
   pathForFile: (file) => webUtils.getPathForFile(file),
+  // Recently opened diagrams, newest first; onChange gets the new list.
+  recent: {
+    list: () => ipcRenderer.invoke('recent-files'),
+    open: (filePath) => ipcRenderer.invoke('recent-open', filePath),
+    remove: (filePath) => ipcRenderer.invoke('recent-remove', filePath),
+    clear: () => ipcRenderer.invoke('recent-clear'),
+    onChange: (cb) => ipcRenderer.on('recent-files', (_e, list) => cb(list)),
+  },
   // Database access happens in the main process. The password is sent once,
   // with connect(); afterwards the window's connection is used implicitly.
   db: {
