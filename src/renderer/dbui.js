@@ -52,19 +52,19 @@ export function setupDatabase(ctx) {
 
   // Reads the catalog; the main process also refreshes its schema model,
   // which scripts and the assistant use.
+  // The 'schema' event carries the catalog as a diagram model.
   async function loadCatalog() {
     const { catalog, changes } = await call(host.db.introspect);
     const model = modelFromCatalog(catalog);
     model.schemas = catalog.schemas;
-    events.dispatchEvent(Object.assign(new Event('schema'), { changes }));
-    return model;
+    events.dispatchEvent(Object.assign(new Event('schema'), { changes, model }));
+    return { model, changes };
   }
 
   async function refreshSchema() {
     status(tr('Reading the database schema…'));
     try {
-      const { changes } = await call(host.db.introspect);
-      events.dispatchEvent(Object.assign(new Event('schema'), { changes }));
+      const { changes } = await loadCatalog();
       status(changes.length
         ? trn(changes.length, 'Schema refreshed: {n} change ({list})', 'Schema refreshed: {n} changes ({list})', { list: changes.slice(0, 3).join('; ') + (changes.length > 3 ? '; …' : '') })
         : tr('Schema refreshed: no changes'));
@@ -374,7 +374,7 @@ export function setupDatabase(ctx) {
   async function refreshImport() {
     setStatus(importStatus, tr('Reading database…'));
     try {
-      importModel = await loadCatalog();
+      ({ model: importModel } = await loadCatalog());
       renderImportList();
       setStatus(importStatus, `${trn(importModel.tables.length, '{n} table', '{n} tables')} · ${trn(importModel.schemas.length, '{n} schema', '{n} schemas')} (${conn.description})`);
     } catch (err) {
@@ -493,7 +493,7 @@ export function setupDatabase(ctx) {
   async function refreshCompare() {
     setStatus(compareStatus, tr('Reading database…'));
     try {
-      dbModel = await loadCatalog();
+      ({ model: dbModel } = await loadCatalog());
       renderSchemas();
       recompute();
     } catch (err) {
@@ -556,6 +556,7 @@ export function setupDatabase(ctx) {
       info: () => conn,
       openConnect,
       refreshSchema,
+      catalog: async () => (await loadCatalog()).model,
     },
     'db-connect': () => openConnect(),
     'db-refresh': requireConnection(refreshSchema),

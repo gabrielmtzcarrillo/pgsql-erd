@@ -8,6 +8,7 @@ import {
 } from './lib/layout.js';
 import { DIAGRAM_CSS, LIGHT_VARS, DARK_VARS, FONT, FONT_BOLD } from './lib/svgstyle.js';
 import { setupDatabase } from './dbui.js';
+import { setupDbTree, TABLE_DRAG_TYPE } from './dbtree.js';
 import { setupWorkbench } from './workbench.js';
 import { setupAssistant } from './assistant.js';
 import { setupTabs } from './tabs.js';
@@ -1420,6 +1421,7 @@ const tabs = setupTabs({ h });
 const uiCtx = { host, state, h, commit, computeSizes, fit, status, events };
 const { api: db, ...dbCommands } = setupDatabase(uiCtx);
 const spreadsheet = setupSpreadsheetImport(uiCtx);
+const dbTree = setupDbTree({ ...uiCtx, db, toDiagram, snap, select, centerOn, viewCenter });
 const workbenchCtx = {
   host, state, h, status, db, events, tabs, focusTable, selectedTableIds,
   hasTable: (key) => !!findDiagramTable(key),
@@ -1438,7 +1440,7 @@ Object.assign(workbenchCtx, {
   openData: dataBrowser.open,
   openSql: query.setSql,
 });
-Object.assign(commands, dbCommands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, graph.commands, {
+Object.assign(commands, dbCommands, dbTree.commands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, graph.commands, {
   'tab-erd': () => tabs.show('erd'),
   'toggle-erd-scripts': () => {
     tabs.show('erd');
@@ -1526,8 +1528,10 @@ document.addEventListener('keydown', (e) => {
 });
 
 // Drag and drop .pgerd files onto the window; spreadsheets open the import dialog.
+// Tables dragged from the database explorer are dropped by dbtree.js.
 const wrap = $('.canvas-wrap');
 document.addEventListener('dragover', (e) => {
+  if (e.dataTransfer.types.includes(TABLE_DRAG_TYPE)) return;
   e.preventDefault();
   wrap.classList.add('drop-target');
 });

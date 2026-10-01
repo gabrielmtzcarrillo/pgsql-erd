@@ -59,6 +59,7 @@
     <div class="group">
       <div class="group-items">
         <button data-cmd="db-connect" id="db-button" title="Connect to a PostgreSQL database">Connect</button>
+        <button data-cmd="toggle-db-tree" title="Show the tables of the connected database">Explorer</button>
         <div class="stack">
           <button data-cmd="db-refresh" title="Read the database schema again (Ctrl+Alt+F5)" data-i18n="ribbon: Refresh">Refresh</button>
           <button data-cmd="db-import" title="Import tables from the database (Ctrl+Alt+I)">Import</button>
@@ -102,6 +103,20 @@
   </nav>
 
   <main class="workspace tab-page" data-page="erd">
+    <aside id="db-tree" class="db-tree" hidden>
+      <div class="tree-head">
+        <strong>Database</strong>
+        <span>
+          <button type="button" id="db-tree-refresh" data-icon="refresh" title="Read the database tables again"></button>
+          <button type="button" id="db-tree-close" data-icon="close" title="Hide the database tables"></button>
+        </span>
+      </div>
+      <div id="db-tree-info" class="tree-info"></div>
+      <input id="db-tree-filter" type="search" placeholder="Filter tables…">
+      <div id="db-tree-list" class="tree-list" role="tree"></div>
+      <p class="tree-hint">Drag a table onto the diagram to add it.</p>
+      <div id="db-tree-resize" class="db-tree-resize" title="Drag to resize"></div>
+    </aside>
     <section class="canvas-wrap">
       <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
         <defs>

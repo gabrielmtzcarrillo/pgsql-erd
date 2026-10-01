@@ -107,6 +107,10 @@ PostgreSQL 10+ server:
   keys, unique constraints and foreign keys. Tables already in the diagram are updated from the database;
   their position, colour and note are kept. Serial columns come back as `serial`/`bigserial`.
 - **Compare / Sync:** compares the diagram with the database (per schema) and lists every difference:
+- **Explorer:** a panel left of the diagram with a tree of the connected database's schemas, tables and
+  columns. Drag a table onto the diagram (or double-click it) to add it where it's dropped; its foreign
+  keys to and from tables already in the diagram are drawn as relationships. Tables already in the
+  diagram are ticked. Toggle the panel with **Explorer** in the Database group.
   - new and dropped tables and columns
   - type, `NOT NULL`, default and identity changes
   - primary keys, unique constraints and foreign keys (including `ON DELETE`/`ON UPDATE` changes)
