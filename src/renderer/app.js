@@ -1552,6 +1552,25 @@ document.addEventListener('drop', async (e) => {
   openText(await file.text(), host.pathForFile(file) || null);
 });
 
+// Recent files on the empty diagram's start screen (also in File → Open Recent).
+function renderRecentFiles(files) {
+  $('#recent-files').hidden = !files.length;
+  $('#recent-list').replaceChildren(...files.map((f) => {
+    const dir = f.slice(0, f.length - basename(f).length).replace(/[\\/]$/, '');
+    return h('li', { title: f, onclick: () => host.recent.open(f) }, [
+      h('span', { class: 'recent-name' }, basename(f)),
+      h('span', { class: 'recent-dir' }, dir),
+      h('button', {
+        type: 'button',
+        class: 'recent-remove',
+        title: tr('Remove from the list'),
+        onclick: (e) => { e.stopPropagation(); host.recent.remove(f); },
+      }, '×'),
+    ]);
+  }));
+}
+$('#recent-clear').addEventListener('click', () => host.recent.clear());
+
 // ---------------------------------------------------------------- startup
 
 (function init() {
@@ -1566,6 +1585,8 @@ document.addEventListener('drop', async (e) => {
     openText(text, filePath);
   });
   host.onMenu(runCommand);
+  host.recent.onChange(renderRecentFiles);
+  host.recent.list().then(renderRecentFiles);
   window.erdIsPristine = () => !state.dirty && !state.filePath && !state.model.tables.length;
 
   updateTitle();

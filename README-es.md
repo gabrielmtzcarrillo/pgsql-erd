@@ -43,7 +43,8 @@ y **Asistente**, seguidas de una pestaña por cada tabla cuyos datos estés expl
 
 - Abre archivos `.pgerd` desde **Archivo → Abrir**, arrastrándolos a la ventana, desde la línea de comandos
   (`npm start -- ruta/al/archivo.pgerd`) o con doble clic una vez instalada la aplicación (la aplicación
-  empaquetada registra el tipo de archivo `.pgerd`).
+  empaquetada registra el tipo de archivo `.pgerd`). Los últimos 10 diagramas abiertos o guardados están en
+  **Archivo → Abrir reciente** y en la pantalla de inicio de un diagrama vacío.
 - Dibuja tablas con columnas, tipos, claves primarias (icono de llave) y claves foráneas (icono de enlace). Las
   relaciones usan la notación pata de gallo.
 - Al seleccionar una tabla se abre una barra lateral. Muestra:
@@ -113,12 +114,12 @@ PostgreSQL 10+ en vivo:
   columnas, claves primarias, restricciones únicas y claves foráneas. Las que ya están en el diagrama se
   actualizan desde la base de datos; se conservan su posición, color y nota. Las columnas serial vuelven como
   `serial`/`bigserial`.
-- **Comparar / sincronizar:** compara el diagrama con la base de datos (por esquema) y lista todas las
 - **Explorador:** un panel a la izquierda del diagrama con un árbol de los esquemas, tablas y columnas de la
   base de datos conectada. Arrastra una tabla al diagrama (o haz doble clic) para agregarla donde la sueltes;
   sus claves foráneas hacia y desde tablas que ya están en el diagrama se dibujan como relaciones. Las tablas
   que ya están en el diagrama aparecen marcadas. Muestra u oculta el panel con **Explorador** en el grupo
   Base de datos.
+- **Comparar / sincronizar:** compara el diagrama con la base de datos (por esquema) y lista todas las
   diferencias:
   - tablas y columnas nuevas y eliminadas
   - cambios de tipo, `NOT NULL`, valor predeterminado e identidad

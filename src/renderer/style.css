@@ -246,6 +246,19 @@ textarea { resize: vertical; width: 100%; }
 .empty-hint h2 { margin: 0; color: var(--text); font-weight: 600; }
 .empty-hint div { display: flex; gap: 8px; margin-top: 10px; pointer-events: auto; }
 .empty-hint[hidden] { display: none; }
+.recent-files { pointer-events: auto; width: min(460px, calc(100% - 32px)); margin-top: 22px; text-align: left; }
+.recent-files[hidden] { display: none; }
+.recent-files header { display: flex; align-items: baseline; justify-content: space-between; padding: 0 8px 4px; color: var(--text); }
+.recent-files #recent-clear { border: 0; background: transparent; padding: 0; color: var(--accent); font-size: 12px; cursor: pointer; }
+.recent-files #recent-clear:hover { text-decoration: underline; }
+.recent-files ul { list-style: none; margin: 0; padding: 0; max-height: 40vh; overflow: auto; }
+.recent-files li { display: flex; align-items: baseline; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
+.recent-files li:hover { background: var(--accent-soft); }
+.recent-name { color: var(--accent); white-space: nowrap; }
+.recent-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.recent-remove { visibility: hidden; border: 0; background: transparent; padding: 0 4px; color: var(--muted); font-size: 14px; line-height: 1; }
+.recent-files li:hover .recent-remove { visibility: visible; }
+.recent-remove:hover { color: var(--danger); }
 
 .canvas-wrap.drop-target::after {
   content: "Drop .pgerd file to open";

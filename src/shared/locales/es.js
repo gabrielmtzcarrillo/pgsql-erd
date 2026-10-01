@@ -846,4 +846,10 @@ export default {
   "Show the tables of the connected database": "Mostrar las tablas de la base de datos conectada",
   "Read the database tables again": "Volver a leer las tablas de la base de datos",
   "Hide the database tables": "Ocultar las tablas de la base de datos",
+  "Open Recent": "Abrir reciente",
+  "No recent files": "No hay archivos recientes",
+  "Clear Recently Opened": "Borrar abiertos recientemente",
+  "Recent files": "Archivos recientes",
+  "Clear the list of recent files": "Borrar la lista de archivos recientes",
+  "Remove from the list": "Quitar de la lista",
 };
