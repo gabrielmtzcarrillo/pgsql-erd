@@ -15,8 +15,8 @@ funciona con Ollama, vLLM, OpenAI y otros servidores compatibles con OpenAI.
 
 **Cinta de opciones y pestañas:** los comandos se agrupan al estilo de Office (Archivo, Historial, Diagrama,
 Cuadrícula, Base de datos, Scripts, SQL y exportar) con iconos a dos colores; los menús nativos usan los
-mismos iconos. Debajo de la cinta, las pestañas cambian entre **Diagrama**, **Scripts**, **Consulta**, **Grafo**
-y **Asistente**, seguidas de una pestaña por cada tabla cuyos datos estés explorando.
+mismos iconos. Debajo de la cinta, las pestañas cambian entre **Diagrama**, **Scripts**, **Consulta**,
+**Generador**, **Grafo** y **Asistente**, seguidas de una pestaña por cada tabla cuyos datos estés explorando.
 
 ![Cinta de opciones](docs/screenshots/es/ribbon.png)
 
@@ -109,6 +109,8 @@ PostgreSQL 10+ en vivo:
   sistema operativo (DPAPI, Llavero, libsecret/kwallet); sin almacén de credenciales se conserva en memoria
   hasta que se cierra la aplicación. Una contraseña guardada solo se envía al servidor, puerto y usuario para
   los que se guardó. **Reconectar a la última instancia** reabre la última sesión al abrir una ventana.
+  Conectarse a otra base de datos pide confirmación primero: cierra el diagrama (descartando los cambios sin
+  guardar), las pestañas de datos y el generador de consultas, y borra los resultados de la consulta.
 - **Importar tablas:** lista todas las tablas de la base de datos por esquema, con su número de columnas e
   indicando si ya están en el diagrama. Las tablas seleccionadas que son nuevas se agregan al diagrama con sus
   columnas, claves primarias, restricciones únicas y claves foráneas. Las que ya están en el diagrama se
@@ -118,7 +120,7 @@ PostgreSQL 10+ en vivo:
   base de datos conectada. Arrastra una tabla al diagrama (o haz doble clic) para agregarla donde la sueltes;
   sus claves foráneas hacia y desde tablas que ya están en el diagrama se dibujan como relaciones. Las tablas
   que ya están en el diagrama aparecen marcadas. Muestra u oculta el panel con **Explorador** en el grupo
-  Base de datos.
+  Base de datos. El mismo panel acompaña al generador de consultas en la pestaña **Generador**.
 - **Comparar / sincronizar:** compara el diagrama con la base de datos (por esquema) y lista todas las
   diferencias:
   - tablas y columnas nuevas y eliminadas
@@ -256,6 +258,24 @@ filas, tiempo propio y una barra por nodo. Las sugerencias señalan recorridos s
 mayoría de las filas, estimaciones de filas erróneas, ordenaciones y hashes que se vuelcan a disco y claves
 foráneas sin índice, con la sentencia `CREATE INDEX` / `ANALYZE` lista para insertar. **Preguntar al
 asistente** envía la consulta, su plan y las sugerencias a la pestaña Asistente.
+
+### Generador
+
+Un generador visual de consultas (Base de datos → Generador de consultas, Ctrl+Alt+U). Arrastra tablas desde el
+explorador de la base de datos al lienzo (o haz doble clic) y marca las columnas que quieres obtener; la casilla
+del encabezado marca todas. Las tablas con una clave foránea entre ellas se unen automáticamente por sus columnas:
+
+- una tabla agregada dos veces recibe su propio alias y la siguiente clave foránea: una segunda tabla
+  `addresses` junto a `orders` se une por la dirección de envío cuando la primera tomó la de facturación
+- una tabla que se referencia a sí misma (`employees.manager_id`) se puede agregar dos veces para unirla
+  consigo misma
+- arrastra una columna sobre la columna de otra tabla para unirlas a mano
+
+Cada unión tiene un pequeño menú sobre su línea: solo las filas que coinciden (`JOIN`), todas las filas de una
+tabla (`LEFT` / `RIGHT JOIN`) o de ambas (`FULL JOIN`). Los alias se pueden cambiar en los encabezados de las
+tablas; **Sin duplicados** y **Límite** completan la sentencia. El SQL aparece debajo del lienzo mientras
+trabajas: **Abrir en Consulta** lo pone en la pestaña Consulta y **Ejecutar** además lo ejecuta ahí. La
+consulta se recuerda entre sesiones.
 
 ### Pestañas de datos
 
@@ -420,6 +440,8 @@ src/renderer/dbui.js      diálogos de conexión / importación / comparación
 src/renderer/tabs.js      pestañas principales
 src/renderer/workbench.js pestaña Scripts
 src/renderer/query.js     pestaña Consulta
+src/renderer/querybuilder.js pestaña Generador (generador visual de consultas)
+src/renderer/dbtree.js    explorador de la base de datos
 src/renderer/graph.js     pestaña Grafo (Apache AGE)
 src/renderer/databrowser.js pestañas de datos y filtros
 src/renderer/assistant.js pestaña Asistente y configuración de los proveedores de IA
@@ -432,6 +454,7 @@ src/renderer/lib/diff.js  comparación entre base de datos y diagrama, y SQL de 
 src/renderer/lib/sync.js  importar / actualizar tablas del diagrama desde la base de datos
 src/renderer/lib/spreadsheet.js lectura de .xlsx / CSV y conversión de hoja -> tabla
 src/renderer/lib/highlight.js resaltado de sintaxis SQL
+src/renderer/lib/querybuilder.js uniones y SELECT del generador de consultas
 samples/shop.pgerd        diagrama de ejemplo
 build/icon.svg            origen del icono de la aplicación; icon.ico (Windows) e icon.png se generan a partir de él
 scripts/build-windows.bat script de compilación para Windows

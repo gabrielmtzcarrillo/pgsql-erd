@@ -96,6 +96,7 @@
     <button type="button" data-main-tab="erd" data-icon="toggle-tables" class="active">Diagram</button>
     <button type="button" data-main-tab="scripts" data-icon="toggle-workbench">Scripts</button>
     <button type="button" data-main-tab="query" data-icon="toggle-sql">Query</button>
+    <button type="button" data-main-tab="builder" data-icon="query-builder" title="Build a query by dragging tables from the database explorer">Builder</button>
     <button type="button" data-main-tab="graph" data-icon="graph" title="Apache AGE graphs: relationships, vertices, explorer and Cypher">Graph</button>
     <button type="button" data-main-tab="assistant" data-icon="ai-assistant">Assistant</button>
     <span id="data-tabs" class="data-tabs"></span>
@@ -228,6 +229,33 @@
       <div id="q-plan" class="q-pane" data-qpane="plan" hidden></div>
       <div id="q-messages" class="q-pane" data-qpane="messages" hidden></div>
     </div>
+  </section>
+
+  <section id="builder-page" class="tab-page builder-page" data-page="builder" hidden>
+    <section class="qb-main">
+      <div class="q-toolbar">
+        <button type="button" data-cmd="toggle-db-tree" title="Show the tables of the connected database">Explorer</button>
+        <label class="check" title="Leave out duplicate rows"><input type="checkbox" id="qb-distinct"> Distinct</label>
+        <label class="check" title="Return at most this many rows; empty returns them all">Limit
+          <input type="number" id="qb-limit" class="qb-limit" min="0" step="1"></label>
+        <button type="button" id="qb-clear" data-icon="delete" title="Remove every table from the query">Clear</button>
+        <span class="grow"></span>
+        <span id="qb-status" class="muted small"></span>
+        <button type="button" id="qb-copy" data-icon="copy" title="Copy the SQL to the clipboard">Copy</button>
+        <button type="button" id="qb-open" data-icon="toggle-sql" title="Open the SQL in the Query tab">Open in Query</button>
+        <button type="button" id="qb-run" class="primary" data-icon="script-run" title="Run the query in the Query tab">Run</button>
+      </div>
+      <div id="qb-canvas" class="qb-canvas">
+        <div id="qb-area" class="qb-area"><svg id="qb-lines" class="qb-lines" xmlns="http://www.w3.org/2000/svg"></svg></div>
+        <div id="qb-empty" class="empty-hint">
+          <h2>Build a query</h2>
+          <p>Drag tables here from the database explorer and tick the columns to return.</p>
+          <p>Tables with a relationship are joined automatically; drag a column onto another table's column to join them by hand.</p>
+        </div>
+      </div>
+      <div id="qb-resize" class="q-resize" title="Drag to resize"></div>
+      <pre id="qb-sql" class="qb-sql"></pre>
+    </section>
   </section>
 
   <section id="graph-page" class="tab-page graph-page" data-page="graph" hidden>

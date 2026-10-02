@@ -14,8 +14,8 @@ filters, and an AI assistant that works with Ollama, vLLM, OpenAI and other Open
 
 **Ribbon and tabs:** commands are grouped Office-style (File, History, Diagram, Grid, Database, Scripts,
 SQL & Export) with two-tone colour icons; the native menus use the same icons. Below the ribbon,
-tabs switch between the **Diagram**, **Scripts**, **Query**, **Graph** and **Assistant**, followed by one tab per
-table whose data you are browsing.
+tabs switch between the **Diagram**, **Scripts**, **Query**, **Builder**, **Graph** and **Assistant**, followed by
+one tab per table whose data you are browsing.
 
 ![Ribbon](docs/screenshots/ribbon.png)
 
@@ -102,7 +102,9 @@ PostgreSQL 10+ server:
   Tick **Remember the password** to store it encrypted with the operating system's credential store
   (DPAPI, Keychain, libsecret/kwallet); without a credential store it is kept in memory until the app quits.
   A saved password is only sent to the host, port and user it was saved for. **Reconnect to the last
-  instance** reopens the last session when a window opens.
+  instance** reopens the last session when a window opens. Connecting to a different database asks first:
+  it closes the diagram (discarding unsaved changes), the data tabs and the query builder, and clears the
+  query results.
 - **Import tables:** lists every table in the database by schema, with its column count and whether it's
   already in the diagram. Selected tables that are new are added to the diagram with their columns, primary
   keys, unique constraints and foreign keys. Tables already in the diagram are updated from the database;
@@ -110,7 +112,8 @@ PostgreSQL 10+ server:
 - **Explorer:** a panel left of the diagram with a tree of the connected database's schemas, tables and
   columns. Drag a table onto the diagram (or double-click it) to add it where it's dropped; its foreign
   keys to and from tables already in the diagram are drawn as relationships. Tables already in the
-  diagram are ticked. Toggle the panel with **Explorer** in the Database group.
+  diagram are ticked. Toggle the panel with **Explorer** in the Database group. The same panel sits
+  beside the query builder in the **Builder** tab.
 - **Compare / Sync:** compares the diagram with the database (per schema) and lists every difference:
   - new and dropped tables and columns
   - type, `NOT NULL`, default and identity changes
@@ -235,6 +238,22 @@ and a connection that allows writes, and are committed together. **Explain** sho
 and a bar per node. Hints point out sequential scans that discard most rows, bad row estimates, sorts and
 hashes that spill to disk and foreign keys without an index, with the `CREATE INDEX` / `ANALYZE` statement
 to insert. **Ask assistant** sends the query, its plan and the hints to the Assistant tab.
+
+### Builder
+
+A visual query builder (Database → Query Builder, Ctrl+Alt+U). Drag tables from the database explorer onto
+the canvas (or double-click them) and tick the columns to return; the header checkbox picks every column.
+Tables with a foreign key between them are joined automatically on its columns:
+
+- a table added twice gets its own alias, and the next foreign key: a second `addresses` table next to
+  `orders` joins on the shipping address when the first one took the billing address
+- a table that references itself (`employees.manager_id`) can be added twice for a self join
+- drag a column onto a column of another table to join them by hand
+
+Each join has a small menu on its line: matching rows only (`JOIN`), every row of one table (`LEFT` /
+`RIGHT JOIN`) or of both (`FULL JOIN`). Aliases can be renamed in the table headers; **Distinct** and
+**Limit** complete the statement. The SQL shows below the canvas as you go: **Open in Query** puts it in
+the Query tab and **Run** also runs it there. The query is remembered between sessions.
 
 ### Data tabs
 
@@ -383,6 +402,8 @@ src/renderer/dbui.js      connect / import / compare dialogs
 src/renderer/tabs.js      main tabs
 src/renderer/workbench.js Scripts tab
 src/renderer/query.js     Query tab
+src/renderer/querybuilder.js Builder tab (visual query builder)
+src/renderer/dbtree.js    database explorer
 src/renderer/graph.js     Graph tab (Apache AGE)
 src/renderer/databrowser.js data tabs and filters
 src/renderer/assistant.js Assistant tab and AI provider settings
@@ -395,6 +416,7 @@ src/renderer/lib/diff.js  database vs diagram comparison and migration SQL
 src/renderer/lib/sync.js  import / update diagram tables from the database
 src/renderer/lib/spreadsheet.js .xlsx / CSV reading and sheet -> table conversion
 src/renderer/lib/highlight.js SQL syntax highlighting
+src/renderer/lib/querybuilder.js query builder joins and SELECT generation
 samples/shop.pgerd        example diagram
 build/icon.svg            app icon source; icon.ico (Windows) and icon.png are rendered from it
 scripts/build-windows.bat Windows build script

@@ -1,7 +1,8 @@
 // Database explorer: a tree of the connected instance's schemas, tables and
 // columns beside the diagram. Tables are dragged from the tree onto the
 // canvas to add them; their foreign keys to tables already in the diagram
-// come along as relationships.
+// come along as relationships. The query builder borrows the pane while its
+// tab is shown (attach), and tables then go to the query instead.
 
 import { tableKey } from './lib/catalog.js';
 import { mergeFromDb } from './lib/sync.js';
@@ -60,6 +61,28 @@ export function setupDbTree(ctx) {
 
   const inDiagram = () => new Set(state.model.tables.map(tableKey));
 
+  // Where tables from the tree go: the diagram, or whatever attach() set.
+  const hint = pane.querySelector('.tree-hint');
+  const diagramTarget = {
+    present: inDiagram,
+    add: (key) => addTable(key),
+    title: (key, present) => present
+      ? tr('{name} is in the diagram. Double-click to show it.', { name: key })
+      : tr('Drag {name} onto the diagram to add it, or double-click.', { name: key }),
+    tag: () => tr('In the diagram'),
+    hint: () => tr('Drag a table onto the diagram to add it.'),
+  };
+  let target = diagramTarget;
+
+  // Moves the pane to the start of `parent` and sends tables to `to`
+  // ({ present, add, title, tag, hint }); without `to`, back to the diagram.
+  function attach(parent, to = null) {
+    if (pane.parentElement !== parent) parent.prepend(pane);
+    target = to ?? diagramTarget;
+    hint.textContent = target.hint();
+    render();
+  }
+
   function render() {
     if (!shown) return;
     const connected = db.connected();
@@ -78,7 +101,7 @@ export function setupDbTree(ctx) {
     if (!dbModel) return list.replaceChildren(h('div', { class: 'tree-empty' }, tr('Reading database…')));
 
     const q = filter.value.trim().toLowerCase();
-    const present = inDiagram();
+    const present = target.present();
     const bySchema = new Map((dbModel.schemas ?? []).map((s) => [s, []]));
     for (const t of dbModel.tables) {
       if (q && !tableKey(t).toLowerCase().includes(q)) continue;
@@ -131,20 +154,18 @@ export function setupDbTree(ctx) {
       role: 'treeitem',
       'aria-expanded': String(open),
       draggable: 'true',
-      title: present
-        ? tr('{name} is in the diagram. Double-click to show it.', { name: key })
-        : tr('Drag {name} onto the diagram to add it, or double-click.', { name: key }),
+      title: target.title(key, present),
       ondragstart: (e) => {
         e.dataTransfer.setData(TABLE_DRAG_TYPE, key);
         e.dataTransfer.setData('text/plain', key);
         e.dataTransfer.effectAllowed = 'copy';
       },
-      ondblclick: () => addTable(key),
+      ondblclick: () => target.add(key),
     }, [
       twisty(open, toggle),
       iconElement('toggle-tables', 'tree-icon'),
       h('span', { class: 'grow' }, t.name),
-      present ? h('span', { class: 'tree-tag', title: tr('In the diagram') }, '✓') : null,
+      present ? h('span', { class: 'tree-tag', title: target.tag() }, '✓') : null,
     ]);
     if (t.description) row.title += `\n${t.description}`;
     const node = h('div', { class: 'tree-node' }, row);
@@ -211,7 +232,7 @@ export function setupDbTree(ctx) {
 
   function update() {
     pane.hidden = !shown;
-    $('[data-cmd="toggle-db-tree"]')?.classList.toggle('active', shown);
+    for (const b of document.querySelectorAll('[data-cmd="toggle-db-tree"]')) b.classList.toggle('active', shown);
     render();
   }
 
@@ -265,6 +286,10 @@ export function setupDbTree(ctx) {
   update();
 
   return {
+    attach,
+    render,
+    load,
+    model: () => dbModel,
     commands: {
       'toggle-db-tree': () => setShown(!shown),
     },

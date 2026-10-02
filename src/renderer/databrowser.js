@@ -423,6 +423,10 @@ export function setupDataBrowser(ctx) {
 
   // Reload open tabs after a commit or schema refresh.
   ctx.events.addEventListener('schema', () => views.forEach((v) => tabs.current() === `data:${v.table}` && v.load()));
+  // Another database: its tables' data tabs are closed.
+  ctx.events.addEventListener('database-switch', () => {
+    for (const table of [...views.keys()]) tabs.remove(`data:${table}`);
+  });
 
   return {
     open,

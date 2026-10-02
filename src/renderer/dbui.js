@@ -278,9 +278,24 @@ export function setupDatabase(ctx) {
     test(formConn()).catch((err) => setStatus(connectStatus, err.message, 'error'))
   );
 
-  // Records the new connection and tells the rest of the page.
+  // Changing to another database closes what belongs to the current one.
+  // Asked before connecting; true to go ahead.
+  async function confirmSwitch(target) {
+    const choice = await host.confirm({
+      message: tr('Change the connection to {db}?', { db: describe(target) }),
+      detail: tr('The diagram, the data tabs and the query builder are closed and the query results cleared. Unsaved changes to the diagram are discarded.'),
+      buttons: [tr('Change Connection'), tr('Cancel')],
+    });
+    return choice === 0;
+  }
+
+  // Records the new connection and tells the rest of the page. A different
+  // database than before sends 'database-switch' first, so the diagram, data
+  // tabs, query builder and query results tied to the old one are closed.
   function connected(result) {
     const { saved: list, ...info } = result;
+    const switched = !!conn && describe(conn.conn) !== describe(info.conn);
+    if (switched) events.dispatchEvent(new Event('database-switch'));
     conn = info;
     if (list) saved = list;
     try {
@@ -298,6 +313,8 @@ export function setupDatabase(ctx) {
     e.preventDefault(); // keep the dialog open until the connection works
     const f = connectForm.elements;
     const opts = { instanceId: selected, save: f.saveInstance.checked, rememberPassword: f.saveInstance.checked && f.rememberPassword.checked };
+    const target = formConn();
+    if (conn && describe(conn.conn) !== describe(target) && !(await confirmSwitch(target))) return;
     setStatus(connectStatus, tr('Connecting…'));
     let result;
     try {
