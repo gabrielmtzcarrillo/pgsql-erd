@@ -76,6 +76,12 @@ export function setupQuery(ctx) {
   }
   ctx.events.addEventListener('schema', refreshSchema);
   ctx.events.addEventListener('connection', refreshSchema);
+  // Another database: results and plans of the old one are cleared; the SQL stays.
+  ctx.events.addEventListener('database-switch', () => {
+    lastPlan = null;
+    for (const id of ['#q-results', '#q-plan', '#q-messages']) $(id).replaceChildren();
+    setStatus('');
+  });
   tabs.onShow((name) => {
     if (name === 'query') ensureEditor().then(() => {
       editor.layout();

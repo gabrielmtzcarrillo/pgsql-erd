@@ -8,12 +8,13 @@ import {
 } from './lib/layout.js';
 import { DIAGRAM_CSS, LIGHT_VARS, DARK_VARS, FONT, FONT_BOLD } from './lib/svgstyle.js';
 import { setupDatabase } from './dbui.js';
-import { setupDbTree, TABLE_DRAG_TYPE } from './dbtree.js';
+import { setupDbTree } from './dbtree.js';
 import { setupWorkbench } from './workbench.js';
 import { setupAssistant } from './assistant.js';
 import { setupTabs } from './tabs.js';
 import { setupDataBrowser } from './databrowser.js';
 import { setupQuery } from './query.js';
+import { setupQueryBuilder } from './querybuilder.js';
 import { setupGraph } from './graph.js';
 import { setupErdScripts } from './erdscripts.js';
 import { tableKey } from './lib/catalog.js';
@@ -51,7 +52,9 @@ translateDom(document.body);
 decorateButtons(document.body);
 
 // Notifies the workbench and assistant: 'model' (diagram edited), 'file'
-// (diagram opened or saved under a new path), 'connection', 'schema'.
+// (diagram opened or saved under a new path), 'connection', 'schema',
+// 'database-switch' (connecting to another database; the user agreed to
+// close what belongs to the old one).
 const events = new EventTarget();
 const emit = (name) => events.dispatchEvent(new Event(name));
 
@@ -1433,6 +1436,7 @@ const assistant = setupAssistant(workbenchCtx, workbench.api);
 const dataBrowser = setupDataBrowser(workbenchCtx);
 const query = setupQuery(workbenchCtx);
 const graph = setupGraph(workbenchCtx);
+const queryBuilder = setupQueryBuilder({ ...workbenchCtx, dbTree, openSql: query.setSql, runQuery: query.commands['query-run'] });
 erdScripts = setupErdScripts({ ...workbenchCtx, el, measure, workbench: workbench.api, select, render, focusTable });
 Object.assign(workbenchCtx, {
   aiConfig: assistant.aiConfig,
@@ -1440,7 +1444,7 @@ Object.assign(workbenchCtx, {
   openData: dataBrowser.open,
   openSql: query.setSql,
 });
-Object.assign(commands, dbCommands, dbTree.commands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, graph.commands, {
+Object.assign(commands, dbCommands, dbTree.commands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, queryBuilder.commands, graph.commands, {
   'tab-erd': () => tabs.show('erd'),
   'toggle-erd-scripts': () => {
     tabs.show('erd');
@@ -1451,6 +1455,8 @@ Object.assign(commands, dbCommands, dbTree.commands, spreadsheet.commands, workb
 tabs.onShow((name) => {
   if (name === 'erd') render();
 });
+// Another database: the diagram is closed, unsaved changes and all.
+events.addEventListener('database-switch', () => loadModel(emptyModel(), null));
 
 function runCommand(name) {
   const fn = commands[name];
@@ -1528,10 +1534,11 @@ document.addEventListener('keydown', (e) => {
 });
 
 // Drag and drop .pgerd files onto the window; spreadsheets open the import dialog.
-// Tables dragged from the database explorer are dropped by dbtree.js.
+// Tables dragged from the database explorer are dropped by dbtree.js and
+// querybuilder.js, which also handles columns dragged between its tables.
 const wrap = $('.canvas-wrap');
 document.addEventListener('dragover', (e) => {
-  if (e.dataTransfer.types.includes(TABLE_DRAG_TYPE)) return;
+  if (!e.dataTransfer.types.includes('Files')) return;
   e.preventDefault();
   wrap.classList.add('drop-target');
 });
