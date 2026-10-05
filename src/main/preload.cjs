@@ -4,9 +4,13 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 // The main process passes the language as --pgsql-erd-locale=<code>.
 const locale = process.argv.find((a) => a.startsWith('--pgsql-erd-locale='))?.split('=')[1] ?? 'en';
+// Likewise the theme picked in View → Theme; later changes arrive through onTheme.
+const theme = process.argv.find((a) => a.startsWith('--pgsql-erd-theme='))?.split('=')[1] ?? 'system';
 
 contextBridge.exposeInMainWorld('erdHost', {
   locale,
+  theme,
+  onTheme: (cb) => ipcRenderer.on('theme', (_e, name) => cb(name)),
   openDialog: () => ipcRenderer.invoke('open-dialog'),
   openSpreadsheet: () => ipcRenderer.invoke('open-spreadsheet'),
   saveFile: (opts) => ipcRenderer.invoke('save-file', opts),

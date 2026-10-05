@@ -6,7 +6,8 @@ import {
   HEADER_H, ROW_H, PAD_X, BADGE_W, tableSize, routeLink, crowFoot, oneMarker, autoLayout,
   contentBounds,
 } from './lib/layout.js';
-import { DIAGRAM_CSS, LIGHT_VARS, DARK_VARS, FONT, FONT_BOLD } from './lib/svgstyle.js';
+import { DIAGRAM_CSS, THEME_DIAGRAM, FONT, FONT_BOLD } from './lib/svgstyle.js';
+import { initTheme, diagramTheme } from './theme.js';
 import { setupDatabase } from './dbui.js';
 import { setupDbTree } from './dbtree.js';
 import { setupWorkbench } from './workbench.js';
@@ -1287,17 +1288,16 @@ async function exportSQL() {
 function buildExportSVG() {
   computeSizes();
   const b = diagramBounds();
-  const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const theme = diagramTheme();
   const clone = viewport.cloneNode(true);
   clone.removeAttribute('transform');
   clone.querySelectorAll('.selected, .related, .focused').forEach((n) => n.classList.remove('selected', 'related', 'focused'));
   clone.querySelectorAll('title, .t-link-handle, .link-draft').forEach((n) => n.remove());
-  const bg = dark ? '#1b1e24' : '#ffffff';
   const out =
     `<svg xmlns="${SVG_NS}" width="${Math.ceil(b.width)}" height="${Math.ceil(b.height)}" ` +
     `viewBox="${b.x} ${b.y} ${b.width} ${b.height}">` +
-    `<style>svg{${dark ? DARK_VARS : LIGHT_VARS}}${DIAGRAM_CSS}</style>` +
-    `<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" fill="${bg}"/>` +
+    `<style>svg{${theme.vars}}${DIAGRAM_CSS}</style>` +
+    `<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" fill="${theme.background}"/>` +
     new XMLSerializer().serializeToString(clone) +
     '</svg>';
   return { text: out, width: b.width, height: b.height };
@@ -1581,9 +1581,10 @@ $('#recent-clear').addEventListener('click', () => host.recent.clear());
 // ---------------------------------------------------------------- startup
 
 (function init() {
+  initTheme();
   const style = document.createElement('style');
   style.textContent =
-    `:root{${LIGHT_VARS}}@media (prefers-color-scheme: dark){:root{${DARK_VARS}}}${DIAGRAM_CSS}`;
+    Object.entries(THEME_DIAGRAM).map(([name, t]) => `:root[data-theme="${name}"]{${t.vars}}`).join('') + DIAGRAM_CSS;
   document.head.append(style);
   $('#pg-types').replaceChildren(...PG_TYPES.map((t) => h('option', { value: t })));
 
@@ -1591,7 +1592,8 @@ $('#recent-clear').addEventListener('click', () => host.recent.clear());
     if (!(await confirmDiscard())) return;
     openText(text, filePath);
   });
-  host.onMenu(runCommand);
+  // F5 is the menu accelerator for running scripts; on the Query tab it runs the query.
+  host.onMenu((name) => runCommand(name === 'script-run' && tabs.current() === 'query' ? 'query-run' : name));
   host.recent.onChange(renderRecentFiles);
   host.recent.list().then(renderRecentFiles);
   window.erdIsPristine = () => !state.dirty && !state.filePath && !state.model.tables.length;

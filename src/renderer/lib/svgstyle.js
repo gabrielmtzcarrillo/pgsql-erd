@@ -43,6 +43,52 @@ export const DARK_VARS = `
   --erd-fail: #f07070;
 `;
 
+export const VS2026_VARS = `
+  --erd-table-bg: #2b2b2b;
+  --erd-table-border: #454545;
+  --erd-header-bg: #68217a;
+  --erd-header-fg: #ffffff;
+  --erd-text: #dcdcdc;
+  --erd-muted: #9d9d9d;
+  --erd-row-hover: #383838;
+  --erd-pk: #dcdcaa;
+  --erd-fk: #4ec9b0;
+  --erd-link: #8a8a8a;
+  --erd-accent: #a68af9;
+  --erd-script-bg: #2a2633;
+  --erd-script-border: #5e5373;
+  --erd-script-header: #4b3a80;
+  --erd-pass: #6a9955;
+  --erd-fail: #f14c4c;
+`;
+
+export const WINME_VARS = `
+  --erd-table-bg: #ffffff;
+  --erd-table-border: #000000;
+  --erd-header-bg: #0a246a;
+  --erd-header-fg: #ffffff;
+  --erd-text: #000000;
+  --erd-muted: #808080;
+  --erd-row-hover: #d4d0c8;
+  --erd-pk: #808000;
+  --erd-fk: #000080;
+  --erd-link: #000000;
+  --erd-accent: #0a246a;
+  --erd-script-bg: #ffffe1;
+  --erd-script-border: #808080;
+  --erd-script-header: #800080;
+  --erd-pass: #008000;
+  --erd-fail: #ff0000;
+`;
+
+// Diagram colours and exported-image background per theme (View → Theme).
+export const THEME_DIAGRAM = {
+  white: { vars: LIGHT_VARS, background: '#ffffff' },
+  dark: { vars: DARK_VARS, background: '#1b1e24' },
+  vs2026: { vars: VS2026_VARS, background: '#1f1f1f' },
+  winme: { vars: WINME_VARS, background: '#ffffff' },
+};
+
 export const DIAGRAM_CSS = `
   .erd-table .t-body { fill: var(--erd-table-bg); stroke: var(--erd-table-border); stroke-width: 1; }
   .erd-table .t-header { fill: var(--erd-header-bg); }

@@ -49,7 +49,8 @@ export function isSerial(col) {
 export function normalizeType(col) {
   let { type, arr, length, precision } = parseType(col);
   type = SERIALS[type] ?? type;
-  if (type === 'character' && (length === null || length === undefined || length === '')) length = 1;
+  // character and bit without a length mean length 1 in PostgreSQL.
+  if ((type === 'character' || type === 'bit') && (length === null || length === undefined || length === '')) length = 1;
   return formatType({ type: type + arr, length, precision });
 }
 

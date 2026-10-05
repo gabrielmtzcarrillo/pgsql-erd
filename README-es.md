@@ -95,7 +95,8 @@ mismos iconos. Debajo de la cinta, las pestañas cambian entre **Diagrama**, **S
   primarias, restricciones únicas, claves foráneas, comentarios), SVG o PNG.
 - Una cinta de opciones al estilo de Office con grupos de comandos con nombre e iconos a dos colores, que
   comparten los menús nativos y los diálogos.
-- Sigue el tema claro u oscuro del sistema.
+- Temas en **Ver → Tema**: Blanco, Oscuro, Visual Studio 2026 y Windows ME, o el tema claro u oscuro del
+  sistema (predeterminado).
 - Disponible en inglés y en español (consulta [Idiomas](#idiomas)).
 
 ## Sincronización con la base de datos

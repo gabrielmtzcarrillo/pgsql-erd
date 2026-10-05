@@ -11,7 +11,8 @@ const { sharedDir } = require('./shared.cjs');
 const windows = new Set();
 let pendingOpen = []; // files requested before the app was ready (macOS open-file)
 
-// App settings in <userData>/settings.json: { locale: 'system' | 'en' | 'es' }.
+// App settings in <userData>/settings.json:
+// { locale: 'system' | 'en' | 'es', theme: 'system' | 'white' | 'dark' | 'vs2026' | 'winme' }.
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 let settings = {};
 function loadSettings() {
@@ -36,6 +37,21 @@ let relaunchOnQuit = false;
 loadSettings();
 if (settings.locale && settings.locale !== 'system') app.commandLine.appendSwitch('lang', settings.locale);
 
+// View → Theme. Each theme is drawn on a light or dark base, which also sets
+// Chromium's colour scheme (scrollbars, native controls, Monaco) and the
+// menu icon variant. The page applies the theme's own colours.
+const THEMES = {
+  system: { base: 'system', label: () => tr('System theme') },
+  white: { base: 'light', label: () => tr('White'), background: '#f4f5f7' },
+  dark: { base: 'dark', label: () => tr('Dark'), background: '#16181d' },
+  vs2026: { base: 'dark', label: () => 'Visual Studio 2026', background: '#1f1f1f' },
+  winme: { base: 'light', label: () => 'Windows ME', background: '#d4d0c8' },
+};
+const themeChoice = () => (THEMES[settings.theme] ? settings.theme : 'system');
+const themeBackground = () =>
+  THEMES[themeChoice()].background ?? (nativeTheme.shouldUseDarkColors ? THEMES.dark.background : THEMES.white.background);
+nativeTheme.themeSource = THEMES[themeChoice()].base;
+
 // Packaged builds take their icon from the executable / bundle. When running
 // from source (npm start), point Electron at the icon in build/ instead.
 const devIcon = app.isPackaged
@@ -56,7 +72,7 @@ function createWindow(filePath = null) {
     minWidth: 800,
     minHeight: 500,
     title: 'pgsql-erd',
-    backgroundColor: '#f4f5f7',
+    backgroundColor: themeBackground(),
     icon: devIcon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -64,7 +80,7 @@ function createWindow(filePath = null) {
       nodeIntegration: false,
       sandbox: true,
       // The page reads its language from here (see preload.cjs).
-      additionalArguments: [`--pgsql-erd-locale=${i18n?.getLocale() ?? 'en'}`],
+      additionalArguments: [`--pgsql-erd-locale=${i18n?.getLocale() ?? 'en'}`, `--pgsql-erd-theme=${themeChoice()}`],
     },
   });
   windows.add(win);
@@ -316,6 +332,27 @@ function setLanguage(code) {
   }
 }
 
+function themeMenu() {
+  const choice = themeChoice();
+  return Object.entries(THEMES).flatMap(([name, t]) => [
+    { label: t.label(), type: 'radio', checked: choice === name, click: () => setTheme(name) },
+    ...(name === 'system' ? [{ type: 'separator' }] : []),
+  ]);
+}
+
+// Applies at once in every window; the menu is rebuilt by nativeTheme's 'updated' event
+// when the base changes, and here for the radio check.
+function setTheme(name) {
+  settings.theme = name;
+  saveSettings();
+  nativeTheme.themeSource = THEMES[name].base;
+  buildMenu();
+  for (const win of windows) {
+    win.setBackgroundColor(themeBackground());
+    send(win, 'theme', name);
+  }
+}
+
 // File → Open Recent. Labels escape '&', which marks mnemonics on Windows/Linux.
 function recentMenu() {
   const files = recentFiles();
@@ -418,6 +455,7 @@ function buildMenu() {
         { label: tr('Show SQL Preview'), icon: menuIcon('toggle-sql'), accelerator: 'CmdOrCtrl+Alt+P', click: cmd('toggle-sql') },
         { type: 'separator' },
         { label: tr('Language'), icon: menuIcon('about'), submenu: languageMenu() },
+        { label: tr('Theme'), submenu: themeMenu() },
         { type: 'separator' },
         { role: 'toggleDevTools', label: tr('Toggle Developer Tools'), icon: menuIcon('devtools') },
         { role: 'togglefullscreen', label: tr('Toggle Full Screen'), icon: menuIcon('fullscreen') },

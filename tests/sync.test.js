@@ -60,6 +60,7 @@ test('normalizes types and defaults for comparison', () => {
   assert.equal(normalizeType({ type: 'timestamptz' }), 'timestamp with time zone');
   assert.equal(normalizeType({ type: 'int4[]' }), 'integer[]');
   assert.equal(normalizeType({ type: 'char' }), 'character(1)');
+  assert.equal(normalizeType({ type: 'bit' }), normalizeType({ type: 'bit(1)' }));
   assert.equal(normalizeDefault("'new'::character varying"), normalizeDefault("'new'"));
   assert.equal(normalizeDefault('NOW()'), 'now()');
   assert.notEqual(normalizeDefault("'A'"), normalizeDefault("'a'"));
