@@ -89,7 +89,7 @@ one tab per table whose data you are browsing.
   constraints, foreign keys, comments), SVG or PNG.
 - An Office-style ribbon with labelled command groups and two-tone colour icons, which the
   native menus and dialogs share.
-- Themes in **View → Theme**: White, Dark, Visual Studio 2026 and Windows ME, or follow the system's
+- Themes in **View → Theme**: White, Dark, Visual Studio (classic Blue) and Windows ME, or follow the system's
   light or dark setting (the default).
 - Available in English and Spanish (see [Languages](#languages)).
 

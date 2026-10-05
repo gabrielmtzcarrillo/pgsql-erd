@@ -12,7 +12,7 @@ const windows = new Set();
 let pendingOpen = []; // files requested before the app was ready (macOS open-file)
 
 // App settings in <userData>/settings.json:
-// { locale: 'system' | 'en' | 'es', theme: 'system' | 'white' | 'dark' | 'vs2026' | 'winme' }.
+// { locale: 'system' | 'en' | 'es', theme: 'system' | 'white' | 'dark' | 'vs' | 'winme' }.
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 let settings = {};
 function loadSettings() {
@@ -44,7 +44,7 @@ const THEMES = {
   system: { base: 'system', label: () => tr('System theme') },
   white: { base: 'light', label: () => tr('White'), background: '#f4f5f7' },
   dark: { base: 'dark', label: () => tr('Dark'), background: '#16181d' },
-  vs2026: { base: 'dark', label: () => 'Visual Studio 2026', background: '#1f1f1f' },
+  vs: { base: 'light', label: () => 'Visual Studio', background: '#ccd5f0' },
   winme: { base: 'light', label: () => 'Windows ME', background: '#d4d0c8' },
 };
 const themeChoice = () => (THEMES[settings.theme] ? settings.theme : 'system');
