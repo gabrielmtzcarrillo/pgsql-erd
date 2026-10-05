@@ -5,7 +5,7 @@
 import { THEME_DIAGRAM } from './lib/svgstyle.js';
 
 const host = window.erdHost;
-const BASE = { white: 'light', dark: 'dark', vs2026: 'dark', winme: 'light' };
+const BASE = { white: 'light', dark: 'dark', vs: 'light', winme: 'light' };
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
 let choice = host?.theme ?? 'system';

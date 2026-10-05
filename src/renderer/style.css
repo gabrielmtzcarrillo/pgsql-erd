@@ -50,29 +50,33 @@
   color-scheme: dark;
 }
 
-:root[data-theme="vs2026"] {
-  --bg: #1f1f1f;
-  --canvas: #1e1e1e;
-  --grid: #262626;
-  --grid-major: #313131;
-  --surface: #252526;
-  --border: #3f3f46;
-  --text: #dcdcdc;
-  --muted: #9d9d9d;
-  --accent: #a68af9;
-  --accent-soft: rgba(166, 138, 249, 0.18);
-  --danger: #f14c4c;
-  --input-bg: #1f1f1f;
-  --sql-kw: #569cd6;
-  --sql-type: #4ec9b0;
-  --sql-str: #d69d85;
-  --sql-num: #b5cea8;
-  --sql-com: #57a64a;
-  --sql-ident: #9cdcfe;
-  --sql-fn: #dcdcaa;
-  --sql-op: #b4b4b4;
-  --sql-punct: #b4b4b4;
-  color-scheme: dark;
+:root[data-theme="vs"] {
+  --bg: #ccd5f0;
+  --canvas: #ffffff;
+  --grid: #eef1f8;
+  --grid-major: #dde3f0;
+  --surface: #f7f9fe;
+  --border: #b6bfdc;
+  --text: #1e1e1e;
+  --muted: #5a6475;
+  --accent: #40568d;
+  --accent-soft: #fdf4bf;
+  --danger: #c42b1c;
+  --input-bg: #ffffff;
+  --sql-kw: #0000ff;
+  --sql-type: #2b91af;
+  --sql-str: #a31515;
+  --sql-num: #098658;
+  --sql-com: #008000;
+  --sql-ident: #1f377f;
+  --sql-fn: #74531f;
+  --sql-op: #808080;
+  --sql-punct: #000000;
+  --vs-well: #5d6b99;
+  --vs-title: #40568d;
+  --vs-title-active: #f5cc84;
+  --vs-status: #40508d;
+  color-scheme: light;
 }
 
 :root[data-theme="winme"] {
@@ -1119,3 +1123,48 @@ dialog.medium { width: min(760px, 94vw); }
 :root[data-theme="winme"] .empty-hint, :root[data-theme="winme"] .empty-hint h2 { color: #fff; }
 :root[data-theme="winme"] .recent-files { background: var(--surface); color: var(--text); padding: 6px; border: 2px solid; border-color: var(--me-light) var(--me-dark) var(--me-dark) var(--me-light); }
 :root[data-theme="winme"] .recent-name, :root[data-theme="winme"] .recent-files #recent-clear { color: #0000ff; }
+
+/* Visual Studio (classic Blue): lavender command bars, slate-blue tab
+   well, white diagram canvas, blue tool-window title bars and status bar, yellow active tab. */
+:root[data-theme="vs"] .toolbar { background: var(--bg); border-bottom-color: var(--bg); }
+:root[data-theme="vs"] .ribbon button:hover:not(:disabled),
+:root[data-theme="vs"] .ribbon button.active { background: var(--accent-soft); border-color: #e5c365; }
+:root[data-theme="vs"] .main-tabs { background: var(--vs-well); border-bottom: 2px solid var(--vs-title-active); }
+:root[data-theme="vs"] .main-tabs button { color: #ffffff; border-radius: 0; margin-bottom: 0; }
+:root[data-theme="vs"] .main-tabs button:hover { background: #7f8fbd; color: #ffffff; }
+:root[data-theme="vs"] .main-tabs button.active { background: var(--vs-title-active); border-color: var(--vs-title-active); color: #000000; }
+:root[data-theme="vs"] .main-tabs .btn-icon { filter: brightness(1.6); }
+:root[data-theme="vs"] .main-tabs button.active .btn-icon { filter: none; }
+:root[data-theme="vs"] .tree-head,
+:root[data-theme="vs"] .sql-head,
+:root[data-theme="vs"] .sb-header { background: var(--vs-title); color: #ffffff; }
+:root[data-theme="vs"] .tree-head button,
+:root[data-theme="vs"] .sql-head button,
+:root[data-theme="vs"] .sb-header button,
+:root[data-theme="vs"] .sb-header .muted { color: #ffffff; }
+:root[data-theme="vs"] .tree-head .btn-icon,
+:root[data-theme="vs"] .sb-header .btn-icon { filter: brightness(1.8); }
+:root[data-theme="vs"] .tree-head { padding-bottom: 6px; margin-bottom: 6px; }
+:root[data-theme="vs"] .db-tree:focus-within .tree-head,
+:root[data-theme="vs"] .sidebar:focus-within .sb-header { background: var(--vs-title-active); color: #000000; }
+:root[data-theme="vs"] .db-tree:focus-within .tree-head button,
+:root[data-theme="vs"] .sidebar:focus-within .sb-header button,
+:root[data-theme="vs"] .sidebar:focus-within .sb-header .muted { color: #000000; }
+:root[data-theme="vs"] .db-tree:focus-within .tree-head .btn-icon,
+:root[data-theme="vs"] .sidebar:focus-within .sb-header .btn-icon { filter: none; }
+:root[data-theme="vs"] .wb-tabs { background: var(--bg); }
+:root[data-theme="vs"] .wb-tabs button.active { background: var(--surface); border-bottom-color: var(--vs-title-active); }
+:root[data-theme="vs"] .q-toolbar,
+:root[data-theme="vs"] .dt-toolbar { background: var(--bg); }
+:root[data-theme="vs"] .statusbar,
+:root[data-theme="vs"] .statusbar * { background-color: var(--vs-status); color: #ffffff; border-color: transparent; }
+:root[data-theme="vs"] .statusbar .btn-icon { color: #ffffff; }
+:root[data-theme="vs"] .statusbar .btn-icon * { background-color: transparent; }
+:root[data-theme="vs"] #zoom-slider { accent-color: #ffffff; }
+:root[data-theme="vs"] .tree-row:hover,
+:root[data-theme="vs"] .ctx-menu .ctx-item:hover,
+:root[data-theme="vs"] .list li.clickable:hover,
+:root[data-theme="vs"] .db-list label.item:hover { background: var(--accent-soft); }
+:root[data-theme="vs"] input:focus, :root[data-theme="vs"] select:focus, :root[data-theme="vs"] textarea:focus { outline: 0; border-color: #3399ff; }
+:root[data-theme="vs"] ::selection { background: #3399ff; color: #ffffff; }
+:root[data-theme="vs"] .recent-files { background: var(--surface); color: var(--text); padding: 6px; border: 1px solid var(--vs-title); }

@@ -43,23 +43,25 @@ export const DARK_VARS = `
   --erd-fail: #f07070;
 `;
 
-export const VS2026_VARS = `
-  --erd-table-bg: #2b2b2b;
-  --erd-table-border: #454545;
-  --erd-header-bg: #68217a;
+// Visual Studio's classic Blue theme: white tables with blue title
+// bars on a white canvas, with yellow for the active selection.
+export const VS_VARS = `
+  --erd-table-bg: #ffffff;
+  --erd-table-border: #40568d;
+  --erd-header-bg: #40568d;
   --erd-header-fg: #ffffff;
-  --erd-text: #dcdcdc;
-  --erd-muted: #9d9d9d;
-  --erd-row-hover: #383838;
-  --erd-pk: #dcdcaa;
-  --erd-fk: #4ec9b0;
-  --erd-link: #8a8a8a;
-  --erd-accent: #a68af9;
-  --erd-script-bg: #2a2633;
-  --erd-script-border: #5e5373;
-  --erd-script-header: #4b3a80;
-  --erd-pass: #6a9955;
-  --erd-fail: #f14c4c;
+  --erd-text: #1e1e1e;
+  --erd-muted: #717171;
+  --erd-row-hover: #fdf4bf;
+  --erd-pk: #c69c1a;
+  --erd-fk: #1e4997;
+  --erd-link: #5d6b99;
+  --erd-accent: #f5cc84;
+  --erd-script-bg: #f7f9fe;
+  --erd-script-border: #ccd5f0;
+  --erd-script-header: #5d6b99;
+  --erd-pass: #388a34;
+  --erd-fail: #c42b1c;
 `;
 
 export const WINME_VARS = `
@@ -85,7 +87,7 @@ export const WINME_VARS = `
 export const THEME_DIAGRAM = {
   white: { vars: LIGHT_VARS, background: '#ffffff' },
   dark: { vars: DARK_VARS, background: '#1b1e24' },
-  vs2026: { vars: VS2026_VARS, background: '#1f1f1f' },
+  vs: { vars: VS_VARS, background: '#ffffff' },
   winme: { vars: WINME_VARS, background: '#ffffff' },
 };
 
