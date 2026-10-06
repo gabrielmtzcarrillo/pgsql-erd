@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   parsePgerd, serializePgerd, stringifyPgerd, emptyModel, newTable, newColumn,
 } from '../src/renderer/lib/pgerd.js';
-import { generateSQL, formatType, quoteIdent } from '../src/renderer/lib/sql.js';
+import { generateSQL, formatType, quoteIdent, defaultForeignKeyName } from '../src/renderer/lib/sql.js';
 import { tableSize, routeLink, autoLayout } from '../src/renderer/lib/layout.js';
 
 const sample = readFileSync(new URL('../samples/shop.pgerd', import.meta.url), 'utf8');
@@ -77,7 +77,10 @@ test('writes a new diagram that can be read back', () => {
   const back = parsePgerd(stringifyPgerd(m));
   assert.equal(back.links.length, 1);
   assert.equal(back.links[0].localTable, b.id);
-  assert.match(generateSQL(back), /ALTER TABLE IF EXISTS public\.book\n\s+ADD FOREIGN KEY \(author_id\)\n\s+REFERENCES public\.author \(id\)/);
+  // Unnamed relationships get PostgreSQL's default name, so running the
+  // script again replaces the constraint instead of adding a copy.
+  assert.match(generateSQL(back), /ALTER TABLE IF EXISTS public\.book\n\s+DROP CONSTRAINT IF EXISTS book_author_id_fkey,\n\s+ADD CONSTRAINT book_author_id_fkey FOREIGN KEY \(author_id\)\n\s+REFERENCES public\.author \(id\)/);
+  assert.equal(defaultForeignKeyName({ name: 'x'.repeat(70) }, ['a']).length, 63);
 });
 
 test('rejects files that are not ERDs', () => {

@@ -108,14 +108,27 @@ export function foreignKeyPairs(model, table, links) {
   return pairs.length ? { ref, pairs } : null;
 }
 
-export function addForeignKeySQL(model, table, links) {
+// PostgreSQL's own name for an unnamed foreign key (without the numeric
+// suffix it adds on collisions), cut to the 63-byte identifier limit.
+export function defaultForeignKeyName(table, columns) {
+  let name = `${table.name}_${columns.join('_')}_fkey`;
+  while (new TextEncoder().encode(name).length > 63) name = name.slice(0, -1);
+  return name;
+}
+
+// A foreign key is always added under a name: an unnamed ADD FOREIGN KEY
+// creates another copy (…_fkey1, …_fkey2) each time the script runs.
+// replace: drop a constraint of the same name first, so the script can be
+// run again.
+export function addForeignKeySQL(model, table, links, { replace = false } = {}) {
   const fk = foreignKeyPairs(model, table, links);
   if (!fk) return null;
   const rawFk = links[0].rawFk ?? {};
-  const name = links[0].fkName;
+  const name = links[0].fkName || defaultForeignKeyName(table, fk.pairs.map(([a]) => a.name));
   return [
     `ALTER TABLE IF EXISTS ${qualifiedName(table)}`,
-    `    ADD${name ? ` CONSTRAINT ${quoteIdent(name)}` : ''} FOREIGN KEY (${fk.pairs
+    ...(replace ? [`    DROP CONSTRAINT IF EXISTS ${quoteIdent(name)},`] : []),
+    `    ADD CONSTRAINT ${quoteIdent(name)} FOREIGN KEY (${fk.pairs
       .map(([a]) => quoteIdent(a.name))
       .join(', ')})`,
     `    REFERENCES ${qualifiedName(fk.ref)} (${fk.pairs.map(([, b]) => quoteIdent(b.name)).join(', ')})`,
@@ -140,7 +153,7 @@ export function generateSQL(model) {
 
   for (const t of model.tables) {
     for (const links of foreignKeysOf(model, t)) {
-      const sql = addForeignKeySQL(model, t, links);
+      const sql = addForeignKeySQL(model, t, links, { replace: true });
       if (sql) out.push(sql, '');
     }
   }

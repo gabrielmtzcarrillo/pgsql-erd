@@ -290,14 +290,32 @@ export function diffModels(db, erd, opts = {}) {
     }
 
     // Foreign keys of tables in both: drop the ones the diagram no longer has.
+    // A database may hold several copies of one foreign key (unnamed ADD
+    // FOREIGN KEY run more than once): keep the one named as in the diagram,
+    // or the first, and drop the rest.
     const efks = foreignKeys(erd, e);
-    for (const fk of foreignKeys(db, d)) {
+    const dfks = foreignKeys(db, d);
+    const keeper = new Map(); // sig -> name of the copy kept
+    for (const fk of dfks) {
+      const match = efks.find((x) => x.sig === fk.sig);
+      if (!match || match.actions !== fk.actions || !fk.name) continue;
+      if (!keeper.has(fk.sig) || fk.name === match.name) keeper.set(fk.sig, fk.name);
+    }
+    for (const fk of dfks) {
       // Leave constraints to tables outside the diagram alone.
       if (!erdAll.has(tableKey(fk.ref)) || !fk.name) continue;
       const match = efks.find((x) => x.sig === fk.sig);
-      if (match && match.actions === fk.actions) continue;
+      if (keeper.get(fk.sig) === fk.name) continue;
+      if (keeper.has(fk.sig)) {
+        add('dropFk', {
+          kind: 'drop-fk', table: key, fkName: fk.name,
+          summary: `${tr('Drop foreign key {name}', { name: `${fk.name} (${fk.cols.join(', ')}) → ${tableKey(fk.ref)}` })} ${tr('(duplicate of {name})', { name: keeper.get(fk.sig) })}`,
+          sql: alter(`DROP CONSTRAINT IF EXISTS ${quoteIdent(fk.name)}`),
+        });
+        continue;
+      }
       add('dropFk', {
-        kind: 'drop-fk', table: key, fkSig: fk.sig,
+        kind: 'drop-fk', table: key, fkSig: fk.sig, fkName: fk.name,
         summary: tr('Drop foreign key {name}', { name: `${fk.name} (${fk.cols.join(', ')}) → ${tableKey(fk.ref)}` }) + (match ? ` ${tr('(actions changed)')}` : ''),
         sql: alter(`DROP CONSTRAINT IF EXISTS ${quoteIdent(fk.name)}`),
         destructive: !match && touchesMissing(fk.cols),
@@ -329,19 +347,20 @@ export function diffModels(db, erd, opts = {}) {
 
   // Dropping a primary key or unique constraint fails while foreign keys
   // reference it: drop those first and re-create them afterwards.
-  const droppedFks = new Set(phases.dropFk.filter((c) => !c.skipped).map((c) => c.fkSig));
+  const fkKey = (table, name) => `${table}\0${name}`;
+  const droppedFks = new Set(phases.dropFk.filter((c) => !c.skipped).map((c) => fkKey(c.table, c.fkName)));
   const refDrops = [...phases.dropConstraint]
     .filter((c) => !c.skipped && c.columns)
     .map((c) => ({ table: c.table, columns: c.columns }));
   for (const d of db.tables) {
     for (const fk of foreignKeys(db, d)) {
-      if (!fk.name || droppedFks.has(fk.sig)) continue;
+      const key = tableKey(d);
+      if (!fk.name || droppedFks.has(fkKey(key, fk.name))) continue;
       const hit = refDrops.some((r) => r.table === tableKey(fk.ref) && sameSet(r.columns, fk.refCols));
       if (!hit) continue;
-      const key = tableKey(d);
-      droppedFks.add(fk.sig);
+      droppedFks.add(fkKey(key, fk.name));
       add('dropFk', {
-        kind: 'drop-fk', table: key, fkSig: fk.sig,
+        kind: 'drop-fk', table: key, fkSig: fk.sig, fkName: fk.name,
         summary: `${tr('Drop foreign key {name}', { name: `${fk.name} → ${tableKey(fk.ref)}` })} ${tr('(re-created after key change)')}`,
         sql: `ALTER TABLE IF EXISTS ${qualifiedName(d)}\n    DROP CONSTRAINT IF EXISTS ${quoteIdent(fk.name)};`,
       });

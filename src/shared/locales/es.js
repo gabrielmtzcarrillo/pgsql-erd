@@ -475,6 +475,7 @@ export default {
   "(actions changed)": "(cambiaron las acciones)",
   "Change table comment": "Cambiar el comentario de la tabla",
   "Add foreign key {name}": "Agregar la clave foránea {name}",
+  "(duplicate of {name})": "(duplicado de {name})",
   "(re-created after key change)": "(se vuelve a crear tras el cambio de clave)",
   "Re-create foreign key {name}": "Volver a crear la clave foránea {name}",
   "The database already matches the diagram.": "La base de datos ya coincide con el diagrama.",
