@@ -313,6 +313,39 @@ export function setupQuery(ctx) {
     ctx.askAssistant(prompt);
   });
 
+  // ------------------------------------------------------------ files
+
+  let fileName = null; // name of the last .sql file opened or saved
+
+  // Load a file's SQL into the editor; Ctrl+Z brings back what was there.
+  async function loadFile(text, filePath) {
+    tabs.show('query');
+    await ensureEditor();
+    editor.setValue(text, { keepUndo: true });
+    fileName = filePath ? filePath.split(/[\\/]/).pop() : null;
+    setStatus(fileName ? tr('Opened {file}', { file: fileName }) : '');
+    editor.focus();
+  }
+
+  async function openFile() {
+    try {
+      const file = await host.openSql();
+      if (file) await loadFile(file.text, file.filePath);
+    } catch (err) {
+      status(err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+    }
+  }
+
+  async function saveFile() {
+    await ensureEditor();
+    const target = await host.saveFile({ text: editor.getValue(), saveAs: true, defaultName: fileName ?? 'query.sql', kind: 'sql' });
+    if (!target) return;
+    fileName = target.split(/[\\/]/).pop();
+    setStatus(tr('Saved {file}', { file: fileName }));
+  }
+
+  $('#q-open').addEventListener('click', openFile);
+  $('#q-save').addEventListener('click', saveFile);
   $('#q-run').addEventListener('click', () => run());
   $('#q-explain').addEventListener('click', () => run('plan'));
   $('#q-analyze').addEventListener('click', () => run('analyze'));
@@ -323,7 +356,10 @@ export function setupQuery(ctx) {
     commands: {
       'query-tab': () => tabs.show('query'),
       'query-run': () => run(),
+      'query-open': () => openFile(),
     },
+    // A .sql file dropped on the window.
+    loadFile,
     // Put SQL in the editor (e.g. from the assistant).
     async setSql(sql) {
       tabs.show('query');
