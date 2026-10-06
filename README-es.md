@@ -13,31 +13,122 @@ funciona con Ollama, vLLM, OpenAI y otros servidores compatibles con OpenAI.
 
 ## Capturas de pantalla
 
-**Cinta de opciones y pestañas:** los comandos se agrupan al estilo de Office (Archivo, Historial, Diagrama,
+### Cinta de opciones y pestañas
+
+Los comandos se agrupan al estilo de Office (Archivo, Historial, Diagrama,
 Cuadrícula, Base de datos, Scripts, SQL y exportar) con iconos a dos colores; los menús nativos usan los
 mismos iconos. Debajo de la cinta, las pestañas cambian entre **Diagrama**, **Scripts**, **Consulta**,
 **Generador**, **Grafo** y **Asistente**, seguidas de una pestaña por cada tabla cuyos datos estés explorando.
 
 ![Cinta de opciones](docs/screenshots/es/ribbon.png)
 
-| | |
-|---|---|
-| **Barra lateral de la tabla:** selecciona una tabla para ver y editar sus propiedades, columnas y relaciones. Al hacer clic en una columna del diagrama se abre su editor. | **Vista previa SQL:** DDL de PostgreSQL en vivo con resaltado de sintaxis. |
-| ![Barra lateral de la tabla](docs/screenshots/es/table-sidebar.png) | ![Vista previa SQL](docs/screenshots/es/sql-preview.png) |
-| **Relaciones:** agrega una clave foránea y, si quieres, crea también la columna. | **Tema oscuro:** sigue la configuración del sistema. |
-| ![Nueva relación](docs/screenshots/es/relationship.png) | ![Tema oscuro](docs/screenshots/es/dark-theme.png) |
-| **Importar desde la base de datos:** elige las tablas que quieres agregar o actualiza las que ya están en el diagrama. | **Comparar / sincronizar:** las diferencias con la base de datos y el SQL de migración. |
-| ![Importar tablas](docs/screenshots/es/db-import.png) | ![Comparar con la base de datos](docs/screenshots/es/db-compare.png) |
-| **Scripts:** validadores de TypeScript con tipos; al hacer clic en un error se muestra la fila. | **Revisión antes de confirmar:** los cambios de una ejecución esperan en una transacción abierta hasta que los confirmas. |
-| ![Scripts](docs/screenshots/es/scripts.png) | ![Revisión antes de confirmar](docs/screenshots/es/commit-review.png) |
-| **Analizador de consultas:** EXPLAIN ANALYZE como árbol, con el tiempo de cada nodo y sugerencias de índices. | **Pestañas de datos:** filtros al estilo de Excel con listas de valores, celdas vacías y condiciones. |
-| ![Plan de consulta](docs/screenshots/es/query-plan.png) | ![Filtro de datos](docs/screenshots/es/data-filter.png) |
-| **Asistente:** propone scripts que se abren sin guardar para que los revises; se comprueban contra los tipos del esquema. | **Scripts en el diagrama:** cada script vinculado a las tablas que usa, con su última ejecución. |
-| ![Asistente](docs/screenshots/es/assistant.png) | ![Scripts en el diagrama](docs/screenshots/es/scripts-in-diagram.png) |
-| **Columnas de pgvector:** las dimensiones y un índice HNSW listo para copiar para la búsqueda por similitud. | **Consultas de pgvector:** las búsquedas de vecinos más cercanos que recorren todas las filas reciben una sugerencia de índice HNSW. |
-| ![Columna de pgvector](docs/screenshots/es/pgvector-column.png) | ![Plan de consulta de pgvector](docs/screenshots/es/pgvector-query-plan.png) |
-| **Relaciones de Apache AGE:** todas las aristas de un grafo, con filtro, búsqueda y edición en el lugar. | **Explorador de grafos:** una vista dirigida por fuerzas; haz doble clic en un vértice para expandir sus vecinos. |
-| ![Relaciones de AGE](docs/screenshots/es/age-relationships.png) | ![Explorador de grafos de AGE](docs/screenshots/es/age-explorer.png) |
+### Barra lateral de la tabla
+
+Selecciona una tabla para ver y editar sus propiedades, columnas y relaciones. Al hacer clic en una columna del diagrama se abre su editor.
+
+![Barra lateral de la tabla](docs/screenshots/es/table-sidebar.png)
+
+### Vista previa SQL
+
+DDL de PostgreSQL en vivo con resaltado de sintaxis.
+
+![Vista previa SQL](docs/screenshots/es/sql-preview.png)
+
+### Relaciones
+
+Agrega una clave foránea y, si quieres, crea también la columna.
+
+![Nueva relación](docs/screenshots/es/relationship.png)
+
+### Temas
+
+Blanco, Oscuro, Visual Studio y Windows ME en **Ver → Tema**, o el del sistema.
+
+![Temas](docs/screenshots/es/themes.png)
+
+### Explorador de la base de datos
+
+Los esquemas, tablas y columnas de la base conectada; arrastra una tabla o haz doble clic en ella para agregarla al diagrama.
+
+![Explorador de la base de datos](docs/screenshots/es/db-explorer.png)
+
+### Generador de consultas
+
+Agrega tablas desde el explorador y marca columnas; las tablas relacionadas se unen automáticamente.
+
+![Generador de consultas](docs/screenshots/es/query-builder.png)
+
+### Importar desde la base de datos
+
+Elige las tablas que quieres agregar o actualiza las que ya están en el diagrama.
+
+![Importar tablas](docs/screenshots/es/db-import.png)
+
+### Comparar / sincronizar
+
+Las diferencias con la base de datos y el SQL de migración.
+
+![Comparar con la base de datos](docs/screenshots/es/db-compare.png)
+
+### Scripts
+
+Validadores de TypeScript con tipos; al hacer clic en un error se muestra la fila.
+
+![Scripts](docs/screenshots/es/scripts.png)
+
+### Revisión antes de confirmar
+
+Los cambios de una ejecución esperan en una transacción abierta hasta que los confirmas.
+
+![Revisión antes de confirmar](docs/screenshots/es/commit-review.png)
+
+### Analizador de consultas
+
+EXPLAIN ANALYZE como árbol, con el tiempo de cada nodo y sugerencias de índices.
+
+![Plan de consulta](docs/screenshots/es/query-plan.png)
+
+### Pestañas de datos
+
+Filtros al estilo de Excel con listas de valores, celdas vacías y condiciones.
+
+![Filtro de datos](docs/screenshots/es/data-filter.png)
+
+### Asistente
+
+Propone scripts que se abren sin guardar para que los revises; se comprueban contra los tipos del esquema.
+
+![Asistente](docs/screenshots/es/assistant.png)
+
+### Scripts en el diagrama
+
+Cada script vinculado a las tablas que usa, con su última ejecución.
+
+![Scripts en el diagrama](docs/screenshots/es/scripts-in-diagram.png)
+
+### Columnas de pgvector
+
+Las dimensiones y un índice HNSW listo para copiar para la búsqueda por similitud.
+
+![Columna de pgvector](docs/screenshots/es/pgvector-column.png)
+
+### Consultas de pgvector
+
+Las búsquedas de vecinos más cercanos que recorren todas las filas reciben una sugerencia de índice HNSW.
+
+![Plan de consulta de pgvector](docs/screenshots/es/pgvector-query-plan.png)
+
+### Relaciones de Apache AGE
+
+Todas las aristas de un grafo, con filtro, búsqueda y edición en el lugar.
+
+![Relaciones de AGE](docs/screenshots/es/age-relationships.png)
+
+### Explorador de grafos
+
+Una vista dirigida por fuerzas; haz doble clic en un vértice para expandir sus vecinos.
+
+![Explorador de grafos de AGE](docs/screenshots/es/age-explorer.png)
 
 ## Funciones
 

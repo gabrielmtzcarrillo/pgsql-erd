@@ -12,31 +12,122 @@ filters, and an AI assistant that works with Ollama, vLLM, OpenAI and other Open
 
 ## Screenshots
 
-**Ribbon and tabs:** commands are grouped Office-style (File, History, Diagram, Grid, Database, Scripts,
+### Ribbon and tabs
+
+Commands are grouped Office-style (File, History, Diagram, Grid, Database, Scripts,
 SQL & Export) with two-tone colour icons; the native menus use the same icons. Below the ribbon,
 tabs switch between the **Diagram**, **Scripts**, **Query**, **Builder**, **Graph** and **Assistant**, followed by
 one tab per table whose data you are browsing.
 
 ![Ribbon](docs/screenshots/ribbon.png)
 
-| | |
-|---|---|
-| **Table sidebar:** select a table to see and edit its properties, columns and relationships. Clicking a column in the diagram opens its editor. | **SQL preview:** live PostgreSQL DDL with syntax highlighting. |
-| ![Table sidebar](docs/screenshots/table-sidebar.png) | ![SQL preview](docs/screenshots/sql-preview.png) |
-| **Relationships:** add a foreign key, optionally creating the column. | **Dark theme:** follows the system setting. |
-| ![New relationship](docs/screenshots/relationship.png) | ![Dark theme](docs/screenshots/dark-theme.png) |
-| **Import from database:** pick tables to add, or refresh the ones already in the diagram. | **Compare / sync:** differences with the database and the migration SQL. |
-| ![Import tables](docs/screenshots/db-import.png) | ![Compare with database](docs/screenshots/db-compare.png) |
-| **Scripts:** typed TypeScript validators; clicking an error shows the row. | **Commit review:** a run's changes wait in an open transaction until you commit. |
-| ![Scripts](docs/screenshots/scripts.png) | ![Commit review](docs/screenshots/commit-review.png) |
-| **Query analyzer:** EXPLAIN ANALYZE as a tree, with time per node and index hints. | **Data tabs:** Excel-style filters with value lists, blanks and conditions. |
-| ![Query plan](docs/screenshots/query-plan.png) | ![Data filter](docs/screenshots/data-filter.png) |
-| **Assistant:** proposes scripts that open unsaved for review; they type-check against the schema. | **Scripts in the diagram:** each script linked to the tables it uses, with its last run. |
-| ![Assistant](docs/screenshots/assistant.png) | ![Scripts in the diagram](docs/screenshots/scripts-in-diagram.png) |
-| **pgvector columns:** the dimensions and a ready-to-copy HNSW index for similarity search. | **pgvector queries:** nearest-neighbour searches that scan every row get an HNSW index suggestion. |
-| ![pgvector column](docs/screenshots/pgvector-column.png) | ![pgvector query plan](docs/screenshots/pgvector-query-plan.png) |
-| **Apache AGE relationships:** every edge of a graph, filterable, searchable and editable in place. | **Graph explorer:** a force-directed view; double-click a vertex to expand its neighbours. |
-| ![AGE relationships](docs/screenshots/age-relationships.png) | ![AGE graph explorer](docs/screenshots/age-explorer.png) |
+### Table sidebar
+
+Select a table to see and edit its properties, columns and relationships. Clicking a column in the diagram opens its editor.
+
+![Table sidebar](docs/screenshots/table-sidebar.png)
+
+### SQL preview
+
+Live PostgreSQL DDL with syntax highlighting.
+
+![SQL preview](docs/screenshots/sql-preview.png)
+
+### Relationships
+
+Add a foreign key, optionally creating the column.
+
+![New relationship](docs/screenshots/relationship.png)
+
+### Themes
+
+White, Dark, Visual Studio and Windows ME in **View → Theme**, or follow the system.
+
+![Themes](docs/screenshots/themes.png)
+
+### Database explorer
+
+The connected database's schemas, tables and columns; drag or double-click a table to add it to the diagram.
+
+![Database explorer](docs/screenshots/db-explorer.png)
+
+### Query builder
+
+Add tables from the explorer and tick columns; related tables are joined automatically.
+
+![Query builder](docs/screenshots/query-builder.png)
+
+### Import from database
+
+Pick tables to add, or refresh the ones already in the diagram.
+
+![Import tables](docs/screenshots/db-import.png)
+
+### Compare / sync
+
+Differences with the database and the migration SQL.
+
+![Compare with database](docs/screenshots/db-compare.png)
+
+### Scripts
+
+Typed TypeScript validators; clicking an error shows the row.
+
+![Scripts](docs/screenshots/scripts.png)
+
+### Commit review
+
+A run's changes wait in an open transaction until you commit.
+
+![Commit review](docs/screenshots/commit-review.png)
+
+### Query analyzer
+
+EXPLAIN ANALYZE as a tree, with time per node and index hints.
+
+![Query plan](docs/screenshots/query-plan.png)
+
+### Data tabs
+
+Excel-style filters with value lists, blanks and conditions.
+
+![Data filter](docs/screenshots/data-filter.png)
+
+### Assistant
+
+Proposes scripts that open unsaved for review; they type-check against the schema.
+
+![Assistant](docs/screenshots/assistant.png)
+
+### Scripts in the diagram
+
+Each script linked to the tables it uses, with its last run.
+
+![Scripts in the diagram](docs/screenshots/scripts-in-diagram.png)
+
+### pgvector columns
+
+The dimensions and a ready-to-copy HNSW index for similarity search.
+
+![pgvector column](docs/screenshots/pgvector-column.png)
+
+### pgvector queries
+
+Nearest-neighbour searches that scan every row get an HNSW index suggestion.
+
+![pgvector query plan](docs/screenshots/pgvector-query-plan.png)
+
+### Apache AGE relationships
+
+Every edge of a graph, filterable, searchable and editable in place.
+
+![AGE relationships](docs/screenshots/age-relationships.png)
+
+### Graph explorer
+
+A force-directed view; double-click a vertex to expand its neighbours.
+
+![AGE graph explorer](docs/screenshots/age-explorer.png)
 
 ## Features
 
