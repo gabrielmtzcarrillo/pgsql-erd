@@ -150,3 +150,42 @@ test('import adds new tables and updates existing ones, keeping layout', () => {
   const { changes } = diffModels(db, erd, { schemas: ['public'] });
   assert.deepEqual(changes, []);
 });
+
+// The same foreign key created twice under different names, as an unnamed
+// ADD FOREIGN KEY run twice leaves it.
+function duplicatedFkCatalog() {
+  const c = catalog();
+  c.constraints.push({ ...c.constraints[2], name: 'orders_customer_id_fkey1' });
+  return c;
+}
+
+test('diff drops duplicate copies of a foreign key and adds none', () => {
+  const db = modelFromCatalog(duplicatedFkCatalog());
+  const erd = modelFromCatalog(catalog());
+  const { changes, sql } = diffModels(db, erd, { schemas: ['public', 'shop'] });
+  assert.deepEqual(changes.map((c) => c.kind), ['drop-fk']);
+  assert.match(changes[0].summary, /orders_customer_id_fkey1 .*duplicate of orders_customer_id_fkey/);
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS orders_customer_id_fkey1;/);
+  assert.doesNotMatch(sql, /DROP CONSTRAINT IF EXISTS orders_customer_id_fkey;/);
+  // Unnamed in the diagram: the first copy is kept.
+  for (const l of erd.links) l.fkName = '';
+  assert.deepEqual(diffModels(db, erd, { schemas: ['public', 'shop'] }).changes.map((c) => c.kind), ['drop-fk']);
+});
+
+test('unnamed foreign keys are added under a name', () => {
+  const c = catalog();
+  c.constraints.pop();
+  const db = modelFromCatalog(c);
+  const erd = modelFromCatalog(catalog());
+  for (const l of erd.links) l.fkName = '';
+  const { sql } = diffModels(db, erd, { schemas: ['public', 'shop'] });
+  assert.match(sql, /ADD CONSTRAINT orders_customer_id_fkey FOREIGN KEY \(customer_id\)/);
+});
+
+test('import brings in one link for duplicated foreign keys', () => {
+  const db = modelFromCatalog(duplicatedFkCatalog());
+  const erd = emptyModel();
+  mergeFromDb(erd, db, ['public.customer', 'shop.orders']);
+  assert.equal(erd.links.length, 1);
+  assert.equal(erd.links[0].fkName, 'orders_customer_id_fkey');
+});

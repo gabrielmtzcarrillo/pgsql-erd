@@ -221,6 +221,23 @@ ipcMain.handle('open-spreadsheet', async (e) => {
   return { filePath, data: new Uint8Array(await fs.readFile(filePath)) };
 });
 
+// Pick a .sql file for the query tab and return its text.
+const MAX_SQL_FILE = 20 * 1024 * 1024;
+ipcMain.handle('open-sql', async (e) => {
+  const res = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), {
+    title: tr('Open SQL File'),
+    properties: ['openFile'],
+    filters: [
+      { name: 'SQL', extensions: ['sql', 'pgsql', 'psql'] },
+      { name: tr('All Files'), extensions: ['*'] },
+    ],
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  const filePath = res.filePaths[0];
+  if ((await fs.stat(filePath)).size > MAX_SQL_FILE) throw new Error(tr('The file is too large for the query editor (over 20 MB).'));
+  return { filePath, text: (await fs.readFile(filePath, 'utf8')).replace(/^﻿/, '') };
+});
+
 ipcMain.handle('save-file', async (e, { filePath, text, saveAs, defaultName, kind }) => {
   const win = BrowserWindow.fromWebContents(e.sender);
   const filters = {
@@ -380,6 +397,7 @@ function buildMenu() {
         { label: tr('New Window'), icon: menuIcon('new-window'), accelerator: 'CmdOrCtrl+Shift+N', click: () => createWindow() },
         { label: tr('Open…'), icon: menuIcon('open'), accelerator: 'CmdOrCtrl+O', click: () => showOpenDialog(focusedWindow()) },
         { label: tr('Open Recent'), submenu: recentMenu() },
+        { label: tr('Open SQL File…'), icon: menuIcon('open'), accelerator: 'CmdOrCtrl+Alt+O', click: cmd('query-open') },
         { type: 'separator' },
         { label: tr('Save'), icon: menuIcon('save'), accelerator: 'CmdOrCtrl+S', click: cmd('save') },
         { label: tr('Save As…'), icon: menuIcon('save-as'), accelerator: 'CmdOrCtrl+Shift+S', click: cmd('save-as') },

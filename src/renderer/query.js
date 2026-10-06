@@ -6,7 +6,7 @@
 
 import { createEditor, setSqlSchema } from './lib/monaco.js';
 import { flattenPlan, analyzePlan, describeNode } from '../shared/plan-analyzer.js';
-import { classifySql } from '../shared/permissions.js';
+import { classifySql, unwrapTransaction } from '../shared/permissions.js';
 import { decorateButtons } from './icons.js';
 import { tr, trn, formatNumber } from '../shared/i18n.js';
 import { envName } from './dbui.js';
@@ -139,6 +139,10 @@ export function setupQuery(ctx) {
     if (!sql) return;
     const allowChanges = $('#q-allow').checked;
     const { kinds, statements } = classifySql(sql);
+    let dryRun = false;
+    try {
+      dryRun = unwrapTransaction(sql).end === 'rollback';
+    } catch {} // the main process reports it
     const writes = kinds.includes('write') || kinds.includes('ddl') || (allowChanges && kinds.includes('other'));
     if (writes && allowChanges && explain !== 'plan') {
       const info = db.info();
@@ -146,8 +150,8 @@ export function setupQuery(ctx) {
         message: explain === 'analyze'
           ? tr('Run EXPLAIN ANALYZE on a statement that changes data?')
           : trn(statements, 'Run {n} statement that changes the database?', 'Run {n} statements that change the database?'),
-        detail: `${info.description} (${envName(info.profile.environment)})\n\n${sql.slice(0, 600)}${sql.length > 600 ? '…' : ''}\n\n${explain === 'analyze' ? tr('The statement runs and is rolled back.') : tr('The changes are committed when all statements succeed.')}`,
-        buttons: [explain === 'analyze' ? tr('Analyze') : tr('Run and Commit'), tr('Cancel')],
+        detail: `${info.description} (${envName(info.profile.environment)})\n\n${sql.slice(0, 600)}${sql.length > 600 ? '…' : ''}\n\n${explain === 'analyze' ? tr('The statement runs and is rolled back.') : dryRun ? tr('The script ends with ROLLBACK: it runs and its changes are rolled back.') : tr('The changes are committed when all statements succeed.')}`,
+        buttons: [explain === 'analyze' ? tr('Analyze') : dryRun ? tr('Run and Roll Back') : tr('Run and Commit'), tr('Cancel')],
       });
       if (choice !== 0) return;
     }
@@ -164,7 +168,7 @@ export function setupQuery(ctx) {
       if (r.committed) {
         status(tr('Changes committed'));
         if (kinds.includes('ddl')) ctx.refreshSchema?.();
-      }
+      } else if (r.rolledBack) status(tr('Changes rolled back'));
     } catch (err) {
       const pos = Number(err.message.match(/at character (\d+)\)?$/)?.[1]);
       if (pos) editor.markError(pos + (editor.getValue().indexOf(sql) > 0 ? editor.getValue().indexOf(sql) : 0), err.message);
@@ -309,6 +313,39 @@ export function setupQuery(ctx) {
     ctx.askAssistant(prompt);
   });
 
+  // ------------------------------------------------------------ files
+
+  let fileName = null; // name of the last .sql file opened or saved
+
+  // Load a file's SQL into the editor; Ctrl+Z brings back what was there.
+  async function loadFile(text, filePath) {
+    tabs.show('query');
+    await ensureEditor();
+    editor.setValue(text, { keepUndo: true });
+    fileName = filePath ? filePath.split(/[\\/]/).pop() : null;
+    setStatus(fileName ? tr('Opened {file}', { file: fileName }) : '');
+    editor.focus();
+  }
+
+  async function openFile() {
+    try {
+      const file = await host.openSql();
+      if (file) await loadFile(file.text, file.filePath);
+    } catch (err) {
+      status(err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+    }
+  }
+
+  async function saveFile() {
+    await ensureEditor();
+    const target = await host.saveFile({ text: editor.getValue(), saveAs: true, defaultName: fileName ?? 'query.sql', kind: 'sql' });
+    if (!target) return;
+    fileName = target.split(/[\\/]/).pop();
+    setStatus(tr('Saved {file}', { file: fileName }));
+  }
+
+  $('#q-open').addEventListener('click', openFile);
+  $('#q-save').addEventListener('click', saveFile);
   $('#q-run').addEventListener('click', () => run());
   $('#q-explain').addEventListener('click', () => run('plan'));
   $('#q-analyze').addEventListener('click', () => run('analyze'));
@@ -319,7 +356,10 @@ export function setupQuery(ctx) {
     commands: {
       'query-tab': () => tabs.show('query'),
       'query-run': () => run(),
+      'query-open': () => openFile(),
     },
+    // A .sql file dropped on the window.
+    loadFile,
     // Put SQL in the editor (e.g. from the assistant).
     async setSql(sql) {
       tabs.show('query');

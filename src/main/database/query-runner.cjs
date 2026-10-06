@@ -4,7 +4,9 @@
 // - Statements that change data or the schema run only when the user ticked
 //   "Allow changes" (and confirmed), and only when the connection's policy
 //   allows writes / DDL. They run in one transaction, committed at the end,
-//   and are recorded in the audit log.
+//   and are recorded in the audit log. A script wrapped in BEGIN … COMMIT
+//   runs the same way (its BEGIN options are kept); one that ends with
+//   ROLLBACK runs and is rolled back.
 // - EXPLAIN ANALYZE executes the statement, so it always runs in a
 //   transaction that is rolled back.
 
@@ -32,13 +34,14 @@ function resultSet(r) {
 // openClient() → connected pg Client; policy: the connection's policy;
 // audit(event, details); shared: modules from src/shared (classifySql).
 async function runQuery({ openClient, policy, audit, shared }, { sql, allowChanges = false, explain = null, statementTimeoutMs = 60000 }) {
-  const text = String(sql ?? '').trim();
-  if (!text) throw new Error('Type a query first.');
+  const { sql: text, modes, end } = shared.unwrapTransaction(String(sql ?? '').trim());
+  if (!text.trim()) throw new Error('Type a query first.');
+  // Savepoints are the only transaction statements left after unwrapping.
   const { kinds, statements } = shared.classifySql(text);
   // Unknown statements (DO, CALL, SET, typos…) run read-only unless changes
   // are allowed; the read-only transaction makes PostgreSQL refuse writes.
   const changes = kinds.includes('write') || kinds.includes('ddl') || (allowChanges && kinds.includes('other'));
-  if (kinds.includes('transaction')) throw new Error('The query tab manages transactions itself; remove BEGIN / COMMIT / ROLLBACK.');
+  if (explain && (end || kinds.includes('transaction'))) throw new Error('EXPLAIN works on a single statement; remove BEGIN / COMMIT / ROLLBACK.');
   if (explain) {
     if (statements !== 1) throw new Error('EXPLAIN works on a single statement.');
     if (kinds.includes('ddl')) throw new Error('DDL statements have no query plan.');
@@ -55,6 +58,10 @@ async function runQuery({ openClient, policy, audit, shared }, { sql, allowChang
   const readOnly = !changes;
   try {
     await client.query(readOnly ? 'BEGIN TRANSACTION READ ONLY' : 'BEGIN');
+    if (modes) {
+      await client.query(`SET TRANSACTION ${modes}`);
+      if (readOnly) await client.query('SET TRANSACTION READ ONLY');
+    }
     await client.query(`SET LOCAL statement_timeout = ${Math.max(1000, statementTimeoutMs | 0)}`);
     if (explain) {
       const opts = explain === 'analyze' ? 'FORMAT JSON, ANALYZE, BUFFERS, VERBOSE' : 'FORMAT JSON, VERBOSE';
@@ -65,11 +72,12 @@ async function runQuery({ openClient, policy, audit, shared }, { sql, allowChang
     }
     const res = await client.query(text);
     const results = (Array.isArray(res) ? res : [res]).map(resultSet);
-    if (changes) {
+    const commit = changes && end !== 'rollback';
+    if (commit) {
       await client.query('COMMIT');
-      audit?.('query-write', { sql: text.slice(0, 2000), statements, commands: results.map((r) => `${r.command} ${r.rowCount ?? ''}`.trim()) });
+      audit?.('query-write', { sql: text.trim().slice(0, 2000), statements, commands: results.map((r) => `${r.command} ${r.rowCount ?? ''}`.trim()) });
     } else await client.query('ROLLBACK');
-    return { kind: 'results', results, committed: changes, durationMs: Date.now() - started };
+    return { kind: 'results', results, committed: commit, rolledBack: changes && !commit, durationMs: Date.now() - started };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     const where = err.position ? ` (at character ${err.position})` : '';

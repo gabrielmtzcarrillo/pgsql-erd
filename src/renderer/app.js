@@ -1533,7 +1533,8 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Drag and drop .pgerd files onto the window; spreadsheets open the import dialog.
+// Drag and drop .pgerd files onto the window; spreadsheets open the import
+// dialog and .sql files open in the query tab.
 // Tables dragged from the database explorer are dropped by dbtree.js and
 // querybuilder.js, which also handles columns dragged between its tables.
 const wrap = $('.canvas-wrap');
@@ -1550,6 +1551,7 @@ document.addEventListener('drop', async (e) => {
   wrap.classList.remove('drop-target');
   const file = e.dataTransfer.files[0];
   if (!file) return;
+  if (/\.(sql|pgsql|psql)$/i.test(file.name)) return query.loadFile(await file.text(), host.pathForFile(file) || file.name);
   if (SPREADSHEET_EXT.test(file.name)) {
     const open = document.querySelector('dialog[open]');
     if (!open || open.id === 'xl-import-dialog') await spreadsheet.openFile(file.name, await file.arrayBuffer());

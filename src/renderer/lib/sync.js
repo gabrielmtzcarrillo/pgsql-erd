@@ -94,7 +94,12 @@ export function mergeFromDb(erd, db, keys) {
     (l) => !(syncedIds.has(l.localTable) && erdIdsInDb.has(l.refTable)) || wantedSigs.has(sig(l))
   );
   const have = new Set(erd.links.map(sig));
-  for (const l of wanted) if (!have.has(sig(l))) erd.links.push(l);
+  // A database can hold several copies of one foreign key; bring in one.
+  for (const l of wanted) {
+    if (have.has(sig(l))) continue;
+    have.add(sig(l));
+    erd.links.push(l);
+  }
 
   return { added, updated };
 }
