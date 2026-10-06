@@ -170,6 +170,39 @@ function registerWorkbench({ ipcMain, app, safeStorage, shell }) {
   handle('data-distinct', async (s, id, _sender, req) =>
     dataBrowser.distinct((fn) => s.readOnly(id, fn), await browseTable(s, id, req.table), req.column, req)
   );
+  // Rows added, edited or deleted in a data tab, saved in one transaction,
+  // only on connections whose policy allows writes.
+  handle('data-save', async (s, id, _sender, req) => {
+    const session = s.connections.require(id);
+    if (!session.profile.policy.allowWrites) throw new Error('This connection is read-only (see its policy in Database → Connect).');
+    const t = await browseTable(s, id, req.table);
+    const write = async (fn) => {
+      const client = await s.connections.client(id);
+      try {
+        await client.query('BEGIN');
+        await client.query('SET LOCAL statement_timeout = 60000');
+        const r = await fn(client);
+        await client.query('COMMIT');
+        return r;
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        await client.end().catch(() => {});
+      }
+    };
+    const r = await dataBrowser.save(write, t, req.changes);
+    audit.log('data-edit', {
+      windowId: id,
+      target: s.connections.describe(session.conn),
+      environment: session.profile.environment,
+      table: t.id,
+      inserted: r.inserted,
+      updated: r.updated,
+      deleted: r.deleted,
+    });
+    return r;
+  });
   handle('data-tables', async ({ connections, shared }, id) => shared.allTables(await connections.schema(id)).map((t) => t.id));
 
   // Query tab.

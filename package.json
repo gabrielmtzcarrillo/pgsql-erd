@@ -100,5 +100,8 @@
     "monaco-editor": "^0.57.0",
     "pg": "^8.23.0",
     "typescript": "~5.9.3"
+  },
+  "overrides": {
+    "dompurify": "3.4.16"
   }
 }

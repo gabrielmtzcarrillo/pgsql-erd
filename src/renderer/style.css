@@ -925,6 +925,30 @@ dialog.medium { width: min(760px, 94vw); }
 .dt-sort { color: var(--accent); font-weight: 700; }
 .dt-filter { padding: 0 5px; font-size: 11px; line-height: 16px; border-radius: 2px; }
 .dt-filter.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* Editing rows */
+.dt-edit-tools { display: inline-flex; align-items: center; gap: 8px; }
+.dt-edit-tools[hidden] { display: none; }
+.dt-pending { font-size: 12px; color: #b7791f; }
+.dt-edit-msg { font-size: 12px; padding: 4px 10px; border-bottom: 1px solid var(--border); background: var(--bg); white-space: pre-wrap; user-select: text; }
+.dt-edit-msg.error { color: var(--danger); }
+.dt-edit-msg[hidden] { display: none; }
+.dt-edit-note { padding: 4px 10px; }
+.dt-grid.editing tbody td:not(.dt-rownum) { cursor: text; }
+.dt-grid.editing tbody td.ro { cursor: default; color: var(--muted); }
+.dt-grid tbody tr td.dirty { background: rgba(230, 170, 0, 0.18); }
+.dt-grid tbody tr.new td:not(.dt-rownum) { background: rgba(40, 170, 90, 0.10); }
+.dt-grid tbody tr.new td.dirty { background: rgba(40, 170, 90, 0.20); }
+.dt-grid tbody tr.deleted td:not(.dt-rownum) { text-decoration: line-through; opacity: 0.5; }
+.dt-grid tbody tr.dt-newrow td { height: 20px; background: transparent; }
+.dt-grid tbody tr.dt-newrow:hover td:not(.dt-rownum) { background: var(--accent-soft); cursor: pointer; }
+.dt-grid td.editing { padding: 0; overflow: visible; }
+.dt-input {
+  display: block; width: 100%; min-width: 120px; height: 21px; box-sizing: border-box; margin: 0; padding: 2px 7px;
+  font: inherit; color: var(--text); background: var(--input-bg); border: 1px solid var(--accent); border-radius: 0;
+  resize: none; overflow: hidden; white-space: pre; outline: none;
+}
+.dt-rowbtn { border: 0; background: transparent; padding: 0 4px; margin-right: 2px; line-height: 1; color: var(--muted); }
+.dt-rowbtn:hover:not(:disabled) { color: var(--danger); }
 
 /* Excel-style filter popup */
 .filter-popup {

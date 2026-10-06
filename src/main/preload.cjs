@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('erdHost', {
     tables: () => ipcRenderer.invoke('data-tables'),
     browse: (req) => ipcRenderer.invoke('data-browse', req),
     distinct: (req) => ipcRenderer.invoke('data-distinct', req),
+    save: (req) => ipcRenderer.invoke('data-save', req),
   },
   query: {
     run: (req) => ipcRenderer.invoke('query-run', req),
