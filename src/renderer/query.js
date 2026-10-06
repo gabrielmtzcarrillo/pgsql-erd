@@ -6,7 +6,7 @@
 
 import { createEditor, setSqlSchema } from './lib/monaco.js';
 import { flattenPlan, analyzePlan, describeNode } from '../shared/plan-analyzer.js';
-import { classifySql } from '../shared/permissions.js';
+import { classifySql, unwrapTransaction } from '../shared/permissions.js';
 import { decorateButtons } from './icons.js';
 import { tr, trn, formatNumber } from '../shared/i18n.js';
 import { envName } from './dbui.js';
@@ -139,6 +139,10 @@ export function setupQuery(ctx) {
     if (!sql) return;
     const allowChanges = $('#q-allow').checked;
     const { kinds, statements } = classifySql(sql);
+    let dryRun = false;
+    try {
+      dryRun = unwrapTransaction(sql).end === 'rollback';
+    } catch {} // the main process reports it
     const writes = kinds.includes('write') || kinds.includes('ddl') || (allowChanges && kinds.includes('other'));
     if (writes && allowChanges && explain !== 'plan') {
       const info = db.info();
@@ -146,8 +150,8 @@ export function setupQuery(ctx) {
         message: explain === 'analyze'
           ? tr('Run EXPLAIN ANALYZE on a statement that changes data?')
           : trn(statements, 'Run {n} statement that changes the database?', 'Run {n} statements that change the database?'),
-        detail: `${info.description} (${envName(info.profile.environment)})\n\n${sql.slice(0, 600)}${sql.length > 600 ? '…' : ''}\n\n${explain === 'analyze' ? tr('The statement runs and is rolled back.') : tr('The changes are committed when all statements succeed.')}`,
-        buttons: [explain === 'analyze' ? tr('Analyze') : tr('Run and Commit'), tr('Cancel')],
+        detail: `${info.description} (${envName(info.profile.environment)})\n\n${sql.slice(0, 600)}${sql.length > 600 ? '…' : ''}\n\n${explain === 'analyze' ? tr('The statement runs and is rolled back.') : dryRun ? tr('The script ends with ROLLBACK: it runs and its changes are rolled back.') : tr('The changes are committed when all statements succeed.')}`,
+        buttons: [explain === 'analyze' ? tr('Analyze') : dryRun ? tr('Run and Roll Back') : tr('Run and Commit'), tr('Cancel')],
       });
       if (choice !== 0) return;
     }
@@ -164,7 +168,7 @@ export function setupQuery(ctx) {
       if (r.committed) {
         status(tr('Changes committed'));
         if (kinds.includes('ddl')) ctx.refreshSchema?.();
-      }
+      } else if (r.rolledBack) status(tr('Changes rolled back'));
     } catch (err) {
       const pos = Number(err.message.match(/at character (\d+)\)?$/)?.[1]);
       if (pos) editor.markError(pos + (editor.getValue().indexOf(sql) > 0 ? editor.getValue().indexOf(sql) : 0), err.message);

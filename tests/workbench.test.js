@@ -11,7 +11,7 @@ import {
 } from '../src/shared/schema-model.js';
 import { generateDatabaseDts, tsType, pascalCase } from '../src/shared/typegen.js';
 import {
-  classifySql, resolveScriptPermissions, effectivePermissions, normalizePolicy, normalizeAiPermissions,
+  classifySql, unwrapTransaction, resolveScriptPermissions, effectivePermissions, normalizePolicy, normalizeAiPermissions,
 } from '../src/shared/permissions.js';
 import { parseScriptFile, serializeScriptFile, scriptPath, template, tablesMentioned } from '../src/shared/scripts.js';
 import { validateJson, parseModelJson, tableJsonSchema, checkRowAgainstTable } from '../src/shared/json-schema.js';
@@ -107,6 +107,27 @@ test('classifies SQL', () => {
   assert.deepEqual(classifySql('ALTER TABLE t ADD c int; UPDATE t SET c = 1').kinds.sort(), ['ddl', 'write']);
   assert.deepEqual(classifySql('COMMIT').kinds, ['transaction']);
   assert.equal(classifySql("DO $$ BEGIN PERFORM 1; END $$").kinds[0], 'other');
+});
+
+test('unwraps BEGIN … COMMIT for the query tab', () => {
+  assert.deepEqual(unwrapTransaction('SELECT 1'), { sql: 'SELECT 1', modes: null, end: null });
+  const sql = 'BEGIN;\nUPDATE t SET a = 1;\nCOMMIT;';
+  const u = unwrapTransaction(sql);
+  assert.equal(u.end, 'commit');
+  assert.equal(u.modes, null);
+  assert.equal(u.sql.length, sql.length); // offsets kept for error positions
+  assert.equal(u.sql.indexOf('UPDATE'), sql.indexOf('UPDATE'));
+  assert.equal(u.sql.trim(), 'UPDATE t SET a = 1;');
+  assert.deepEqual(classifySql(u.sql).kinds, ['write']);
+  assert.equal(unwrapTransaction('start transaction isolation level serializable; delete from t; rollback').end, 'rollback');
+  assert.equal(unwrapTransaction('START TRANSACTION ISOLATION LEVEL SERIALIZABLE; DELETE FROM t; END').modes, 'ISOLATION LEVEL SERIALIZABLE');
+  assert.equal(unwrapTransaction('-- note\nBEGIN WORK; SAVEPOINT a; DELETE FROM t; ROLLBACK TO a; COMMIT').end, 'commit');
+  assert.equal(unwrapTransaction("BEGIN; DO $$ BEGIN PERFORM 1; END $$; COMMIT").end, 'commit');
+  assert.equal(unwrapTransaction("SELECT 'begin; commit'").end, null);
+  assert.throws(() => unwrapTransaction('BEGIN; SELECT 1'), /does not end with COMMIT/);
+  assert.throws(() => unwrapTransaction('UPDATE t SET a = 1; COMMIT'), /single BEGIN/);
+  assert.throws(() => unwrapTransaction('BEGIN; SELECT 1; COMMIT; BEGIN; SELECT 2; COMMIT'), /single BEGIN/);
+  assert.throws(() => unwrapTransaction("BEGIN; SELECT 1; PREPARE TRANSACTION 'x'"), /does not end with COMMIT/);
 });
 
 test('permissions: profiles, overrides and connection policy', () => {

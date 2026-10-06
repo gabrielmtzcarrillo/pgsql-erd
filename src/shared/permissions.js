@@ -143,3 +143,45 @@ export function classifySql(sql) {
   }
   return { statements: statements.length, kinds: [...kinds] };
 }
+
+// Like strip(), but blanks comments and quoted text with spaces so every
+// character keeps its offset.
+const mask = (sql) =>
+  String(sql).replace(/--[^\n]*|\/\*[\s\S]*?\*\/|'(?:[^']|'')*'|"(?:[^"]|"")*"|\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g, (m) => ' '.repeat(m.length));
+
+// The query tab runs everything in its own transaction. A script written as
+// BEGIN … COMMIT (or … ROLLBACK, a dry run) is accepted: the outer BEGIN and
+// COMMIT / ROLLBACK are blanked out (offsets of the rest stay the same, so
+// error positions still point at the right character) and their meaning is
+// returned. Savepoints inside are fine; any other transaction statement is not.
+// → { sql, modes: 'ISOLATION LEVEL …' | null, end: 'commit' | 'rollback' | null }
+export function unwrapTransaction(sql) {
+  const text = String(sql);
+  const masked = mask(text);
+  const parts = [];
+  let start = 0;
+  for (let i = 0; i <= masked.length; i++) {
+    if (i < masked.length && masked[i] !== ';') continue;
+    const body = masked.slice(start, i).trim();
+    if (body) parts.push({ start, end: Math.min(i + 1, masked.length), body, words: body.toUpperCase().split(/\s+/) });
+    start = i + 1;
+  }
+  const isBegin = (w) => w[0] === 'BEGIN' || (w[0] === 'START' && w[1] === 'TRANSACTION');
+  const endOf = (w) => (['COMMIT', 'END'].includes(w[0]) ? 'commit' : ['ROLLBACK', 'ABORT'].includes(w[0]) && w[1] !== 'TO' ? 'rollback' : null);
+  const isSavepoint = (w) => w[0] === 'SAVEPOINT' || w[0] === 'RELEASE' || (w[0] === 'ROLLBACK' && w[1] === 'TO');
+  const isTx = (w) => ['BEGIN', 'COMMIT', 'ROLLBACK', 'END', 'START', 'ABORT'].includes(w[0]) || (w[0] === 'PREPARE' && w[1] === 'TRANSACTION');
+
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  const wrapped = first && isBegin(first.words);
+  if (wrapped && (parts.length < 2 || !endOf(last.words)))
+    throw new Error('The script starts with BEGIN but does not end with COMMIT or ROLLBACK.');
+  const inner = wrapped ? parts.slice(1, -1) : parts;
+  if (inner.some((p) => isTx(p.words) && !isSavepoint(p.words)))
+    throw new Error('The query tab runs the script in one transaction: wrap it in a single BEGIN … COMMIT (or ROLLBACK) and remove other BEGIN / COMMIT / ROLLBACK statements. Savepoints are allowed.');
+  if (!wrapped) return { sql: text, modes: null, end: null };
+
+  const blank = (s, p) => s.slice(0, p.start) + s.slice(p.start, p.end).replace(/[^\n]/g, ' ') + s.slice(p.end);
+  const modes = first.body.replace(/^(BEGIN(\s+(WORK|TRANSACTION))?|START\s+TRANSACTION)\b/i, '').trim();
+  return { sql: blank(blank(text, last), first), modes: modes || null, end: endOf(last.words) };
+}

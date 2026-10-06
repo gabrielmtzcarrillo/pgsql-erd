@@ -317,7 +317,23 @@ test('query tab: reads, guarded writes and plans', { skip: !enabled }, async () 
   assert.deepEqual(r.results[1].rows, [['1']]);
   await assert.rejects(runQuery(ctx(), { sql: "UPDATE cat_area SET name = name" }), /Allow changes/);
   await assert.rejects(runQuery(ctx({ allowWrites: false, allowDDL: false }), { sql: 'UPDATE cat_area SET name = name', allowChanges: true }), /read-only/);
-  await assert.rejects(runQuery(ctx(), { sql: 'BEGIN; SELECT 1' }), /transactions/);
+  await assert.rejects(runQuery(ctx(), { sql: 'BEGIN; SELECT 1' }), /does not end with COMMIT/);
+  await assert.rejects(runQuery(ctx(), { sql: 'SELECT 1; COMMIT' }), /single BEGIN/);
+  await assert.rejects(runQuery(ctx(), { sql: 'BEGIN; UPDATE cat_area SET name = name; COMMIT' }), /Allow changes/);
+  const tx = await runQuery(ctx(), {
+    sql: "BEGIN ISOLATION LEVEL SERIALIZABLE;\nCREATE TABLE tx_demo (id int);\nSAVEPOINT a;\nINSERT INTO tx_demo VALUES (1);\nROLLBACK TO a;\nINSERT INTO tx_demo VALUES (2);\nSELECT current_setting('transaction_isolation') AS iso;\nCOMMIT;",
+    allowChanges: true,
+  });
+  assert.equal(tx.committed, true);
+  assert.deepEqual(tx.results.at(-1).rows, [['serializable']]);
+  assert.deepEqual((await runQuery(ctx(), { sql: 'SELECT id FROM tx_demo' })).results[0].rows, [['2']]);
+  const dry = await runQuery(ctx(), { sql: 'BEGIN; DELETE FROM tx_demo; ROLLBACK;', allowChanges: true });
+  assert.equal(dry.committed, false);
+  assert.equal(dry.rolledBack, true);
+  assert.equal(dry.results[0].rowCount, 1);
+  assert.deepEqual((await runQuery(ctx(), { sql: 'SELECT count(*) FROM tx_demo' })).results[0].rows, [['1']]);
+  await assert.rejects(runQuery(ctx(), { sql: 'BEGIN READ WRITE; DO $$ BEGIN DELETE FROM tx_demo; END $$; COMMIT' }), /read-only transaction/);
+  await assert.rejects(runQuery(ctx(), { sql: 'BEGIN;\nSELEC 1;\nCOMMIT' }), /at character 8/);
   await assert.rejects(runQuery(ctx(), { sql: 'SELEC 1' }), /syntax error.*at character 1/);
   const w = await runQuery(ctx(), { sql: "CREATE TABLE big AS SELECT g AS id, g % 100 AS grp, md5(g::text) AS label FROM generate_series(1, 20000) g", allowChanges: true });
   assert.equal(w.committed, true);
