@@ -360,3 +360,37 @@ test('plan analyzer: column names with regex characters', async () => {
   // "a.b" must not match the column "axb".
   assert.equal(hint('(axb = 1)').sql, 'CREATE INDEX ON "public"."t" ("axb");');
 });
+
+// ------------------------------------------------------------ data tab edits
+
+test('data tab edits: inserts, updates and deletes by primary key', () => {
+  const { saveQueries } = require('../src/main/database/data-browser.cjs');
+  const col = (name, extra = {}) => ({ name, databaseType: 'text', baseType: 'text', nullable: true, defaultValue: null, identity: null, generated: false, ...extra });
+  const table = {
+    id: 'app.order',
+    schema: 'app',
+    name: 'order',
+    columns: [col('id', { identity: 'a' }), col('code'), col('note'), col('total_x2', { generated: true })],
+    primaryKey: { columns: ['id'] },
+  };
+  const q = saveQueries(table, {
+    deletes: [{ key: { id: '3' } }],
+    updates: [{ key: { id: '1' }, values: { code: 'A"1', note: null } }, { key: { id: '2' }, values: {} }],
+    inserts: [{ values: { code: 'B' } }, { values: {} }],
+  });
+  assert.deepEqual(q.map((x) => [x.kind, x.sql, x.params]), [
+    ['delete', 'DELETE FROM "app"."order" WHERE "id" = $1', ['3']],
+    ['update', 'UPDATE "app"."order" SET "code" = $1, "note" = $2 WHERE "id" = $3', ['A"1', null, '1']],
+    ['insert', 'INSERT INTO "app"."order" ("code") VALUES ($1) RETURNING "id"::text AS "id"', ['B']],
+    ['insert', 'INSERT INTO "app"."order" DEFAULT VALUES RETURNING "id"::text AS "id"', []],
+  ]);
+  // Generated columns can't be written; rows need their key; unknown columns fail.
+  assert.throws(() => saveQueries(table, { updates: [{ key: { id: '1' }, values: { total_x2: '4' } }] }), /generated/);
+  assert.throws(() => saveQueries(table, { inserts: [{ values: { id: '9' } }] }), /generated/);
+  assert.throws(() => saveQueries(table, { deletes: [{ key: {} }] }), /Missing the value of id/);
+  assert.throws(() => saveQueries(table, { inserts: [{ values: { nope: '1' } }] }), /Unknown column/);
+  // Without a primary key only inserts work.
+  const loose = { ...table, primaryKey: null };
+  assert.equal(saveQueries(loose, { inserts: [{ values: { code: 'C' } }] })[0].sql, 'INSERT INTO "app"."order" ("code") VALUES ($1)');
+  assert.throws(() => saveQueries(loose, { deletes: [{ key: { id: '1' } }] }), /no primary key/);
+});

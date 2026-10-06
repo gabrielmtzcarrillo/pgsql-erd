@@ -10,6 +10,7 @@ export function setupTabs({ h }) {
   const bar = $('#main-tabs');
   const listeners = new Set();
   const closers = new Map(); // page id -> onClose
+  const guards = new Map(); // page id -> canClose(): Promise<boolean>
   let current = 'erd';
 
   const pages = () => document.querySelectorAll('.tab-page');
@@ -28,7 +29,7 @@ export function setupTabs({ h }) {
     const close = e.target.closest('.tab-close');
     if (close) {
       e.stopPropagation();
-      remove(close.closest('[data-main-tab]').dataset.mainTab);
+      userClose(close.closest('[data-main-tab]').dataset.mainTab);
       return;
     }
     const b = e.target.closest('[data-main-tab]');
@@ -37,11 +38,12 @@ export function setupTabs({ h }) {
   // Middle click closes a data tab.
   bar.addEventListener('auxclick', (e) => {
     const b = e.target.closest('[data-main-tab].closable');
-    if (e.button === 1 && b) remove(b.dataset.mainTab);
+    if (e.button === 1 && b) userClose(b.dataset.mainTab);
   });
 
-  // A closable tab with its page element. Returns the page id.
-  function add({ id, title, tooltip, icon, element, onClose }) {
+  // A closable tab with its page element. Returns the page id. canClose()
+  // can keep the tab open when the user closes it (unsaved changes).
+  function add({ id, title, tooltip, icon, element, onClose, canClose }) {
     element.classList.add('tab-page');
     element.dataset.page = id;
     element.hidden = true;
@@ -53,6 +55,7 @@ export function setupTabs({ h }) {
     ]);
     $('#data-tabs').append(btn);
     closers.set(id, onClose);
+    if (canClose) guards.set(id, canClose);
     return id;
   }
 
@@ -63,9 +66,14 @@ export function setupTabs({ h }) {
     const next = btn?.previousElementSibling?.dataset.mainTab ?? btn?.nextElementSibling?.dataset.mainTab ?? 'erd';
     closers.get(id)?.();
     closers.delete(id);
+    guards.delete(id);
     page.remove();
     btn?.remove();
     if (current === id) show(next || 'erd');
+  }
+
+  async function userClose(id) {
+    if (await (guards.get(id)?.() ?? true)) remove(id);
   }
 
   return {

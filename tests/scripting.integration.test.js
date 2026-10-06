@@ -298,6 +298,43 @@ test('data browser: pages, sorting and Excel-style filters', { skip: !enabled },
   await assert.rejects(browser.browse(readOnly, t, { filters: { nope: { values: [] } } }), /Unknown column/);
 });
 
+test('data browser: edits are saved in one transaction', { skip: !enabled }, async () => {
+  const browser = require('../src/main/database/data-browser.cjs');
+  const t = shared.findTable(await connections.refresh(W).then((r) => r.schema), 'cat_area');
+  const write = async (fn) => {
+    const c = await connections.client(W);
+    try {
+      await c.query('BEGIN');
+      const r = await fn(c);
+      await c.query('COMMIT');
+      return r;
+    } catch (err) {
+      await c.query('ROLLBACK');
+      throw err;
+    } finally {
+      await c.end();
+    }
+  };
+  const before = await browser.browse(readOnly, t, {});
+  assert.deepEqual(before.columns.find((c) => c.name === 'id'), { name: 'id', type: 'integer', baseType: 'integer', nullable: false, hasDefault: true, readOnly: false });
+  const r = await browser.save(write, t, {
+    updates: [{ key: { id: '1' }, values: { name: 'Finanzas' } }],
+    inserts: [{ values: { name: 'Legal' } }],
+  });
+  assert.deepEqual([r.inserted, r.updated, r.deleted], [1, 1, 0]);
+  const id = r.keys[0].id;
+  const after = await browser.browse(readOnly, t, { sort: [{ column: 'id', direction: 'asc' }] });
+  assert.deepEqual(after.rows.map((x) => x.name), ['Finanzas', 'IT', 'Legal']);
+  // A row that isn't there anymore fails the whole save.
+  await assert.rejects(
+    browser.save(write, t, { deletes: [{ key: { id } }, { key: { id: '999' } }] }),
+    /was not found/
+  );
+  assert.equal((await browser.browse(readOnly, t, {})).total, 3);
+  await browser.save(write, t, { deletes: [{ key: { id } }], updates: [{ key: { id: '1' }, values: { name: 'Finance' } }] });
+  assert.deepEqual((await browser.browse(readOnly, t, { sort: [{ column: 'id', direction: 'asc' }] })).rows.map((x) => x.name), ['Finance', 'IT']);
+});
+
 // ------------------------------------------------------------ query tab
 
 test('query tab: reads, guarded writes and plans', { skip: !enabled }, async () => {

@@ -372,7 +372,7 @@ consulta se recuerda entre sesiones.
 ### Pestañas de datos
 
 **Datos**, en la barra de pestañas (o **Ver datos** en la barra lateral de una tabla, o **Base de datos →
-Explorar datos de una tabla…**), abre una tabla en su propia pestaña: una cuadrícula de solo lectura con
+Explorar datos de una tabla…**), abre una tabla en su propia pestaña: una cuadrícula con
 paginación (100/500/1000 filas), encabezados fijos y **Copiar** (separado por tabulaciones, se pega en una hoja
 de cálculo). Cada encabezado de columna tiene un menú de filtro al estilo de Excel:
 
@@ -384,6 +384,16 @@ de cálculo). Cada encabezado de columna tiene un menú de filtro al estilo de E
   entre, …)
 
 Los filtros activos se muestran como etiquetas encima de la cuadrícula.
+
+**Editar filas** hace editable la cuadrícula, como *Edit rows* en SQL Server Management Studio: haz clic en una
+celda para cambiarla (Intro / Tab pasan a la siguiente, Mayús+Intro agrega una línea, Esc cancela, **Ctrl+0**
+pone NULL), haz clic en la última fila (`*`) para agregar una fila (las columnas que quedan como
+*(predeterminado)* reciben su DEFAULT) y en **×** para eliminar una. Las celdas cambiadas y las filas nuevas o
+eliminadas se resaltan hasta **Guardar**, que las aplica todas en una transacción (o ninguna, si otra persona
+cambió una fila mientras tanto) y las registra en el log de auditoría. Las filas se localizan por su clave
+primaria, así que en las tablas sin ella solo se pueden agregar filas; las columnas identity (`GENERATED ALWAYS`)
+y las generadas son de solo lectura. La edición solo se ofrece cuando la política de la conexión permite
+escrituras, y fuera de desarrollo se pide confirmación antes de guardar.
 
 ### Asistente
 

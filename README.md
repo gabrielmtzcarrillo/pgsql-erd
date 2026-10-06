@@ -350,7 +350,7 @@ the Query tab and **Run** also runs it there. The query is remembered between se
 ### Data tabs
 
 **Data** in the tab bar (or **Browse data** in a table's sidebar, or **Database → Browse Table Data…**)
-opens a table in its own tab: a read-only grid with paging (100/500/1000 rows), sticky headers and **Copy**
+opens a table in its own tab: a grid with paging (100/500/1000 rows), sticky headers and **Copy**
 (tab-separated, pastes into a spreadsheet). Each column header has an Excel-style filter menu:
 
 - sort ascending / descending (by the column's type: numbers and dates sort as such)
@@ -359,6 +359,15 @@ opens a table in its own tab: a read-only grid with paging (100/500/1000 rows), 
 - text filters (contains, begins with, equals, is empty, …) or number / date filters (greater than, between, …)
 
 Active filters show as chips above the grid.
+
+**Edit rows** makes the grid editable, like *Edit rows* in SQL Server Management Studio: click a cell to
+change it (Enter / Tab move on, Shift+Enter adds a line, Escape cancels, **Ctrl+0** sets NULL), click the
+last row (`*`) to add a row (columns left as *(default)* get their DEFAULT) and **×** to delete one.
+Changed cells, new rows and deleted rows are highlighted until **Save**, which applies them all in one
+transaction (or none, if a row was changed by someone else meanwhile) and records them in the audit log.
+Rows are found by their primary key, so tables without one only accept new rows; identity (`GENERATED
+ALWAYS`) and generated columns are read-only. Editing is only offered when the connection's policy allows
+writes, and outside development the save is confirmed first.
 
 ### Assistant
 
