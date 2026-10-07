@@ -18,7 +18,7 @@ const WIDTH_KEY = 'pgsql-erd.db-tree-width';
 const $ = (sel) => document.querySelector(sel);
 
 export function setupDbTree(ctx) {
-  const { state, h, commit, computeSizes, status, events, db, toDiagram, snap, select, centerOn } = ctx;
+  const { state, h, commit, computeSizes, status, events, db, toDiagram, snap, select, centerOn, showContextMenu } = ctx;
   const pane = $('#db-tree');
   const list = $('#db-tree-list');
   const filter = $('#db-tree-filter');
@@ -131,7 +131,16 @@ export function setupDbTree(ctx) {
       else collapsedSchemas.add(schema);
       render();
     };
-    const row = h('div', { class: 'tree-row schema', role: 'treeitem', 'aria-expanded': String(open), onclick: toggle }, [
+    const row = h('div', {
+      class: 'tree-row schema',
+      role: 'treeitem',
+      'aria-expanded': String(open),
+      onclick: toggle,
+      oncontextmenu: (e) => openMenu(e, [
+        { label: tr('Copy table names'), icon: 'copy', run: () => copyNames(tables.map((t) => t.name)) },
+        { label: tr('Copy qualified table names'), icon: 'copy', run: () => copyNames(tables.map(tableKey)) },
+      ]),
+    }, [
       twisty(open, toggle),
       iconElement('db-connect', 'tree-icon'),
       h('span', { class: 'grow' }, schema),
@@ -161,6 +170,10 @@ export function setupDbTree(ctx) {
         e.dataTransfer.effectAllowed = 'copy';
       },
       ondblclick: () => target.add(key),
+      oncontextmenu: (e) => openMenu(e, [
+        { label: tr('Copy name'), icon: 'copy', run: () => copyNames([t.name]) },
+        { label: tr('Copy qualified name'), icon: 'copy', run: () => copyNames([key]) },
+      ]),
     }, [
       twisty(open, toggle),
       iconElement('toggle-tables', 'tree-icon'),
@@ -181,6 +194,20 @@ export function setupDbTree(ctx) {
       h('span', { class: `grow${c.notNull || c.pk ? ' nn' : ''}` }, c.name),
       h('span', { class: 'tree-type' }, formatType(c)),
     ]);
+  }
+
+  function openMenu(e, items) {
+    e.preventDefault();
+    e.stopPropagation();
+    showContextMenu(e.clientX, e.clientY, items);
+  }
+
+  // One name per line, so a schema's tables paste as a list.
+  async function copyNames(names) {
+    await navigator.clipboard.writeText(names.join('\n'));
+    status(names.length === 1
+      ? tr('Copied {name}', { name: names[0] })
+      : trn(names.length, 'Copied {n} table name', 'Copied {n} table names'));
   }
 
   // Adds the table with its top-left corner at `at` (diagram coordinates),

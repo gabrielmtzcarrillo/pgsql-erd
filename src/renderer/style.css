@@ -431,6 +431,9 @@ textarea { resize: vertical; width: 100%; }
 .panel .field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; min-width: 0; }
 .panel .field > span { color: var(--muted); font-size: 12px; }
 .panel .field input, .panel .field select, .panel .field textarea { width: 100%; }
+.sb-default { display: flex; gap: 6px; min-width: 0; }
+.sb-default input { flex: 1; min-width: 0; }
+.sb-default button { flex: none; }
 .sb-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 10px; }
 .sb-inline { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin: 4px 0 8px; }
 .sb-inline input[type="color"] { width: 44px; height: 26px; padding: 1px 2px; }

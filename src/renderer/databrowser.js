@@ -110,6 +110,7 @@ export function setupDataBrowser(ctx) {
         h('button', { type: 'button', icon: 'refresh', onclick: async () => (await view.confirmDiscard()) && view.load() }, tr('Refresh')),
         h('button', { type: 'button', icon: 'check-none', onclick: () => clearAll() }, tr('Clear filters')),
         h('button', { type: 'button', icon: 'copy', title: tr('Copy this page (tab-separated, pastes into a spreadsheet)'), onclick: () => copyPage() }, tr('Copy')),
+        h('button', { type: 'button', icon: 'copy', title: tr('Copy this page as a Markdown table'), onclick: () => copyMarkdown() }, tr('Markdown')),
         h('button', { type: 'button', icon: 'toggle-tables', title: tr('Show the table in the diagram'), onclick: () => ctx.focusTable(table) }, tr('Diagram')),
         editBtn,
         editTools,
@@ -149,6 +150,21 @@ export function setupDataBrowser(ctx) {
       const text = [cols.join('\t'), ...view.data.rows.map((r) => cols.map((c) => esc(r[c])).join('\t'))].join('\n');
       await navigator.clipboard.writeText(text);
       status(trn(view.data.rows.length, 'Copied {n} row', 'Copied {n} rows'));
+    }
+
+    // Pipes are escaped and line breaks become <br> so every row stays on one line.
+    async function copyMarkdown() {
+      if (!view.data) return;
+      const esc = (v) => (v === null ? '' : String(v).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>'));
+      const cols = view.data.columns.map((c) => c.name);
+      const line = (cells) => `| ${cells.join(' | ')} |`;
+      const text = [
+        line(cols.map(esc)),
+        line(cols.map(() => '---')),
+        ...view.data.rows.map((r) => line(cols.map((c) => esc(r[c])))),
+      ].join('\n');
+      await navigator.clipboard.writeText(text);
+      status(trn(view.data.rows.length, 'Copied {n} row as Markdown', 'Copied {n} rows as Markdown'));
     }
 
     // ---------------------------------------------------------- editing

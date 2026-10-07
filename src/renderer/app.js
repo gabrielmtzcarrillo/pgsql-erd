@@ -614,12 +614,52 @@ function toggleColumn(attnum) {
   renderPanel();
 }
 
+// The default a column of this type usually gets, or null when there is none
+// worth suggesting (serial types already default to their sequence).
+function usualDefault(type) {
+  const t = String(type ?? '').trim().toLowerCase();
+  if (!t) return null;
+  if (t.endsWith('[]')) return "'{}'";
+  if (t === 'uuid') return 'gen_random_uuid()';
+  if (/^(timestamp|timestamptz)\b/.test(t)) return 'now()';
+  if (t === 'date') return 'current_date';
+  if (/^(timetz|time with time zone)\b/.test(t)) return 'current_time';
+  if (/^time\b/.test(t)) return 'localtime';
+  if (t === 'boolean' || t === 'bool') return 'false';
+  if (t === 'json' || t === 'jsonb') return "'{}'";
+  if (/^(smallint|integer|int|int2|int4|int8|bigint|numeric|decimal|real|double precision|float4|float8|money)\b/.test(t)) return '0';
+  if (/^(text|character varying|varchar|character|char|bpchar|citext)\b/.test(t)) return "''";
+  return null;
+}
+
+// A uuid primary key gets gen_random_uuid() as its default unless it has one.
+function uuidPkDefault(c) {
+  if (c.pk && !c.default && /^uuid$/i.test(String(c.type ?? '').trim())) c.default = 'gen_random_uuid()';
+}
+
+// Default input with a button that fills in the type's usual default.
+function defaultInput(c) {
+  const usual = usualDefault(c.type);
+  const input = bound(c, 'default', 'col-default', { placeholder: tr('e.g. now() or \'text\'') });
+  if (!usual) return input;
+  return h('div', { class: 'sb-default' }, [
+    input,
+    h('button', {
+      icon: 'suggest',
+      title: tr('Use the usual default: {value}', { value: usual }),
+      disabled: c.default === usual,
+      onclick: (e) => { e.preventDefault(); commitField(() => (c.default = usual)); },
+    }),
+  ]);
+}
+
 function columnEditor(t, c, i) {
   const check = (prop, label, key) => {
     const cb = h('input', { type: 'checkbox', checked: !!c[prop], 'data-key': key });
     cb.addEventListener('change', () => commitField(() => {
       c[prop] = cb.checked;
       if (prop === 'pk' && cb.checked) c.notNull = true;
+      uuidPkDefault(c);
     }));
     return h('label', { class: 'check' }, [cb, label]);
   };
@@ -634,6 +674,7 @@ function columnEditor(t, c, i) {
         list: 'pg-types',
         after: (v) => {
           if (!SIZED_TYPE.test(String(v).trim())) c.length = c.precision = null;
+          uuidPkDefault(c);
         },
       })),
     ]),
@@ -642,7 +683,7 @@ function columnEditor(t, c, i) {
       field(tr('Scale'), bound(c, 'precision', 'col-scale', { type: 'number' })),
     ]),
     vectorHint(t, c),
-    field(tr('Default'), bound(c, 'default', 'col-default', { placeholder: tr('e.g. now() or \'text\'') })),
+    field(tr('Default'), defaultInput(c)),
     h('div', { class: 'sb-inline' }, [
       check('notNull', 'NOT NULL', 'col-nn'),
       check('pk', tr('Primary key'), 'col-pk'),
@@ -1424,7 +1465,7 @@ const tabs = setupTabs({ h });
 const uiCtx = { host, state, h, commit, computeSizes, fit, status, events };
 const { api: db, ...dbCommands } = setupDatabase(uiCtx);
 const spreadsheet = setupSpreadsheetImport(uiCtx);
-const dbTree = setupDbTree({ ...uiCtx, db, toDiagram, snap, select, centerOn, viewCenter });
+const dbTree = setupDbTree({ ...uiCtx, db, toDiagram, snap, select, centerOn, viewCenter, showContextMenu });
 const workbenchCtx = {
   host, state, h, status, db, events, tabs, focusTable, selectedTableIds,
   hasTable: (key) => !!findDiagramTable(key),
