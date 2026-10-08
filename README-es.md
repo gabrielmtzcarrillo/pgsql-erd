@@ -351,6 +351,11 @@ mayoría de las filas, estimaciones de filas erróneas, ordenaciones y hashes qu
 foráneas sin índice, con la sentencia `CREATE INDEX` / `ANALYZE` lista para insertar. **Preguntar al
 asistente** envía la consulta, su plan y las sugerencias a la pestaña Asistente.
 
+El explorador de la base de datos está junto al editor (**Explorador**): arrastra una tabla al SQL, o haz doble
+clic, para insertar su nombre. **+ Consulta** junto a **+ Datos** abre más pestañas de consulta, cada una con su
+SQL, resultados y plan; los archivos `.sql` abiertos o soltados tienen su propia pestaña. Las pestañas extra y su
+SQL se recuerdan entre sesiones, y cerrar una con SQL sin guardar pide confirmación.
+
 ### Generador
 
 Un generador visual de consultas (Base de datos → Generador de consultas, Ctrl+Alt+U). Arrastra tablas desde el

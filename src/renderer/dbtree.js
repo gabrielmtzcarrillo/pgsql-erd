@@ -1,12 +1,12 @@
 // Database explorer: a tree of the connected instance's schemas, tables and
 // columns beside the diagram. Tables are dragged from the tree onto the
 // canvas to add them; their foreign keys to tables already in the diagram
-// come along as relationships. The query builder borrows the pane while its
-// tab is shown (attach), and tables then go to the query instead.
+// come along as relationships. The query builder and the SQL editor borrow
+// the pane while their tab is shown (attach), and tables then go there instead.
 
 import { tableKey } from './lib/catalog.js';
 import { mergeFromDb } from './lib/sync.js';
-import { formatType } from './lib/sql.js';
+import { formatType, qualifiedName } from './lib/sql.js';
 import { iconElement } from './icons.js';
 import { tr, trn } from '../shared/i18n.js';
 
@@ -166,7 +166,8 @@ export function setupDbTree(ctx) {
       title: target.title(key, present),
       ondragstart: (e) => {
         e.dataTransfer.setData(TABLE_DRAG_TYPE, key);
-        e.dataTransfer.setData('text/plain', key);
+        // what a text target (the SQL editor) receives
+        e.dataTransfer.setData('text/plain', qualifiedName(t));
         e.dataTransfer.effectAllowed = 'copy';
       },
       ondblclick: () => target.add(key),
@@ -315,6 +316,8 @@ export function setupDbTree(ctx) {
   return {
     attach,
     render,
+    pane,
+    shown: () => shown,
     load,
     model: () => dbModel,
     commands: {

@@ -331,6 +331,11 @@ and a bar per node. Hints point out sequential scans that discard most rows, bad
 hashes that spill to disk and foreign keys without an index, with the `CREATE INDEX` / `ANALYZE` statement
 to insert. **Ask assistant** sends the query, its plan and the hints to the Assistant tab.
 
+The database explorer sits beside the editor (**Explorer**): drag a table into the SQL, or double-click it,
+to insert its name. **+ Query** next to **+ Data** opens more query tabs, each with its own SQL, results
+and plan; opened or dropped `.sql` files get a tab of their own. Extra tabs and their SQL are remembered
+between sessions, and closing one with unsaved SQL asks first.
+
 ### Builder
 
 A visual query builder (Database → Query Builder, Ctrl+Alt+U). Drag tables from the database explorer onto

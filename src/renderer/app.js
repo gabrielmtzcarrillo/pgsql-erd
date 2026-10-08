@@ -1467,7 +1467,7 @@ const { api: db, ...dbCommands } = setupDatabase(uiCtx);
 const spreadsheet = setupSpreadsheetImport(uiCtx);
 const dbTree = setupDbTree({ ...uiCtx, db, toDiagram, snap, select, centerOn, viewCenter, showContextMenu });
 const workbenchCtx = {
-  host, state, h, status, db, events, tabs, focusTable, selectedTableIds,
+  host, state, h, status, db, events, tabs, dbTree, focusTable, selectedTableIds,
   hasTable: (key) => !!findDiagramTable(key),
   saveDiagram: () => save(false),
   refreshSchema: () => db.refreshSchema(),
@@ -1635,8 +1635,8 @@ $('#recent-clear').addEventListener('click', () => host.recent.clear());
     if (!(await confirmDiscard())) return;
     openText(text, filePath);
   });
-  // F5 is the menu accelerator for running scripts; on the Query tab it runs the query.
-  host.onMenu((name) => runCommand(name === 'script-run' && tabs.current() === 'query' ? 'query-run' : name));
+  // F5 is the menu accelerator for running scripts; on a query tab it runs the query.
+  host.onMenu((name) => runCommand(name === 'script-run' && query.isQueryTab(tabs.current()) ? 'query-run' : name));
   host.recent.onChange(renderRecentFiles);
   host.recent.list().then(renderRecentFiles);
   window.erdIsPristine = () => !state.dirty && !state.filePath && !state.model.tables.length;

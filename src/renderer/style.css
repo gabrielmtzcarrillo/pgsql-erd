@@ -817,8 +817,9 @@ dialog.medium { width: min(760px, 94vw); }
 .wb-row-actions { display: flex; gap: 6px; align-items: center; margin: 4px 0 6px; }
 .wb-row-actions button { font-size: 12px; padding: 2px 8px; }
 
-/* Query tab */
-.query-page { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--surface); }
+/* Query tab; the database explorer is moved in while it is shown */
+.query-page { flex: 1; min-height: 0; display: flex; background: var(--surface); }
+.q-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .q-toolbar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .q-toolbar select { max-width: 260px; }
 .q-editor { height: 38%; min-height: 80px; position: relative; flex: none; }
@@ -827,7 +828,7 @@ dialog.medium { width: min(760px, 94vw); }
 .q-output { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .q-output .wb-tabs { align-items: center; padding-right: 10px; }
 .q-pane { flex: 1; min-height: 0; overflow: auto; padding: 6px 8px; }
-#q-status.error { color: var(--danger); }
+.q-status.error { color: var(--danger); }
 
 /* Builder tab (visual query builder); the database explorer is moved in while it is shown */
 .builder-page { flex: 1; min-height: 0; display: flex; background: var(--surface); }

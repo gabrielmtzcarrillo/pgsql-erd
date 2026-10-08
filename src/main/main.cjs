@@ -437,6 +437,7 @@ function buildMenu() {
         { label: tr('Compare with Database / Generate Migration…'), icon: menuIcon('db-compare'), accelerator: 'CmdOrCtrl+Alt+D', click: cmd('db-compare') },
         { label: tr('Browse Table Data…'), icon: menuIcon('toggle-tables'), accelerator: 'CmdOrCtrl+Alt+B', click: cmd('data-browse') },
         { label: tr('Query Analyzer'), icon: menuIcon('toggle-sql'), accelerator: 'CmdOrCtrl+Alt+Q', click: cmd('query-tab') },
+        { label: tr('New Query Tab'), icon: menuIcon('toggle-sql'), click: cmd('query-new') },
         { label: tr('Query Builder'), icon: menuIcon('query-builder'), accelerator: 'CmdOrCtrl+Alt+U', click: cmd('query-builder') },
         { label: tr('Graphs (Apache AGE)'), icon: menuIcon('add-link'), accelerator: 'CmdOrCtrl+Alt+H', click: cmd('graph-tab') },
         { type: 'separator' },

@@ -1,5 +1,5 @@
 // Main tabs: Diagram, Scripts, Query and Assistant are fixed; data browser
-// tabs (one per table) are added and closed as needed.
+// tabs (one per table) and extra query tabs are added and closed as needed.
 
 import { iconElement } from './icons.js';
 import { tr } from '../shared/i18n.js';
@@ -35,7 +35,7 @@ export function setupTabs({ h }) {
     const b = e.target.closest('[data-main-tab]');
     if (b) show(b.dataset.mainTab);
   });
-  // Middle click closes a data tab.
+  // Middle click closes a data or query tab.
   bar.addEventListener('auxclick', (e) => {
     const b = e.target.closest('[data-main-tab].closable');
     if (e.button === 1 && b) userClose(b.dataset.mainTab);
@@ -72,6 +72,13 @@ export function setupTabs({ h }) {
     if (current === id) show(next || 'erd');
   }
 
+  function rename(id, title, tooltip = title) {
+    const btn = bar.querySelector(`[data-main-tab="${CSS.escape(id)}"]`);
+    if (!btn) return;
+    btn.querySelector('.tab-title').textContent = title;
+    btn.title = tooltip;
+  }
+
   async function userClose(id) {
     if (await (guards.get(id)?.() ?? true)) remove(id);
   }
@@ -80,6 +87,7 @@ export function setupTabs({ h }) {
     show,
     remove,
     add,
+    rename,
     current: () => current,
     has: (id) => !!document.querySelector(`.tab-page[data-page="${CSS.escape(id)}"]`),
     onShow: (fn) => listeners.add(fn),

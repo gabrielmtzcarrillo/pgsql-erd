@@ -78,7 +78,7 @@ function registerSqlCompletions(monaco) {
 }
 
 // options: { value, language, onChange(), onSave(), onRun(), onDryRun(),
-//            bindings: [{ keys: ['CtrlCmd', 'Enter'], run }] }
+//            bindings: [{ keys: ['CtrlCmd', 'Enter'], run, label }] }
 export async function createEditor(container, options = {}) {
   let monaco;
   try {
@@ -105,14 +105,18 @@ export async function createEditor(container, options = {}) {
     renderLineHighlight: 'line',
   });
   editor.onDidChangeModelContent(() => options.onChange?.());
+  // Actions rather than addCommand: with several editors, addCommand sends
+  // the key to the last one created.
   const K = monaco.KeyMod;
   const C = monaco.KeyCode;
-  if (options.onSave) editor.addCommand(K.CtrlCmd | C.KeyS, () => options.onSave());
-  if (options.onRun) editor.addCommand(C.F5, () => options.onRun());
-  if (options.onDryRun) editor.addCommand(C.F6, () => options.onDryRun());
+  let actionSeq = 0;
+  const bind = (label, code, run) => editor.addAction({ id: `pgsql-erd.key-${++actionSeq}`, label, keybindings: [code], run });
+  if (options.onSave) bind('Save', K.CtrlCmd | C.KeyS, () => options.onSave());
+  if (options.onRun) bind('Run', C.F5, () => options.onRun());
+  if (options.onDryRun) bind('Dry run', C.F6, () => options.onDryRun());
   for (const b of options.bindings ?? []) {
     const code = b.keys.reduce((acc, k) => acc | (K[k] ?? C[k] ?? 0), 0);
-    editor.addCommand(code, () => b.run());
+    bind(b.label ?? b.keys.join('+'), code, () => b.run());
   }
 
   return {
@@ -185,6 +189,10 @@ export async function createEditor(container, options = {}) {
     setReadOnly: (ro) => editor.updateOptions({ readOnly: ro }),
     focus: () => editor.focus(),
     layout: () => editor.layout(),
+    dispose() {
+      editor.dispose();
+      model.dispose();
+    },
   };
 }
 
@@ -242,5 +250,6 @@ function textareaEditor(container, options) {
     setReadOnly: (ro) => (ta.readOnly = ro),
     focus: () => ta.focus(),
     layout() {},
+    dispose() {},
   };
 }

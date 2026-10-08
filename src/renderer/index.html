@@ -81,6 +81,7 @@
     <button type="button" data-main-tab="assistant" data-icon="ai-assistant">Assistant</button>
     <span id="data-tabs" class="data-tabs"></span>
     <button type="button" id="data-tab-add" class="data-add" data-icon="plus" title="Browse the data of a table">Data</button>
+    <button type="button" id="query-tab-add" class="data-add" data-icon="plus" title="Open another query tab">Query</button>
   </nav>
 
   <main class="workspace tab-page" data-page="erd">
@@ -185,32 +186,35 @@
   </section>
 
   <section id="query-page" class="tab-page query-page" data-page="query" hidden>
-    <div class="q-toolbar">
-      <button type="button" id="q-run" class="primary" data-icon="script-run" title="Run the query (Ctrl+Enter or F5)">Run</button>
-      <button type="button" id="q-explain" data-icon="toggle-sql" title="Show the plan without running the query (Shift+F5)">Explain</button>
-      <button type="button" id="q-analyze" data-icon="test" title="Run the query and show the actual plan and timings (Ctrl+Shift+Enter); rolled back">Explain analyze</button>
-      <label class="check" title="Allow statements that change data or the schema. They are committed when they succeed.">
-        <input type="checkbox" id="q-allow"> Allow changes</label>
-      <span class="grow"></span>
-      <button type="button" id="q-open" data-icon="open" title="Open a .sql file in the editor (Ctrl+Alt+O); you can also drop one on the window">Open…</button>
-      <button type="button" id="q-save" data-icon="save" title="Save the editor's SQL to a file">Save…</button>
-      <select id="q-history" title="Recent queries"><option value="">History…</option></select>
-      <button type="button" id="q-ask" data-icon="ai-assistant" title="Ask the assistant about this query and its plan">Ask assistant</button>
-    </div>
-    <div id="q-editor" class="q-editor"></div>
-    <div id="q-resize" class="q-resize" title="Drag to resize"></div>
-    <div class="q-output">
-      <div class="wb-tabs" role="tablist">
-        <button type="button" data-qtab="results" class="active">Results</button>
-        <button type="button" data-qtab="plan">Plan</button>
-        <button type="button" data-qtab="messages">Messages</button>
+    <section class="q-main">
+      <div class="q-toolbar">
+        <button type="button" data-cmd="toggle-db-tree" title="Show the tables of the connected database">Explorer</button>
+        <button type="button" class="q-run primary" data-icon="script-run" title="Run the query (Ctrl+Enter or F5)">Run</button>
+        <button type="button" class="q-explain" data-icon="toggle-sql" title="Show the plan without running the query (Shift+F5)">Explain</button>
+        <button type="button" class="q-analyze" data-icon="test" title="Run the query and show the actual plan and timings (Ctrl+Shift+Enter); rolled back">Explain analyze</button>
+        <label class="check" title="Allow statements that change data or the schema. They are committed when they succeed.">
+          <input type="checkbox" class="q-allow"> Allow changes</label>
         <span class="grow"></span>
-        <span id="q-status" class="muted small"></span>
+        <button type="button" class="q-open" data-icon="open" title="Open a .sql file in the editor (Ctrl+Alt+O); you can also drop one on the window">Open…</button>
+        <button type="button" class="q-save" data-icon="save" title="Save the editor's SQL to a file">Save…</button>
+        <select class="q-history" title="Recent queries"><option value="">History…</option></select>
+        <button type="button" class="q-ask" data-icon="ai-assistant" title="Ask the assistant about this query and its plan">Ask assistant</button>
       </div>
-      <div id="q-results" class="q-pane" data-qpane="results"></div>
-      <div id="q-plan" class="q-pane" data-qpane="plan" hidden></div>
-      <div id="q-messages" class="q-pane" data-qpane="messages" hidden></div>
-    </div>
+      <div class="q-editor"></div>
+      <div class="q-resize" title="Drag to resize"></div>
+      <div class="q-output">
+        <div class="wb-tabs" role="tablist">
+          <button type="button" data-qtab="results" class="active">Results</button>
+          <button type="button" data-qtab="plan">Plan</button>
+          <button type="button" data-qtab="messages">Messages</button>
+          <span class="grow"></span>
+          <span class="q-status muted small"></span>
+        </div>
+        <div class="q-results q-pane" data-qpane="results"></div>
+        <div class="q-plan q-pane" data-qpane="plan" hidden></div>
+        <div class="q-messages q-pane" data-qpane="messages" hidden></div>
+      </div>
+    </section>
   </section>
 
   <section id="builder-page" class="tab-page builder-page" data-page="builder" hidden>
