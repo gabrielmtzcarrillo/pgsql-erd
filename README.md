@@ -41,7 +41,7 @@ Live PostgreSQL DDL with syntax highlighting.
 
 ### Relationships
 
-Add a foreign key, optionally creating the column.
+Add a foreign key, optionally creating the column. Drag from a column's handle (the foreign key) onto a column of another table (the referenced one) to open the dialog with both filled in.
 
 ![New relationship](docs/screenshots/relationship.png)
 

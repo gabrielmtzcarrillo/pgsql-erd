@@ -43,7 +43,7 @@ DDL de PostgreSQL en vivo con resaltado de sintaxis.
 
 ### Relaciones
 
-Agrega una clave foránea y, si quieres, crea también la columna.
+Agrega una clave foránea y, si quieres, crea también la columna. Arrastra desde el punto de una columna (la clave foránea) hasta una columna de otra tabla (la referenciada) para abrir el diálogo con ambas ya elegidas.
 
 ![Nueva relación](docs/screenshots/es/relationship.png)
 
