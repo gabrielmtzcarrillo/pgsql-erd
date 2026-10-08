@@ -37,9 +37,12 @@ export function setupGraph(ctx) {
   const side = $('#gr-side-body');
   let seq = 0;
 
-  const st = {
+  // The state of one Graph tab. The tabs share the page; `st` is the state of
+  // the tab in front. A new tab starts on the graph and Cypher used last.
+  const freshState = () => ({
     info: null, // age.status()
     error: null,
+    loaded: false,
     graph: load(GRAPH_KEY, null),
     pane: 'edges',
     edges: { label: '', search: '', around: null, offset: 0, data: null, form: null, editing: null },
@@ -47,7 +50,11 @@ export function setupGraph(ctx) {
     explore: { nodes: new Map(), links: new Map(), selected: null, connectFrom: null, view: { x: 0, y: 0, k: 1 } },
     cypher: { text: load(CYPHER_KEY, 'MATCH (a)-[r]->(b)\nRETURN a, r, b\nLIMIT 50'), columns: '', result: null, error: null },
     sideForm: null, // { kind: 'graph' | 'v' | 'e' }
-  };
+  });
+  const graphTabs = new Map(); // tab id -> { st, title, filePath }
+  let st = freshState();
+  let tabSeq = 0;
+  const isShown = () => tabs.kind(tabs.current()) === 'graph';
 
   function load(key, fallback) {
     try {
@@ -126,6 +133,8 @@ export function setupGraph(ctx) {
   // ------------------------------------------------------------ loading
 
   async function refresh({ keepPane = false } = {}) {
+    const s = st;
+    s.loaded = true;
     if (!db.connected()) {
       st.info = null;
       st.error = null;
@@ -134,12 +143,13 @@ export function setupGraph(ctx) {
       return;
     }
     try {
-      st.info = await call(host.age.status);
-      st.error = null;
+      s.info = await call(host.age.status);
+      s.error = null;
     } catch (err) {
-      st.info = null;
-      st.error = err.message;
+      s.info = null;
+      s.error = err.message;
     }
+    if (s !== st) return; // another tab came to the front meanwhile
     if (st.info && !currentGraph()) st.graph = st.info.graphs[0]?.name ?? null;
     save(GRAPH_KEY, st.graph);
     renderSide();
@@ -152,21 +162,22 @@ export function setupGraph(ctx) {
 
   async function reloadPane() {
     if (!st.info?.version || !st.graph) return renderPane();
+    const s = st;
     try {
-      if (st.pane === 'edges') {
-        const e = st.edges;
-        e.data = await call(host.age.edges, { graph: st.graph, label: e.label, search: e.search, around: e.around?.id ?? null, limit: PAGE, offset: e.offset });
-      } else if (st.pane === 'vertices') {
-        const v = st.vertices;
-        v.data = await call(host.age.vertices, { graph: st.graph, label: v.label, search: v.search, limit: PAGE, offset: v.offset });
-      } else if (st.pane === 'explore' && !st.explore.nodes.size) {
+      if (s.pane === 'edges') {
+        const e = s.edges;
+        e.data = await call(host.age.edges, { graph: s.graph, label: e.label, search: e.search, around: e.around?.id ?? null, limit: PAGE, offset: e.offset });
+      } else if (s.pane === 'vertices') {
+        const v = s.vertices;
+        v.data = await call(host.age.vertices, { graph: s.graph, label: v.label, search: v.search, limit: PAGE, offset: v.offset });
+      } else if (s.pane === 'explore' && !s.explore.nodes.size) {
         await loadSample(100);
       }
-      setStatus('');
+      if (s === st) setStatus('');
     } catch (err) {
-      setStatus(err.message, 'error');
+      if (s === st) setStatus(err.message, 'error');
     }
-    renderPane();
+    if (s === st) renderPane();
   }
 
   function selectGraph(name) {
@@ -310,9 +321,12 @@ export function setupGraph(ctx) {
 
   function showPane(name) {
     st.pane = name;
-    for (const b of page.querySelectorAll('[data-gtab]')) b.classList.toggle('active', b.dataset.gtab === name);
-    for (const p of page.querySelectorAll('[data-gpane]')) p.hidden = p.dataset.gpane !== name;
+    syncPaneTabs();
     reloadPane();
+  }
+  function syncPaneTabs() {
+    for (const b of page.querySelectorAll('[data-gtab]')) b.classList.toggle('active', b.dataset.gtab === st.pane);
+    for (const p of page.querySelectorAll('[data-gpane]')) p.hidden = p.dataset.gpane !== st.pane;
   }
   page.querySelector('.gr-main .wb-tabs').addEventListener('click', (e) => {
     const b = e.target.closest('[data-gtab]');
@@ -1075,29 +1089,87 @@ export function setupGraph(ctx) {
   $('#gr-refresh').addEventListener('click', () => refresh({ keepPane: true }));
   $('#gr-new-graph').addEventListener('click', () => openSideForm('graph'));
   events.addEventListener('connection', () => {
-    clearExplorer();
-    if (tabs.current() === 'graph') refresh();
-    else st.info = null;
+    const shown = st;
+    for (const s of [...graphTabs.values()].map((g) => g.st)) {
+      st = s;
+      clearExplorer();
+      s.info = null;
+      s.loaded = false;
+    }
+    st = shown;
+    if (isShown()) refresh();
   });
-  let loaded = false;
   tabs.onShow((name) => {
-    if (name !== 'graph') return;
-    if (!loaded || !st.info) refresh();
-    loaded = true;
+    if (tabs.kind(name) !== 'graph') return;
+    cancelAnimationFrame(animation);
+    st = graphTabs.get(name).st;
+    setStatus('');
+    syncPaneTabs();
+    if (!st.loaded || !st.info) refresh();
+    else {
+      renderSide();
+      renderPane();
+    }
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && tabs.current() === 'graph' && st.explore.connectFrom) {
+    if (e.key === 'Escape' && isShown() && st.explore.connectFrom) {
       st.explore.connectFrom = null;
       updateSelection();
     }
   });
+
+  // ------------------------------------------------------------ tabs
+
+  // A new Graph tab after the others, shown.
+  function newTab() {
+    const id = `graph:${++tabSeq}`;
+    let n = 1;
+    const used = new Set([...graphTabs.values()].map((g) => g.title));
+    while (used.has(tr('Graph {n}', { n }))) n++;
+    graphTabs.set(id, { st: freshState(), title: tr('Graph {n}', { n }), filePath: null });
+    tabs.add({
+      id,
+      kind: 'graph',
+      title: graphTabs.get(id).title,
+      icon: 'graph',
+      element: page,
+      shared: true,
+      onClose: () => {
+        if (graphTabs.get(id)?.st === st) cancelAnimationFrame(animation);
+        graphTabs.delete(id);
+      },
+    });
+    tabs.show(id);
+    return id;
+  }
+
+  // Save / Save As the tab's Cypher query to a .cypher file.
+  async function saveTab(id, saveAs) {
+    const g = graphTabs.get(id);
+    if (!g) return false;
+    const box = g.st === st ? page.querySelector('.gr-cypher') : null;
+    if (box) g.st.cypher.text = box.value;
+    const text = g.st.cypher.text;
+    if (!text.trim()) {
+      status(tr('Nothing to save: the Cypher query is empty.'));
+      return false;
+    }
+    const target = await host.saveFile({ filePath: g.filePath, text, saveAs: saveAs || !g.filePath, defaultName: g.filePath ?? `${g.title}.cypher`, kind: 'cypher' });
+    if (!target) return false;
+    g.filePath = target;
+    g.title = target.split(/[\\/]/).pop();
+    tabs.rename(id, g.title, target);
+    status(tr('Saved {file}', { file: g.title }));
+    return true;
+  }
+
   decorateButtons(page);
-  renderSide();
-  renderPane();
 
   return {
     commands: {
-      'graph-tab': () => tabs.show('graph'),
+      'graph-tab': () => tabs.show(tabs.ofKind('graph')[0] ?? newTab()),
+      'graph-new': () => newTab(),
     },
+    saveTab,
   };
 }

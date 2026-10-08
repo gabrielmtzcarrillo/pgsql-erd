@@ -44,13 +44,15 @@ export function setupDbTree(ctx) {
     if (v && !dbModel && db.connected()) load();
   }
 
-  async function load() {
+  // read: db.catalog, or db.refreshSchema, which also reports the changes
+  // in the status bar (the refresh button).
+  async function load(read = db.catalog) {
     if (!db.connected() || loading) return;
     loading = true;
     error = null;
     render();
     try {
-      await db.catalog(); // sets dbModel through the 'schema' event
+      await read(); // sets dbModel through the 'schema' event
     } catch (err) {
       error = err.message;
     } finally {
@@ -291,7 +293,7 @@ export function setupDbTree(ctx) {
   })();
 
   filter.addEventListener('input', render);
-  $('#db-tree-refresh').addEventListener('click', load);
+  $('#db-tree-refresh').addEventListener('click', () => load(db.refreshSchema));
   $('#db-tree-close').addEventListener('click', () => setShown(false));
   // A new connection reads its schema, which arrives as a 'schema' event.
   events.addEventListener('connection', () => {

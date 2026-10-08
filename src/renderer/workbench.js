@@ -1,7 +1,9 @@
-// The Scripts tab: the project's scripts,
+// The Scripts tabs: the project's scripts,
 // the TypeScript editor with database typings, dry runs and runs with a
 // review step before commit, and validation results linked to the diagram.
 // Scripts run in the main process's isolated runner, never in this page.
+// Each Scripts tab has its own script, editor document and results; the tabs
+// share the page and its list of the project's scripts.
 
 import { schemaFromErd, allTables } from '../shared/schema-model.js';
 import { generateDatabaseDts } from '../shared/typegen.js';
@@ -30,25 +32,101 @@ export function setupWorkbench(ctx) {
   let problems = { errors: 0, warnings: 0, first: null };
   let lint = [];
   const listeners = new Set();
+  const resultsHost = $('#wb-results');
+  let results = h('div'); // the results of the tab in front
+  const scriptTabs = new Map(); // tab id -> { current, doc, results, lastResult, problems, lint }
+  let activeId = null; // the Scripts tab whose script is `current`
+  let docTab = null; // the tab whose document the editor shows
+  let tabSeq = 0;
 
   function blankScript(props = {}) {
     return { path: null, name: 'untitled', type: 'query', profile: SCRIPT_TYPES.query.profile, overrides: {}, description: '', tables: [], source: '', saved: '', metaDirty: false, origin: null, ...props };
   }
 
-  const isDirty = () => current.source !== current.saved || current.metaDirty || (!current.path && current.source.trim() !== '');
+  const isDirty = (s = current) => s.source !== s.saved || s.metaDirty || (!s.path && s.source.trim() !== '');
   const call = async (fn, ...args) => {
     const res = await fn(...args);
     if (!res.ok) throw new Error(res.error);
     return res.result;
   };
 
-  // ------------------------------------------------------------ tab
+  // ------------------------------------------------------------ tabs
 
+  // Shows the Scripts tab in front last, or the first, or a new one.
   function setOpen() {
-    tabs.show('scripts');
+    tabs.show(scriptTabs.has(activeId) ? activeId : tabs.ofKind('scripts')[0] ?? newTab({ show: false }));
   }
+
+  // A new Scripts tab after the others with a blank script.
+  function newTab({ show = true } = {}) {
+    const id = `scripts:${++tabSeq}`;
+    scriptTabs.set(id, { current: blankScript(), doc: null, results: h('div'), lastResult: null, problems: { errors: 0, warnings: 0, first: null }, lint: [] });
+    tabs.add({
+      id,
+      kind: 'scripts',
+      title: 'untitled',
+      icon: 'toggle-workbench',
+      element: panel,
+      shared: true,
+      canClose: async () => {
+        tabs.show(id);
+        return confirmDiscardScript();
+      },
+      onClose: () => {
+        const t = scriptTabs.get(id);
+        scriptTabs.delete(id);
+        if (docTab === id) docTab = null; // its document goes when the next one is shown
+        else if (t.doc) editor?.disposeDoc(t.doc);
+        if (activeId === id) {
+          activeId = null;
+          current = blankScript();
+          lastResult = null;
+        }
+      },
+    });
+    if (show) tabs.show(id);
+    return id;
+  }
+
+  // The tab for a new script: the one in front unless it has unsaved changes.
+  async function targetTab() {
+    setOpen();
+    if (isDirty()) tabs.show(newTab());
+  }
+
+  function stashActive() {
+    const t = scriptTabs.get(activeId);
+    if (t) Object.assign(t, { current, lastResult, problems, lint });
+  }
+
   tabs.onShow((name) => {
-    if (name === 'scripts') ensureEditor().then(() => editor.layout());
+    if (tabs.kind(name) !== 'scripts') return;
+    if (name !== activeId) {
+      stashActive();
+      activeId = name;
+      const t = scriptTabs.get(name);
+      ({ current, lastResult, problems, lint } = t);
+      results = t.results;
+      resultsHost.replaceChildren(results);
+      renderToolbar();
+      renderList();
+      updateState();
+      renderProblems();
+    }
+    ensureEditor().then(() => {
+      if (activeId !== name) return;
+      if (docTab !== name) {
+        const old = scriptTabs.get(docTab);
+        const leaving = editor.doc();
+        if (old) old.doc = leaving;
+        const t = scriptTabs.get(name);
+        editor.showDoc(t.doc ?? editor.newDoc(current.source));
+        if (!old) editor.disposeDoc(leaving); // a closed tab's
+        docTab = name;
+        scheduleCheck();
+      }
+      editor.layout();
+    });
   });
 
   // Side panel: Results / Activity. 'assistant' is its own main tab.
@@ -66,6 +144,7 @@ export function setupWorkbench(ctx) {
   // ------------------------------------------------------------ editor
 
   function ensureEditor() {
+    if (!editorReady) docTab = activeId; // the editor starts with this tab's script
     editorReady ??= createEditor($('#wb-editor'), {
       value: current.source,
       onChange: () => {
@@ -256,6 +335,7 @@ export function setupWorkbench(ctx) {
 
   function load(script) {
     current = blankScript(script);
+    stashActive();
     ensureEditor().then(() => {
       editor.setValue(current.source);
       editor.focus();
@@ -326,6 +406,7 @@ export function setupWorkbench(ctx) {
   function updateState() {
     const el = $('#wb-state');
     const dirty = isDirty();
+    if (scriptTabs.has(activeId)) tabs.rename(activeId, `${current.name}${dirty ? ' •' : ''}`, current.path ?? current.name);
     el.textContent = running ? (running.mode === 'run' ? tr('Running…') : tr('Dry run…')) : dirty ? tr('Unsaved') : current.path ? tr('Saved') : '';
     el.className = `wb-state${running ? ' running' : dirty ? ' dirty' : ''}`;
     for (const b of document.querySelectorAll('[data-cmd="script-run"], [data-cmd="script-dry-run"]')) b.disabled = !!running;
@@ -413,7 +494,7 @@ export function setupWorkbench(ctx) {
   newDialog.addEventListener('close', async () => {
     if (newDialog.returnValue !== 'ok') return;
     const f = newForm.elements;
-    if (!(await confirmDiscardScript())) return;
+    await targetTab();
     const type = f.type.value;
     const source = template(type, { table: f.table.value });
     load({ name: f.name.value.trim() || 'untitled', type, profile: f.profile.value, description: f.description.value.trim(), tables: [f.table.value], source, saved: '' });
@@ -431,24 +512,27 @@ export function setupWorkbench(ctx) {
   }
 
   async function save() {
+    const cur = current; // the tab in front may change while saving
     if (!(await ensureProject())) return false;
     try {
-      if (current.path) {
-        const expected = `scripts/${SCRIPT_TYPES[current.type].folder}/`;
-        const baseName = current.path.split('/').pop().replace(/\.ts$/, '');
-        if (!current.path.startsWith(expected) || baseName !== current.name) {
-          current.path = await call(host.scripts.move, current.path, current.type, current.name);
+      if (cur.path) {
+        const expected = `scripts/${SCRIPT_TYPES[cur.type].folder}/`;
+        const baseName = cur.path.split('/').pop().replace(/\.ts$/, '');
+        if (!cur.path.startsWith(expected) || baseName !== cur.name) {
+          cur.path = await call(host.scripts.move, cur.path, cur.type, cur.name);
         }
       }
-      const { saved, metaDirty, ...script } = current;
-      const path = await call(host.scripts.write, { ...script, isNew: !current.path });
-      current.path = path;
-      current.name = path.split('/').pop().replace(/\.ts$/, '');
-      current.saved = current.source;
-      current.metaDirty = false;
-      current.origin = null;
-      renderToolbar();
-      updateState();
+      const { saved, metaDirty, ...script } = cur;
+      const path = await call(host.scripts.write, { ...script, isNew: !cur.path });
+      cur.path = path;
+      cur.name = path.split('/').pop().replace(/\.ts$/, '');
+      cur.saved = cur.source;
+      cur.metaDirty = false;
+      cur.origin = null;
+      if (cur === current) {
+        renderToolbar();
+        updateState();
+      }
       await reloadList();
       status(tr('Saved {file}', { file: path }));
       return true;
@@ -458,9 +542,17 @@ export function setupWorkbench(ctx) {
     }
   }
 
+  // Save As: the script's code to a .ts file of your choice; the script in
+  // the project is not changed.
+  async function exportScript() {
+    await ensureEditor();
+    const target = await host.saveFile({ text: current.source, saveAs: true, defaultName: `${current.name}.ts`, kind: 'ts' });
+    if (target) status(tr('Exported {file}', { file: target.split(/[\\/]/).pop() }));
+    return !!target;
+  }
+
   // ------------------------------------------------------------ runs
 
-  const results = $('#wb-results');
   let live = null; // { output: el, messages: el }
 
   async function run(mode, { ignoreTypeErrors = false } = {}) {
@@ -473,20 +565,23 @@ export function setupWorkbench(ctx) {
     if (ai === false) return status(tr('Run cancelled.'));
     setOpen();
     showTab('results');
+    // The script and results of the tab that ran it, should another come to the front.
+    const cur = current;
+    const out = results;
     const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     running = { runId, mode };
     updateState();
-    startLive(mode);
+    startLive(mode, out);
     let r;
     try {
       r = await call(host.scripts.run, {
         runId,
-        source: current.source,
-        name: current.name,
-        path: current.path,
-        type: current.type,
-        profile: current.profile,
-        overrides: current.overrides,
+        source: cur.source,
+        name: cur.name,
+        path: cur.path,
+        type: cur.type,
+        profile: cur.profile,
+        overrides: cur.overrides,
         mode,
         ignoreTypeErrors,
         ai,
@@ -494,13 +589,13 @@ export function setupWorkbench(ctx) {
     } catch (err) {
       running = null;
       updateState();
-      renderError(err.message);
+      renderError(err.message, out);
       return;
     }
     running = null;
     updateState();
     if (r.stage === 'typecheck') {
-      renderTypeErrors(r);
+      renderTypeErrors(r, out);
       const errs = r.diagnostics.filter((d) => d.severity === 'error');
       const choice = await host.confirm({
         message: trn(errs.length, 'The script has {n} type error.', 'The script has {n} type errors.'),
@@ -510,16 +605,20 @@ export function setupWorkbench(ctx) {
       if (choice === 0) return run(mode, { ignoreTypeErrors: true });
       return;
     }
-    if (r.stage === 'transpile') return renderError(r.error);
-    lastResult = r;
-    const entry = scripts.find((s) => s.path === current.path);
+    if (r.stage === 'transpile') return renderError(r.error, out);
+    if (cur === current) lastResult = r;
+    else {
+      const t = [...scriptTabs.values()].find((x) => x.current === cur);
+      if (t) t.lastResult = r;
+    }
+    const entry = scripts.find((s) => s.path === cur.path);
     if (entry) entry.lastStatus = r.error ? 'failed' : r.success ? 'passed' : 'warn';
     // Runs of the saved version only: an edited script isn't what the file says.
-    if (current.path && !isDirty()) recordRun(current.path, r);
-    renderResult(r);
+    if (cur.path && !isDirty(cur)) recordRun(cur.path, r);
+    renderResult(r, out);
     renderList();
     listeners.forEach((l) => l('result', r));
-    if (r.status === 'pending') await review(r);
+    if (r.status === 'pending') await review(r, out);
     if (r.schemaChanged && r.status !== 'pending') ctx.refreshSchema?.();
   }
 
@@ -534,21 +633,21 @@ export function setupWorkbench(ctx) {
     }
   });
 
-  function startLive(mode) {
+  function startLive(mode, out) {
     const output = h('pre', { class: 'wb-output', hidden: true });
     const st = h('div', { class: 'wb-result-head running' }, mode === 'run' ? tr('Running…') : tr('Dry run…'));
     live = { output, status: st, count: 0 };
-    results.replaceChildren(st, output);
+    out.replaceChildren(st, output);
   }
 
-  function renderError(message) {
+  function renderError(message, out) {
     live = null;
-    results.replaceChildren(h('div', { class: 'wb-result-head failed' }, tr('Could not run the script')), h('pre', { class: 'wb-error' }, message));
+    out.replaceChildren(h('div', { class: 'wb-result-head failed' }, tr('Could not run the script')), h('pre', { class: 'wb-error' }, message));
   }
 
-  function renderTypeErrors(r) {
+  function renderTypeErrors(r, out) {
     live = null;
-    results.replaceChildren(
+    out.replaceChildren(
       h('div', { class: 'wb-result-head failed' }, tr('Type errors — not run')),
       h(
         'div',
@@ -568,7 +667,7 @@ export function setupWorkbench(ctx) {
     failed: tr('Failed — rolled back'),
   };
 
-  function renderResult(r) {
+  function renderResult(r, out) {
     live = null;
     const statusClass = r.status === 'failed' ? 'failed' : r.success === false ? 'warn' : 'ok';
     const nodes = [
@@ -616,7 +715,7 @@ export function setupWorkbench(ctx) {
       nodes.push(h('pre', { class: 'wb-output' }, r.output.join('\n')));
     }
     nodes.push(h('div', { id: 'wb-row-view' }));
-    results.replaceChildren(...nodes);
+    out.replaceChildren(...nodes);
   }
 
   function count(label, n, cls) {
@@ -696,7 +795,7 @@ export function setupWorkbench(ctx) {
 
   // Pending commit: show the changes and ask.
   const previewDialog = $('#run-preview-dialog');
-  function review(r) {
+  function review(r, out) {
     $('#run-preview-title').textContent = tr('Commit changes from {script}?', { script: r.script });
     $('#run-preview-summary').textContent = tr('{inserts} inserted, {updates} updated, {deletes} deleted{schema} on {db} ({env}).', {
       inserts: r.inserts,
@@ -723,7 +822,7 @@ export function setupWorkbench(ctx) {
             r.status = 'failed';
             r.error = err.message;
           }
-          renderResult(r);
+          renderResult(r, out);
           resolve();
         },
         { once: true }
@@ -787,6 +886,7 @@ export function setupWorkbench(ctx) {
   });
 
   decorateButtons(panel);
+  resultsHost.replaceChildren(results);
   renderToolbar();
   updateState();
   renderProject();
@@ -795,9 +895,12 @@ export function setupWorkbench(ctx) {
     open: () => setOpen(),
     scripts: () => scripts,
     runs: () => runs,
-    // Open a saved script in the Scripts tab.
+    // Open a saved script: in the tab that has it, or the tab in front
+    // unless that has unsaved changes, or a new tab.
     async openScript(path) {
-      setOpen();
+      const open = [...scriptTabs].find(([id, t]) => (id === activeId ? current : t.current).path === path)?.[0];
+      if (open) return tabs.show(open);
+      await targetTab();
       await ensureEditor();
       await openScript(path);
     },
@@ -813,8 +916,7 @@ export function setupWorkbench(ctx) {
     onChange: (fn) => listeners.add(fn),
     hasEditor: () => !!editor,
     async newFromCode({ name, type, description, source }, origin = 'assistant') {
-      if (!(await confirmDiscardScript())) return;
-      setOpen();
+      await targetTab();
       load({ name: name || 'assistant script', type: SCRIPT_TYPES[type] ? type : 'query', profile: SCRIPT_TYPES[type]?.profile ?? 'read-only', description: description ?? '', source, saved: '', origin });
     },
     async replaceCode(source) {
@@ -835,8 +937,11 @@ export function setupWorkbench(ctx) {
 
   return {
     api,
+    // Save keeps the script in the project; Save As writes its code to a file.
+    saveTab: (id, saveAs) => (saveAs ? exportScript() : save()),
     commands: {
       'toggle-workbench': () => setOpen(),
+      'script-tab-new': () => newTab(),
       'script-new': () => openNewDialog(),
       'script-save': () => save(),
       'script-run': () => run('run'),

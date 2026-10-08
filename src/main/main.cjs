@@ -172,13 +172,11 @@ async function openFileInWindow(win, filePath) {
   }
 }
 
-// Open in the focused window when it is an untouched empty diagram, otherwise a new window.
+// Open in the focused window, which shows it in a diagram tab; a new window
+// when there is none.
 async function openFile(filePath) {
   const win = focusedWindow();
-  if (win) {
-    const isEmpty = await win.webContents.executeJavaScript('window.erdIsPristine?.() ?? false');
-    if (isEmpty) return openFileInWindow(win, filePath);
-  }
+  if (win) return openFileInWindow(win, filePath);
   createWindow(filePath);
 }
 
@@ -244,6 +242,8 @@ ipcMain.handle('save-file', async (e, { filePath, text, saveAs, defaultName, kin
     pgerd: [{ name: 'pgAdmin ERD', extensions: ['pgerd'] }],
     sql: [{ name: 'SQL', extensions: ['sql'] }],
     svg: [{ name: tr('SVG Image'), extensions: ['svg'] }],
+    cypher: [{ name: 'Cypher', extensions: ['cypher', 'cql'] }],
+    ts: [{ name: 'TypeScript', extensions: ['ts'] }],
   }[kind ?? 'pgerd'];
   let target = saveAs ? null : filePath;
   if (!target) {
@@ -270,6 +270,41 @@ ipcMain.handle('save-binary', async (e, { defaultName, data, name, extensions })
   if (res.canceled || !res.filePath) return null;
   await fs.writeFile(res.filePath, Buffer.from(data));
   return res.filePath;
+});
+
+// Save As: one dialog for every format the diagram can be written in; the
+// chosen file type (by extension) decides the format. The renderer then
+// builds the content and writes it with save-as-write, which only accepts
+// the path the user just picked in that window.
+const SAVE_AS_FORMATS = {
+  pgerd: { name: 'pgAdmin ERD', ext: 'pgerd' },
+  sql: { name: 'SQL', ext: 'sql' },
+  svg: { name: 'SVG Image', ext: 'svg' },
+  png: { name: 'PNG Image', ext: 'png' },
+};
+const saveAsPicks = new Map(); // webContents id -> picked path
+
+ipcMain.handle('save-as-pick', async (e, { defaultName, images = true }) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const formats = Object.entries(SAVE_AS_FORMATS).filter(([id]) => images || (id !== 'svg' && id !== 'png'));
+  const res = await dialog.showSaveDialog(win, {
+    title: tr('Save As…'),
+    defaultPath: defaultName,
+    filters: formats.map(([, f]) => ({ name: tr(f.name), extensions: [f.ext] })),
+  });
+  if (res.canceled || !res.filePath) return null;
+  const ext = path.extname(res.filePath).slice(1).toLowerCase();
+  const format = formats.find(([, f]) => f.ext === ext)?.[0] ?? 'pgerd';
+  saveAsPicks.set(e.sender.id, res.filePath);
+  return { filePath: res.filePath, format };
+});
+
+ipcMain.handle('save-as-write', async (e, { filePath, text, data, format }) => {
+  if (!filePath || saveAsPicks.get(e.sender.id) !== filePath) throw new Error('Not the file picked in Save As.');
+  saveAsPicks.delete(e.sender.id);
+  await fs.writeFile(filePath, data ? Buffer.from(data) : text, data ? undefined : 'utf8');
+  if (format === 'pgerd') addRecentFile(filePath);
+  return filePath;
 });
 
 // Database connections, scripts, the assistant and the audit log.

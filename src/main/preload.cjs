@@ -16,6 +16,11 @@ contextBridge.exposeInMainWorld('erdHost', {
   openSql: () => ipcRenderer.invoke('open-sql'),
   saveFile: (opts) => ipcRenderer.invoke('save-file', opts),
   saveBinary: (opts) => ipcRenderer.invoke('save-binary', opts),
+  // Save As in any format: pick a file (its type gives the format), then write it.
+  saveAs: {
+    pick: (opts) => ipcRenderer.invoke('save-as-pick', opts),
+    write: (opts) => ipcRenderer.invoke('save-as-write', opts),
+  },
   confirm: (opts) => ipcRenderer.invoke('confirm', opts),
   setState: (state) => ipcRenderer.send('state', state),
   closeWindow: () => ipcRenderer.send('close-window'),

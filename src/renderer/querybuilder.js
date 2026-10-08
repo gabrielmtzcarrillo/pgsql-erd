@@ -1,9 +1,11 @@
-// The Builder tab: a visual query builder. Tables are dragged from the
+// The Builder tabs: a visual query builder. Tables are dragged from the
 // database explorer onto the canvas and their columns picked with
 // checkboxes; tables with a foreign key between them are joined
 // automatically, and dragging a column onto a column of another table joins
 // them by hand. The SQL is shown below the canvas and opens (or runs) in the
 // Query tab. The SQL itself comes from lib/querybuilder.js.
+// Each Builder tab has its own query; they share the page, which shows the
+// query of the tab in front.
 
 import { TABLE_DRAG_TYPE } from './dbtree.js';
 import { tableKey } from './lib/catalog.js';
@@ -14,7 +16,8 @@ import { iconElement, decorateButtons } from './icons.js';
 import { tr, trn } from '../shared/i18n.js';
 
 const $ = (sel) => document.querySelector(sel);
-const STATE_KEY = 'pgsql-erd.query-builder';
+const STATE_KEY = 'pgsql-erd.query-builder'; // the query of the old single Builder tab
+const TABS_KEY = 'pgsql-erd.query-builder-tabs';
 const SPLIT_KEY = 'pgsql-erd.query-builder-split';
 // dataTransfer type of a column dragged onto another to join them.
 const COLUMN_DRAG_TYPE = 'application/x-pgsql-erd-column';
@@ -22,28 +25,35 @@ const MARGIN = 20;
 const GAP = 60;
 
 export function setupQueryBuilder(ctx) {
-  const { h, status, db, tabs, events, dbTree } = ctx;
+  const { host, h, status, db, tabs, events, dbTree } = ctx;
   const page = $('#builder-page');
   const canvas = $('#qb-canvas');
   const area = $('#qb-area');
   const lines = $('#qb-lines');
   const sqlBox = $('#qb-sql');
-  let st = load();
+  const empty = () => ({ tables: [], joins: [], distinct: false, limit: '' });
+  const builders = new Map(); // tab id -> { st, title, filePath }
+  let builderId = null; // the tab whose query `st` is
+  let st = empty();
   let seq = 0;
+  let tabSeq = 0;
   const newId = () => `${Date.now().toString(36)}${(seq++).toString(36)}`;
+  const isShown = () => tabs.kind(tabs.current()) === 'builder';
 
-  function load() {
-    const empty = { tables: [], joins: [], distinct: false, limit: '' };
+  function load(key) {
     try {
-      const saved = JSON.parse(localStorage.getItem(STATE_KEY) ?? 'null');
-      return saved && Array.isArray(saved.tables) && Array.isArray(saved.joins) ? { ...empty, ...saved } : empty;
+      return JSON.parse(localStorage.getItem(key) ?? 'null');
     } catch {
-      return empty;
+      return null;
     }
   }
+  const valid = (x) => x && Array.isArray(x.tables) && Array.isArray(x.joins);
+
+  // Every tab's query is remembered, in tab order.
   function save() {
+    if (builderId) builders.get(builderId).st = st;
     try {
-      localStorage.setItem(STATE_KEY, JSON.stringify(st));
+      localStorage.setItem(TABS_KEY, JSON.stringify(tabs.ofKind('builder').map((id) => builders.get(id)).filter(Boolean)));
     } catch {
       // not remembered
     }
@@ -59,7 +69,7 @@ export function setupQueryBuilder(ctx) {
   function changed() {
     save();
     render();
-    if (tabs.current() === 'builder') dbTree.render();
+    if (isShown()) dbTree.render();
   }
 
   // Adds a table at `at` (canvas coordinates), or after the last one, joined
@@ -156,7 +166,7 @@ export function setupQueryBuilder(ctx) {
   function updateSql() {
     const text = sql();
     highlightSQL(sqlBox, text || `-- ${tr('Drag tables here from the database explorer.')}`);
-    for (const b of page.querySelectorAll('#qb-copy, #qb-open, #qb-run')) b.disabled = !text;
+    for (const b of page.querySelectorAll('#qb-copy, #qb-save, #qb-open, #qb-run')) b.disabled = !text;
     $('#qb-status').textContent = st.tables.length
       ? `${trn(st.tables.length, '{n} table', '{n} tables')} · ${trn(st.joins.length, '{n} join', '{n} joins')} · ${trn(st.tables.reduce((n, t) => n + t.columns.length, 0), '{n} column', '{n} columns')}`
       : '';
@@ -394,6 +404,7 @@ export function setupQueryBuilder(ctx) {
     st = { ...st, tables: [], joins: [] };
     changed();
   });
+  $('#qb-save').addEventListener('click', () => saveTab(builderId, true));
   $('#qb-copy').addEventListener('click', async () => {
     await navigator.clipboard.writeText(sql());
     status(tr('SQL copied to the clipboard'));
@@ -443,33 +454,112 @@ export function setupQueryBuilder(ctx) {
     hint: () => tr('Drag tables into the query; related tables are joined.'),
   };
   tabs.onShow((name) => {
-    if (name === 'builder') {
+    const kind = tabs.kind(name);
+    if (kind === 'builder') {
+      if (builderId && builders.has(builderId)) builders.get(builderId).st = st;
+      builderId = name;
+      st = builders.get(name).st;
       dbTree.attach(page, explorerTarget);
       if (!dbTree.model() && db.connected()) dbTree.load();
       render();
-    } else if (name === 'erd') {
+    } else if (kind === 'erd') {
       dbTree.attach($('main.workspace'));
     }
   });
   // The schema was read again: drop tables and columns that are gone.
   events.addEventListener('schema', (e) => {
     if (!e.model) return;
-    st = reconcile(st, e.model);
+    if (builderId) builders.get(builderId).st = st;
+    for (const b of builders.values()) b.st = reconcile(b.st, e.model);
+    if (builderId) st = builders.get(builderId).st;
     save();
-    if (tabs.current() === 'builder') render();
+    if (isShown()) render();
   });
-  // Another database: the query is closed.
+  // Another database: the queries are closed.
   events.addEventListener('database-switch', () => {
-    st = { ...st, tables: [], joins: [] };
+    if (builderId) builders.get(builderId).st = st;
+    for (const b of builders.values()) b.st = { ...b.st, tables: [], joins: [] };
+    if (builderId) st = builders.get(builderId).st;
     changed();
   });
-  window.addEventListener('resize', () => tabs.current() === 'builder' && drawJoins());
+  window.addEventListener('resize', () => isShown() && drawJoins());
+
+  // ------------------------------------------------------------ tabs
+
+  // A new Builder tab after the others; shown unless `background`.
+  function newTab({ st: query = empty(), title = null, filePath = null, background = false } = {}) {
+    const id = `builder:${++tabSeq}`;
+    let n = 1;
+    const used = new Set([...builders.values()].map((b) => b.title));
+    while (used.has(tr('Builder {n}', { n }))) n++;
+    builders.set(id, { st: query, title: title ?? tr('Builder {n}', { n }), filePath });
+    tabs.add({
+      id,
+      kind: 'builder',
+      title: builders.get(id).title,
+      tooltip: filePath ?? builders.get(id).title,
+      icon: 'query-builder',
+      element: page,
+      shared: true,
+      onClose: () => {
+        // The explorer goes back to the diagram rather than away with the page.
+        if (builderId === id) {
+          builderId = null;
+          st = empty();
+          dbTree.attach($('main.workspace'));
+        }
+        builders.delete(id);
+        save();
+      },
+    });
+    save();
+    if (!background) tabs.show(id);
+    return id;
+  }
+
+  // Save / Save As the tab's SQL to a .sql file.
+  async function saveTab(id, saveAs) {
+    const b = builders.get(id);
+    if (!b) return false;
+    if (id === builderId) b.st = st;
+    const text = buildSQL(b.st);
+    if (!text) {
+      status(tr('Nothing to save: add tables to the query first.'));
+      return false;
+    }
+    const target = await host.saveFile({ filePath: b.filePath, text, saveAs: saveAs || !b.filePath, defaultName: b.filePath ?? `${b.title}.sql`, kind: 'sql' });
+    if (!target) return false;
+    b.filePath = target;
+    b.title = target.split(/[\\/]/).pop();
+    tabs.rename(id, b.title, target);
+    save();
+    status(tr('Saved {file}', { file: b.title }));
+    return true;
+  }
+
+  // The remembered tabs come back after the diagram's.
+  function restoreTabs() {
+    for (const t of load(TABS_KEY) ?? []) if (valid(t?.st)) newTab({ ...t, st: { ...empty(), ...t.st }, background: true });
+    // The query of the old single Builder tab becomes a tab of its own, once.
+    const old = load(STATE_KEY);
+    if (old !== null) {
+      if (valid(old) && old.tables.length) newTab({ st: { ...empty(), ...old }, background: true });
+      try {
+        localStorage.removeItem(STATE_KEY);
+      } catch {
+        // asked again next time
+      }
+    }
+  }
 
   decorateButtons(page);
 
   return {
     commands: {
-      'query-builder': () => tabs.show('builder'),
+      'query-builder': () => tabs.show(tabs.ofKind('builder')[0] ?? newTab()),
+      'builder-new': () => newTab(),
     },
+    saveTab,
+    restoreTabs,
   };
 }

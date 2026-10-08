@@ -15,10 +15,17 @@ funciona con Ollama, vLLM, OpenAI y otros servidores compatibles con OpenAI.
 
 ### Cinta de opciones y pestañas
 
-Los comandos se agrupan al estilo de Office (Archivo, Historial, Diagrama,
-Base de datos, Scripts, SQL y exportar) con iconos a dos colores; los menús nativos usan los
-mismos iconos. Debajo de la cinta, las pestañas cambian entre **Diagrama**, **Scripts**, **Consulta**,
-**Generador**, **Grafo** y **Asistente**, seguidas de una pestaña por cada tabla cuyos datos estés explorando.
+Los comandos se agrupan al estilo de Office (Archivo, Base de datos)
+con iconos a dos colores; los menús nativos usan los mismos iconos. Debajo de la cinta están las pestañas: una
+ventana empieza con un diagrama, y los botones **+ Diagrama**, **+ Scripts**, **+ Consulta**, **+ Generador**,
+**+ Grafo** y **+ Datos** abren tantas más como quieras (**+ Diagrama** también es <kbd>Ctrl</kbd>+<kbd>N</kbd>);
+el **Asistente** queda al final. Abrir un archivo `.pgerd` lo muestra en una pestaña de diagrama propia (o en la
+vacía con la que empezaste). **Guardar** y **Guardar como…** trabajan con la pestaña al frente: un diagrama
+guarda su `.pgerd` (Guardar como también puede escribir SQL, SVG o PNG), las pestañas Consulta y Generador
+guardan su SQL en un archivo `.sql`, una pestaña Scripts guarda su script en el proyecto (Guardar como escribe
+su código en un archivo `.ts`) y una pestaña Grafo guarda su consulta Cypher en un archivo `.cypher`. La
+pestaña Diagrama tiene su propia barra: **Deshacer**, **Rehacer**, **Tablas**,
+**Tabla**, **Relación**, **Eliminar**, **Vista previa SQL**, **Importar desde la base de datos…** y **Comparar**.
 
 ![Cinta de opciones](docs/screenshots/es/ribbon.png)
 
@@ -167,7 +174,7 @@ Una vista dirigida por fuerzas; haz doble clic en un vértice para expandir sus 
 - Guarda de nuevo en `.pgerd`. Las propiedades que esta aplicación no edita (tablespace, restricciones check,
   etc.) se conservan tal como estaban.
 - Importa tablas desde **Excel (`.xlsx`/`.xlsm`) o CSV** con **Archivo → Importar desde Excel / CSV**
-  (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>E</kbd>), el botón **Excel** de la cinta o soltando el archivo en la
+  (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>E</kbd>), **Importar Excel** en el grupo Base de datos de la cinta o soltando el archivo en la
   ventana. Cada hoja se lee en uno de dos formatos:
   - **Definiciones de columnas:** una fila de encabezado con *Column* y *Type* (y cualquiera de *Table, Schema,
     Length, Scale, Nullable / Not null, PK, Unique, Default, References, Comment*), una fila por columna. Una
@@ -183,7 +190,9 @@ Una vista dirigida por fuerzas; haz doble clic en un vértice para expandir sus 
   convierten a snake_case salvo que lo desactives. Las tablas que ya están en el diagrama se actualizan y
   conservan su posición. Los archivos `.xls` antiguos no se admiten; guárdalos antes como `.xlsx`.
 - Vista previa SQL en vivo con resaltado de sintaxis, y exportación a DDL de PostgreSQL (`CREATE TABLE`, claves
-  primarias, restricciones únicas, claves foráneas, comentarios), SVG o PNG.
+  primarias, restricciones únicas, claves foráneas, comentarios), SVG o PNG. **Guardar como…**
+  (<kbd>Ctrl</kbd>+<kbd>Mayús</kbd>+<kbd>S</kbd>) escribe cualquiera de ellos: el tipo de archivo elegido en el
+  diálogo (`.pgerd`, `.sql`, `.svg` o `.png`) decide el formato.
 - Una cinta de opciones al estilo de Office con grupos de comandos con nombre e iconos a dos colores, que
   comparten los menús nativos y los diálogos.
 - Temas en **Ver → Tema**: Blanco, Oscuro, Visual Studio (Azul clásico) y Windows ME, o el tema claro u oscuro del
@@ -192,7 +201,7 @@ Una vista dirigida por fuerzas; haz doble clic en un vértice para expandir sus 
 
 ## Sincronización con la base de datos
 
-El menú **Base de datos** (y los botones *Conectar / Importar / Comparar* de la cinta) trabaja con un servidor
+El menú **Base de datos** (el botón *Conectar* de la cinta, e **Importar desde la base de datos…** y **Comparar** en la pestaña Diagrama) trabaja con un servidor
 PostgreSQL 10+ en vivo:
 
 - **Conectar:** servidor, puerto, base de datos, usuario, contraseña y modo SSL. Las conexiones se pueden
@@ -279,7 +288,7 @@ las etiquetas también necesitan cambios de esquema) y quedan registrados en el 
 eliminaciones piden confirmación. Las consultas Cypher que modifican el grafo (`CREATE`, `MERGE`, `SET`,
 `DELETE`, `REMOVE`) solo se ejecutan si marcas **Permitir cambios**; las demás se ejecutan en una transacción
 de solo lectura. Los ids de los elementos del grafo son de 64 bits, así que se guardan como cadenas y nunca se
-redondean. Los esquemas propios de AGE (`ag_catalog` y uno por grafo) se dejan fuera de **Importar** y
+redondean. Los esquemas propios de AGE (`ag_catalog` y uno por grafo) se dejan fuera de **Importar desde la base de datos…** y
 **Comparar**.
 
 La sesión ejecuta `LOAD 'age'`, o `$libdir/plugins/age` para usuarios que no son superusuarios, salvo que AGE
@@ -353,8 +362,8 @@ asistente** envía la consulta, su plan y las sugerencias a la pestaña Asistent
 
 El explorador de la base de datos está junto al editor (**Explorador**): arrastra una tabla al SQL, o haz doble
 clic, para insertar su nombre. **+ Consulta** junto a **+ Datos** abre más pestañas de consulta, cada una con su
-SQL, resultados y plan; los archivos `.sql` abiertos o soltados tienen su propia pestaña. Las pestañas extra y su
-SQL se recuerdan entre sesiones, y cerrar una con SQL sin guardar pide confirmación.
+SQL, resultados y plan; los archivos `.sql` abiertos o soltados tienen su propia pestaña. Las pestañas de consulta
+y su SQL se recuerdan entre sesiones, y cerrar una con SQL sin guardar pide confirmación.
 
 ### Generador
 
@@ -371,8 +380,9 @@ del encabezado marca todas. Las tablas con una clave foránea entre ellas se une
 Cada unión tiene un pequeño menú sobre su línea, con su nombre SQL: solo las filas que coinciden (`INNER JOIN`),
 todas las filas de una tabla (`LEFT` / `RIGHT JOIN`) o de ambas (`FULL JOIN`). Los alias se pueden cambiar en los encabezados de las
 tablas; **Sin duplicados** y **Límite** completan la sentencia. El SQL aparece debajo del lienzo mientras
-trabajas: **Abrir en Consulta** lo pone en la pestaña Consulta y **Ejecutar** además lo ejecuta ahí. La
-consulta se recuerda entre sesiones.
+trabajas: **Abrir en Consulta** lo pone en la pestaña Consulta y **Ejecutar** además lo ejecuta ahí;
+**Guardar…** escribe el SQL en un archivo. Cada pestaña Generador tiene su propia consulta, y se recuerdan
+entre sesiones.
 
 ### Pestañas de datos
 

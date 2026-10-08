@@ -11,80 +11,34 @@
   <header class="toolbar ribbon">
     <div class="group">
       <div class="group-items">
-        <button data-cmd="new" title="New diagram (Ctrl+N)">New</button>
         <button data-cmd="open" title="Open .pgerd (Ctrl+O)">Open</button>
         <button data-cmd="save" title="Save (Ctrl+S)">Save</button>
-        <button data-cmd="import-spreadsheet" title="Import tables from an Excel workbook or CSV file (Ctrl+Alt+E)">Excel</button>
+        <button data-cmd="save-as" title="Save as a diagram, SQL file, SVG or PNG image (Ctrl+Shift+S)">Save As…</button>
       </div>
       <div class="group-label">File</div>
     </div>
     <div class="group">
       <div class="group-items">
-        <div class="stack">
-          <button data-cmd="undo" title="Undo (Ctrl+Z)">Undo</button>
-          <button data-cmd="redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
-        </div>
-      </div>
-      <div class="group-label">History</div>
-    </div>
-    <div class="group">
-      <div class="group-items">
-        <button data-cmd="toggle-tables" title="Show the list of tables">Tables</button>
-        <button data-cmd="add-table" title="Add table (Ctrl+Alt+T)">Table</button>
-        <button data-cmd="add-link" title="Add relationship (Ctrl+Alt+R)">Relationship</button>
-        <button data-cmd="delete" title="Delete selection (Del)">Delete</button>
-      </div>
-      <div class="group-label">Diagram</div>
-    </div>
-    <div class="group">
-      <div class="group-items">
         <button data-cmd="db-connect" id="db-button" title="Connect to a PostgreSQL database">Connect</button>
         <button data-cmd="toggle-db-tree" title="Show the tables of the connected database">Explorer</button>
-        <div class="stack">
-          <button data-cmd="db-refresh" title="Read the database schema again (Ctrl+Alt+F5)" data-i18n="ribbon: Refresh">Refresh</button>
-          <button data-cmd="db-import" title="Import tables from the database (Ctrl+Alt+I)">Import</button>
-          <button data-cmd="db-compare" title="Compare with the database and generate migration SQL (Ctrl+Alt+D)">Compare</button>
-        </div>
+        <button data-cmd="import-spreadsheet" title="Import tables from an Excel workbook (.xlsx, .xlsm) or a CSV / TSV file (Ctrl+Alt+E)">Import Excel</button>
       </div>
       <div class="group-label">Database</div>
-    </div>
-    <div class="group">
-      <div class="group-items">
-        <button data-cmd="script-new" title="New script (Ctrl+Alt+N)" data-i18n="ribbon: New script">New script</button>
-        <div class="stack">
-          <button data-cmd="script-dry-run" title="Run in a transaction that is rolled back (F6)">Dry run</button>
-          <button data-cmd="script-run" title="Run, then review changes before they are committed (F5)">Run</button>
-          <button data-cmd="script-stop" title="Stop the running script (Shift+F5)">Stop</button>
-        </div>
-      </div>
-      <div class="group-label">Scripts</div>
-    </div>
-    <div class="group">
-      <div class="group-items">
-        <button data-cmd="toggle-sql" title="Show SQL preview (Ctrl+Alt+P)">SQL</button>
-        <div class="stack">
-          <button data-cmd="export-sql" title="Export SQL DDL">SQL file</button>
-          <button data-cmd="export-svg" title="Export SVG image">SVG image</button>
-          <button data-cmd="export-png" title="Export PNG image">PNG image</button>
-        </div>
-      </div>
-      <div class="group-label">SQL &amp; Export</div>
     </div>
   </header>
 
   <nav id="main-tabs" class="main-tabs" role="tablist">
-    <button type="button" data-main-tab="erd" data-icon="toggle-tables" class="active">Diagram</button>
-    <button type="button" data-main-tab="scripts" data-icon="toggle-workbench">Scripts</button>
-    <button type="button" data-main-tab="query" data-icon="toggle-sql">Query</button>
-    <button type="button" data-main-tab="builder" data-icon="query-builder" title="Build a query by dragging tables from the database explorer">Builder</button>
-    <button type="button" data-main-tab="graph" data-icon="graph" title="Apache AGE graphs: relationships, vertices, explorer and Cypher">Graph</button>
-    <button type="button" data-main-tab="assistant" data-icon="ai-assistant">Assistant</button>
     <span id="data-tabs" class="data-tabs"></span>
-    <button type="button" id="data-tab-add" class="data-add" data-icon="plus" title="Browse the data of a table">Data</button>
+    <button type="button" class="data-add" data-cmd="new" data-icon="plus" title="Open a new diagram (Ctrl+N)">Diagram</button>
+    <button type="button" class="data-add" data-cmd="script-tab-new" data-icon="plus" title="Open a new Scripts tab">Scripts</button>
     <button type="button" id="query-tab-add" class="data-add" data-icon="plus" title="Open another query tab">Query</button>
+    <button type="button" class="data-add" data-cmd="builder-new" data-icon="plus" title="Build a query by dragging tables from the database explorer">Builder</button>
+    <button type="button" class="data-add" data-cmd="graph-new" data-icon="plus" title="Apache AGE graphs: relationships, vertices, explorer and Cypher">Graph</button>
+    <button type="button" id="data-tab-add" class="data-add" data-icon="plus" title="Browse the data of a table">Data</button>
+    <button type="button" data-main-tab="assistant" data-icon="ai-assistant">Assistant</button>
   </nav>
 
-  <main class="workspace tab-page" data-page="erd">
+  <main class="workspace tab-page" data-page="erd" hidden>
     <aside id="db-tree" class="db-tree" hidden>
       <div class="tree-head">
         <strong>Database</strong>
@@ -99,48 +53,63 @@
       <p class="tree-hint">Drag a table onto the diagram to add it.</p>
       <div id="db-tree-resize" class="db-tree-resize" title="Drag to resize"></div>
     </aside>
-    <section class="canvas-wrap">
-      <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <pattern id="grid" patternUnits="userSpaceOnUse" width="75" height="75">
-            <path id="grid-minor" class="grid-minor"></path>
-            <path id="grid-major" class="grid-major"></path>
-          </pattern>
-        </defs>
-        <rect id="grid-bg" width="100%" height="100%" fill="url(#grid)"></rect>
-        <g id="viewport">
-          <g id="links-layer"></g>
-          <g id="script-links-layer"></g>
-          <g id="tables-layer"></g>
-          <g id="scripts-layer"></g>
-        </g>
-      </svg>
-      <button type="button" id="erd-scripts-toggle" class="erd-overlay-btn" data-icon="toggle-workbench" hidden>Show scripts</button>
-      <div id="empty-hint" class="empty-hint">
-        <h2>No tables yet</h2>
-        <p data-i18n>Open a pgAdmin <code>.pgerd</code> file, drop one here (or an Excel/CSV file), or add a table.</p>
-        <div>
-          <button data-cmd="open">Open file…</button>
-          <button data-cmd="import-spreadsheet">Import Excel…</button>
-          <button data-cmd="add-table">Add table</button>
-        </div>
-        <section id="recent-files" class="recent-files" hidden>
-          <header>
-            <strong>Recent files</strong>
-            <button type="button" id="recent-clear" class="link-btn" title="Clear the list of recent files">Clear</button>
-          </header>
-          <ul id="recent-list"></ul>
-        </section>
+    <section class="erd-main">
+      <div class="erd-toolbar">
+        <button type="button" data-cmd="undo" title="Undo (Ctrl+Z)">Undo</button>
+        <button type="button" data-cmd="redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
+        <span class="toolbar-sep"></span>
+        <button type="button" data-cmd="toggle-tables" title="Show the list of tables">Tables</button>
+        <button type="button" data-cmd="add-table" title="Add table (Ctrl+Alt+T)">Table</button>
+        <button type="button" data-cmd="add-link" title="Add relationship (Ctrl+Alt+R)">Relationship</button>
+        <button type="button" data-cmd="delete" title="Delete selection (Del)">Delete</button>
+        <span class="toolbar-sep"></span>
+        <button type="button" data-cmd="toggle-sql" title="Show SQL preview (Ctrl+Alt+P)">SQL Preview</button>
+        <button type="button" data-cmd="db-import" title="Import tables from the database (Ctrl+Alt+I)">Import from Database…</button>
+        <button type="button" data-cmd="db-compare" title="Compare with the database and generate migration SQL (Ctrl+Alt+D)">Compare</button>
       </div>
-      <section id="sql-panel" class="sql-panel" hidden>
-        <div class="sql-head">
-          <strong>SQL preview</strong>
-          <span>
-            <button id="sql-copy" data-icon="copy">Copy</button>
-            <button data-cmd="toggle-sql" data-icon="close">Close</button>
-          </span>
+      <section class="canvas-wrap">
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id="grid" patternUnits="userSpaceOnUse" width="75" height="75">
+              <path id="grid-minor" class="grid-minor"></path>
+              <path id="grid-major" class="grid-major"></path>
+            </pattern>
+          </defs>
+          <rect id="grid-bg" width="100%" height="100%" fill="url(#grid)"></rect>
+          <g id="viewport">
+            <g id="links-layer"></g>
+            <g id="script-links-layer"></g>
+            <g id="tables-layer"></g>
+            <g id="scripts-layer"></g>
+          </g>
+        </svg>
+        <button type="button" id="erd-scripts-toggle" class="erd-overlay-btn" data-icon="toggle-workbench" hidden>Show scripts</button>
+        <div id="empty-hint" class="empty-hint">
+          <h2>No tables yet</h2>
+          <p data-i18n>Open a pgAdmin <code>.pgerd</code> file, drop one here (or an Excel/CSV file), or add a table.</p>
+          <div>
+            <button data-cmd="open">Open file…</button>
+            <button data-cmd="import-spreadsheet">Import Excel…</button>
+            <button data-cmd="add-table">Add table</button>
+          </div>
+          <section id="recent-files" class="recent-files" hidden>
+            <header>
+              <strong>Recent files</strong>
+              <button type="button" id="recent-clear" class="link-btn" title="Clear the list of recent files">Clear</button>
+            </header>
+            <ul id="recent-list"></ul>
+          </section>
         </div>
-        <pre id="sql-text"></pre>
+        <section id="sql-panel" class="sql-panel" hidden>
+          <div class="sql-head">
+            <strong>SQL preview</strong>
+            <span>
+              <button id="sql-copy" data-icon="copy">Copy</button>
+              <button data-cmd="toggle-sql" data-icon="close">Close</button>
+            </span>
+          </div>
+          <pre id="sql-text"></pre>
+        </section>
       </section>
     </section>
     <aside id="sidebar" class="sidebar" hidden>
@@ -228,6 +197,7 @@
         <span class="grow"></span>
         <span id="qb-status" class="muted small"></span>
         <button type="button" id="qb-copy" data-icon="copy" title="Copy the SQL to the clipboard">Copy</button>
+        <button type="button" id="qb-save" data-icon="save" title="Save the SQL to a file">Save…</button>
         <button type="button" id="qb-open" data-icon="toggle-sql" title="Open the SQL in the Query tab">Open in Query</button>
         <button type="button" id="qb-run" class="primary" data-icon="script-run" title="Run the query in the Query tab">Run</button>
       </div>

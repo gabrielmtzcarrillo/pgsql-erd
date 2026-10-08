@@ -134,15 +134,87 @@ function status(msg) {
 }
 
 function updateTitle() {
-  const name = state.filePath ? basename(state.filePath) : tr('Untitled');
-  $('#status-file').textContent = (state.filePath ?? tr('Untitled')) + (state.dirty ? ` ${tr('(modified)')}` : '');
-  host?.setState({ dirty: state.dirty, title: `${name}${state.dirty ? ' •' : ''} — pgsql-erd` });
+  const name = state.filePath ? basename(state.filePath) : untitledNames.get(diagramId) ?? tr('Untitled');
+  $('#status-file').textContent = (state.filePath ?? name) + (state.dirty ? ` ${tr('(modified)')}` : '');
+  if (diagramId) tabs.rename(diagramId, `${name}${state.dirty ? ' •' : ''}`, state.filePath ?? name);
+  host?.setState({ dirty: anyDiagramDirty(), title: `${name}${state.dirty ? ' •' : ''} — pgsql-erd` });
 }
 
 function setDirty(dirty) {
   state.dirty = dirty;
   updateTitle();
 }
+
+// ---------------------------------------------------------------- diagram tabs
+
+// Each diagram tab has a document of its own. The one shown lives in `state`;
+// the others wait here with these fields.
+const DOC_FIELDS = ['model', 'filePath', 'dirty', 'selection', 'undo', 'redo', 'showTables', 'tableFilter', 'expandedCol'];
+const diagrams = new Map(); // tab id -> document (out of date for the one in `state`)
+const untitledNames = new Map(); // tab id -> "Diagram 2", shown until it is saved
+let diagramId = null; // the diagram in `state`
+let diagramSeq = 0;
+
+const freshDoc = () => ({ model: emptyModel(), filePath: null, dirty: false, selection: null, undo: [], redo: [], showTables: false, tableFilter: '', expandedCol: null });
+const docOf = (id) => (id === diagramId ? state : diagrams.get(id));
+const anyDiagramDirty = () => [...diagrams.keys()].some((id) => docOf(id)?.dirty);
+const isPristine = () => !state.dirty && !state.filePath && !state.model.tables.length;
+
+// Put a diagram tab's document in `state`; the rest of the page follows.
+function useDiagram(id) {
+  if (id === diagramId || !diagrams.has(id)) return;
+  if (diagramId && diagrams.has(diagramId)) diagrams.set(diagramId, Object.fromEntries(DOC_FIELDS.map((k) => [k, state[k]])));
+  diagramId = id;
+  Object.assign(state, diagrams.get(id));
+  emit('model');
+  emit('file');
+  updateTitle();
+  render();
+  renderPanel();
+}
+
+// A new, empty diagram in a tab of its own, shown.
+function newDiagram() {
+  const id = `erd:${++diagramSeq}`;
+  diagrams.set(id, freshDoc());
+  let n = 1;
+  while ([...untitledNames.values()].includes(tr('Diagram {n}', { n }))) n++;
+  untitledNames.set(id, tr('Diagram {n}', { n }));
+  tabs.add({
+    id,
+    kind: 'erd',
+    title: untitledNames.get(id),
+    icon: 'toggle-tables',
+    element: $('main.workspace'),
+    shared: true,
+    onClose: () => diagramClosed(id),
+    canClose: async () => {
+      tabs.show(id);
+      return confirmDiscard();
+    },
+  });
+  updateClosable();
+  tabs.show(id);
+  return id;
+}
+
+function diagramClosed(id) {
+  diagrams.delete(id);
+  untitledNames.delete(id);
+  if (diagramId === id) {
+    diagramId = null;
+    useDiagram(tabs.ofKind('erd').at(-1));
+  }
+  updateClosable();
+}
+
+// The last diagram tab stays open.
+function updateClosable() {
+  const ids = tabs.ofKind('erd');
+  for (const id of ids) tabs.setClosable(id, ids.length > 1);
+}
+
+const showDiagram = () => tabs.show(diagramId);
 
 // ---------------------------------------------------------------- undo
 
@@ -1285,6 +1357,17 @@ function loadModel(model, filePath) {
   if (model.tables.length && v.offsetX === 0 && v.offsetY === 0 && v.zoom === 1) fit();
 }
 
+// A diagram file opened from the menu, the recent list or a drop: shown in
+// its tab when it is open already, otherwise in the current diagram when
+// that is empty and untouched, or in a new diagram tab.
+function openDiagramFile(text, filePath) {
+  const open = filePath && [...diagrams.keys()].find((id) => docOf(id).filePath?.toLowerCase() === filePath.toLowerCase());
+  if (open) return tabs.show(open);
+  if (isPristine()) showDiagram();
+  else newDiagram();
+  openText(text, filePath);
+}
+
 function openText(text, filePath) {
   try {
     const model = parsePgerd(text);
@@ -1295,13 +1378,12 @@ function openText(text, filePath) {
   }
 }
 
-async function save(saveAs = false) {
+async function save() {
   document.activeElement?.blur?.(); // flush a pending input 'change'
   const defaultName = state.filePath ?? 'diagram.pgerd';
   const target = await host.saveFile({
     filePath: state.filePath,
     text: stringifyPgerd(state.model),
-    saveAs,
     defaultName,
     kind: 'pgerd',
   });
@@ -1351,8 +1433,7 @@ async function exportSVG() {
   if (target) status(tr('Exported {file}', { file: basename(target) }));
 }
 
-async function exportPNG() {
-  if (!state.model.tables.length) return status(tr('Nothing to export.'));
+async function buildExportPNG() {
   const { text, width, height } = buildExportSVG();
   const scale = Math.min(2, 16000 / Math.max(width, height));
   const img = new Image();
@@ -1365,25 +1446,75 @@ async function exportPNG() {
   ctx.scale(scale, scale);
   ctx.drawImage(img, 0, 0, width, height);
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-  const data = new Uint8Array(await blob.arrayBuffer());
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+async function exportPNG() {
+  if (!state.model.tables.length) return status(tr('Nothing to export.'));
+  const data = await buildExportPNG();
   const target = await host.saveBinary({ defaultName: `${exportBase()}.png`, data, name: tr('PNG Image'), extensions: ['png'] });
   if (target) status(tr('Exported {file}', { file: basename(target) }));
+}
+
+// Save As in any format; the file type picked in the dialog decides which.
+// Only a .pgerd becomes the diagram's file; the others are exports.
+async function saveAs() {
+  document.activeElement?.blur?.(); // flush a pending input 'change'
+  const picked = await host.saveAs.pick({
+    defaultName: state.filePath ?? 'diagram.pgerd',
+    images: state.model.tables.length > 0,
+  });
+  if (!picked) return false;
+  const { filePath, format } = picked;
+  const content = {
+    pgerd: () => ({ text: stringifyPgerd(state.model) }),
+    sql: () => ({ text: generateSQL(state.model) }),
+    svg: () => ({ text: buildExportSVG().text }),
+    png: async () => ({ data: await buildExportPNG() }),
+  }[format];
+  await host.saveAs.write({ filePath, format, ...(await content()) });
+  if (format !== 'pgerd') {
+    status(tr('Exported {file}', { file: basename(filePath) }));
+    return false;
+  }
+  const moved = filePath !== state.filePath;
+  state.filePath = filePath;
+  setDirty(false);
+  if (moved) emit('file');
+  status(tr('Saved {file}', { file: basename(filePath) }));
+  return true;
+}
+
+// Save and Save As work on the current tab: the diagram, or what the
+// Scripts, Query, Builder and Graph tabs register here by kind.
+const tabSavers = {
+  erd: (id, as) => (as ? saveAs() : save()),
+};
+
+function saveTab(as) {
+  const id = tabs.current();
+  const saver = tabSavers[tabs.kind(id)];
+  if (!saver) return status(tr('Nothing to save on this tab.'));
+  return saver(id, as);
 }
 
 // ---------------------------------------------------------------- commands
 
 const commands = {
-  async new() {
-    if (!(await confirmDiscard())) return;
-    loadModel(emptyModel(), null);
-  },
+  new: () => newDiagram(),
   async open() {
     await host.openDialog();
   },
-  save: () => save(false),
-  'save-as': () => save(true),
+  save: () => saveTab(false),
+  'save-as': () => saveTab(true),
+  // Closing the window with unsaved diagrams: save each, then close.
   async 'save-and-close'() {
-    if (await save(false)) host.closeWindow();
+    for (const id of tabs.ofKind('erd')) {
+      if (!docOf(id)?.dirty) continue;
+      tabs.show(id);
+      if (!(await save())) return;
+    }
+    host.closeWindow();
   },
   'export-sql': exportSQL,
   'export-svg': exportSVG,
@@ -1445,7 +1576,7 @@ function findDiagramTable(key) {
 function focusTable(key) {
   const t = findDiagramTable(key);
   if (!t) return false;
-  tabs.show('erd');
+  showDiagram();
   select({ type: 'table', id: t.id });
   centerOn(t);
   return true;
@@ -1467,9 +1598,9 @@ const { api: db, ...dbCommands } = setupDatabase(uiCtx);
 const spreadsheet = setupSpreadsheetImport(uiCtx);
 const dbTree = setupDbTree({ ...uiCtx, db, toDiagram, snap, select, centerOn, viewCenter, showContextMenu });
 const workbenchCtx = {
-  host, state, h, status, db, events, tabs, dbTree, focusTable, selectedTableIds,
+  host, state, h, status, db, events, tabs, dbTree, focusTable, selectedTableIds, showDiagram,
   hasTable: (key) => !!findDiagramTable(key),
-  saveDiagram: () => save(false),
+  saveDiagram: () => save(),
   refreshSchema: () => db.refreshSchema(),
 };
 const workbench = setupWorkbench(workbenchCtx);
@@ -1486,18 +1617,30 @@ Object.assign(workbenchCtx, {
   openSql: query.setSql,
 });
 Object.assign(commands, dbCommands, dbTree.commands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, queryBuilder.commands, graph.commands, {
-  'tab-erd': () => tabs.show('erd'),
+  'tab-erd': showDiagram,
   'toggle-erd-scripts': () => {
-    tabs.show('erd');
+    showDiagram();
     erdScripts.setShown(!erdScripts.shown());
   },
 });
-// The diagram re-renders when its tab comes back (sizes are measured on screen).
-tabs.onShow((name) => {
-  if (name === 'erd') render();
+Object.assign(tabSavers, {
+  query: query.saveTab,
+  scripts: workbench.saveTab,
+  builder: queryBuilder.saveTab,
+  graph: graph.saveTab,
 });
-// Another database: the diagram is closed, unsaved changes and all.
-events.addEventListener('database-switch', () => loadModel(emptyModel(), null));
+// A diagram tab brings its document; the diagram re-renders when its tab
+// comes back (sizes are measured on screen).
+tabs.onShow((name) => {
+  if (tabs.kind(name) !== 'erd') return;
+  useDiagram(name);
+  render();
+});
+// Another database: the diagrams are closed, unsaved changes and all.
+events.addEventListener('database-switch', () => {
+  for (const id of tabs.ofKind('erd')) if (id !== diagramId) tabs.remove(id);
+  loadModel(emptyModel(), null);
+});
 
 function runCommand(name) {
   const fn = commands[name];
@@ -1518,7 +1661,7 @@ $('#zoom-slider').addEventListener('change', (e) => e.target.blur());
 
 // The view controls in the status bar only apply to the diagram.
 tabs.onShow((name) => {
-  $('#status-view').hidden = name !== 'erd';
+  $('#status-view').hidden = tabs.kind(name) !== 'erd';
 });
 
 $('#grid-size').addEventListener('change', (e) => {
@@ -1537,7 +1680,7 @@ $('#sql-copy').addEventListener('click', async () => {
 
 // Keys typed in fields, the script editor or the assistant are not diagram shortcuts.
 const isEditing = (e) =>
-  /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable || tabs.current() !== 'erd';
+  /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable || tabs.kind(tabs.current()) !== 'erd';
 
 document.addEventListener('keydown', (e) => {
   if (isEditing(e) || document.querySelector('dialog[open]')) return;
@@ -1598,8 +1741,7 @@ document.addEventListener('drop', async (e) => {
     if (!open || open.id === 'xl-import-dialog') await spreadsheet.openFile(file.name, await file.arrayBuffer());
     return;
   }
-  if (!(await confirmDiscard())) return;
-  openText(await file.text(), host.pathForFile(file) || null);
+  openDiagramFile(await file.text(), host.pathForFile(file) || null);
 });
 
 // Recent files on the empty diagram's start screen (also in File → Open Recent).
@@ -1631,17 +1773,13 @@ $('#recent-clear').addEventListener('click', () => host.recent.clear());
   document.head.append(style);
   $('#pg-types').replaceChildren(...PG_TYPES.map((t) => h('option', { value: t })));
 
-  host.onFileOpened(async ({ filePath, text }) => {
-    if (!(await confirmDiscard())) return;
-    openText(text, filePath);
-  });
+  host.onFileOpened(({ filePath, text }) => openDiagramFile(text, filePath));
   // F5 is the menu accelerator for running scripts; on a query tab it runs the query.
   host.onMenu((name) => runCommand(name === 'script-run' && query.isQueryTab(tabs.current()) ? 'query-run' : name));
   host.recent.onChange(renderRecentFiles);
   host.recent.list().then(renderRecentFiles);
-  window.erdIsPristine = () => !state.dirty && !state.filePath && !state.model.tables.length;
 
-  updateTitle();
-  render();
-  renderPanel();
+  newDiagram();
+  query.restoreTabs();
+  queryBuilder.restoreTabs();
 })();

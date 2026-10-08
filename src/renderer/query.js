@@ -3,8 +3,8 @@
 // spent in each node and hints (missing indexes, bad estimates, spills).
 // Statements that change data only run with "Allow changes" ticked, after a
 // confirmation, and only on connections whose policy allows it.
-// The Query tab is always there; more query tabs (and .sql files) open
-// beside the data tabs and are remembered with their SQL.
+// Query tabs (and .sql files) are opened from the tab bar and remembered
+// with their SQL.
 
 import { createEditor, setSqlSchema } from './lib/monaco.js';
 import { flattenPlan, analyzePlan, describeNode } from '../shared/plan-analyzer.js';
@@ -16,15 +16,16 @@ import { tableKey } from './lib/catalog.js';
 import { qualifiedName } from './lib/sql.js';
 
 const $ = (sel) => document.querySelector(sel);
-const TEXT_KEY = 'pgsql-erd.query';
+const TEXT_KEY = 'pgsql-erd.query'; // the SQL of the old fixed Query tab
 const TABS_KEY = 'pgsql-erd.query-tabs';
 const HISTORY_KEY = 'pgsql-erd.query-history';
 const SPLIT_KEY = 'pgsql-erd.query-split';
 
 export function setupQuery(ctx) {
   const { host, h, status, db, tabs, dbTree } = ctx;
-  // A fresh copy of the page (already translated) for each extra query tab.
+  // A fresh copy of the page (already translated) for each query tab.
   const template = $('#query-page .q-main').cloneNode(true);
+  $('#query-page').remove();
   const views = new Map(); // page id -> view
   let active = null; // the query tab shown last
   let history = load(HISTORY_KEY, []);
@@ -97,15 +98,15 @@ export function setupQuery(ctx) {
   // ------------------------------------------------------------ one query tab
 
   // The editor, toolbar and output of one tab. `onText` is called (debounced)
-  // as the SQL is edited; `fileName` names the .sql file it came from.
-  function createView(id, page, { value, onText, fileName = null }) {
+  // as the SQL is edited; `filePath` is the .sql file it came from.
+  function createView(id, page, { value, onText, fileName = null, filePath = null }) {
     const q = (sel) => page.querySelector(sel);
     let editor = null;
     let editorReady = null;
     let running = false;
     let lastPlan = null; // { sql, flat, hints, analyze }
     let textTimer = null;
-    const view = { id, page, fileName, saved: fileName ? value : '' };
+    const view = { id, page, fileName, filePath, saved: fileName ? value : '' };
 
     function ensureEditor() {
       editorReady ??= createEditor(q('.q-editor'), {
@@ -370,20 +371,26 @@ export function setupQuery(ctx) {
 
     // ---------------------------------------------------------- files
 
-    async function saveFile() {
+    // Save writes back to the tab's file; Save As (and a tab without one) asks.
+    async function saveFile(saveAs = true) {
       await ensureEditor();
       const text = editor.getValue();
-      const target = await host.saveFile({ text, saveAs: true, defaultName: view.fileName ?? 'query.sql', kind: 'sql' });
-      if (!target) return;
+      const target = await host.saveFile({ filePath: view.filePath, text, saveAs: saveAs || !view.filePath, defaultName: view.filePath ?? view.fileName ?? 'query.sql', kind: 'sql' });
+      if (!target) return false;
+      view.filePath = target;
       view.fileName = target.split(/[\\/]/).pop();
+      view.title = view.fileName;
       view.saved = text;
       onText(text);
-      if (id !== 'query') tabs.rename(id, view.fileName, target);
+      tabs.rename(id, view.fileName, target);
       setStatus(tr('Saved {file}', { file: view.fileName }));
+      status(tr('Saved {file}', { file: view.fileName }));
+      return true;
     }
+    view.saveFile = saveFile;
 
     q('.q-open').addEventListener('click', openFile);
-    q('.q-save').addEventListener('click', saveFile);
+    q('.q-save').addEventListener('click', () => saveFile(true));
     q('.q-run').addEventListener('click', () => run());
     q('.q-explain').addEventListener('click', () => run('plan'));
     q('.q-analyze').addEventListener('click', () => run('analyze'));
@@ -395,27 +402,22 @@ export function setupQuery(ctx) {
 
   // ------------------------------------------------------------ tabs
 
-  // The fixed Query tab keeps its SQL under its own key.
-  createView('query', $('#query-page'), {
-    value: load(TEXT_KEY, `-- ${tr('Ctrl+Enter runs the selection (or everything).')}\n-- ${tr('Explain shows the plan; Explain analyze runs the query and measures it.')}\nSELECT 1;\n`),
-    onText: (text) => save(TEXT_KEY, text),
-  });
+  const STARTER = `-- ${tr('Ctrl+Enter runs the selection (or everything).')}\n-- ${tr('Explain shows the plan; Explain analyze runs the query and measures it.')}\nSELECT 1;\n`;
 
-  // Extra tabs, in tab order, with their SQL: [{ title, text, fileName, saved }].
+  // The tabs, in tab order, with their SQL: [{ title, text, fileName, filePath, saved }].
   function saveTabs() {
-    const ids = [...document.querySelectorAll('#data-tabs [data-main-tab]')].map((b) => b.dataset.mainTab);
-    const extra = ids.filter((x) => views.has(x)).map((x) => views.get(x));
-    save(TABS_KEY, extra.map((v) => ({ title: v.title, text: v.text(), fileName: v.fileName, saved: v.saved })));
+    save(TABS_KEY, tabs.ofKind('query').map((x) => views.get(x)).filter(Boolean).map((v) => ({ title: v.title, text: v.text(), fileName: v.fileName, filePath: v.filePath, saved: v.saved })));
   }
 
   // A new query tab after the others; shown unless `background`.
-  function newTab({ text = '', fileName = null, filePath = null, saved = null, title = null, background = false } = {}) {
+  function newTab({ text = STARTER, fileName = null, filePath = null, saved = null, title = null, background = false } = {}) {
     const id = `query:${++tabSeq}`;
     const page = h('section', { class: 'query-page' }, template.cloneNode(true));
     page.querySelector('[data-cmd="toggle-db-tree"]').classList.toggle('active', dbTree.shown());
     const name = title ?? fileName ?? untitledName();
     tabs.add({
       id,
+      kind: 'query',
       title: name,
       tooltip: filePath ?? name,
       icon: 'toggle-sql',
@@ -430,18 +432,19 @@ export function setupQuery(ctx) {
       },
       canClose: () => confirmClose(id),
     });
-    const view = createView(id, page, { value: text, fileName, onText: saveTabs });
+    const view = createView(id, page, { value: text, fileName, filePath, onText: saveTabs });
     view.title = name;
-    if (saved !== null) view.saved = saved;
+    // A new tab's starter SQL needs no saving.
+    view.saved = saved ?? (fileName ? view.saved : text);
     saveTabs();
     if (!background) tabs.show(id);
     return view;
   }
 
-  // "Query 2", "Query 3"…: the first number no open tab uses.
+  // "Query 1", "Query 2"…: the first number no open tab uses.
   function untitledName() {
     const used = new Set([...views.values()].map((v) => v.title));
-    for (let n = 2; ; n++) if (!used.has(tr('Query {n}', { n }))) return tr('Query {n}', { n });
+    for (let n = 1; ; n++) if (!used.has(tr('Query {n}', { n }))) return tr('Query {n}', { n });
   }
 
   // SQL typed in an extra tab and not saved to a file is lost when it closes.
@@ -457,10 +460,23 @@ export function setupQuery(ctx) {
     return choice === 0;
   }
 
-  for (const t of load(TABS_KEY, [])) newTab({ ...t, background: true });
+  // The remembered tabs come back after the diagram's.
+  function restoreTabs() {
+    for (const t of load(TABS_KEY, [])) newTab({ ...t, background: true });
+    // The SQL of the old fixed Query tab becomes a tab of its own, once.
+    const oldText = load(TEXT_KEY, null);
+    if (oldText !== null) {
+      if (oldText.trim()) newTab({ text: oldText, background: true });
+      try {
+        localStorage.removeItem(TEXT_KEY);
+      } catch {
+        // asked again next time
+      }
+    }
+  }
 
-  // The query tab shown last, or the Query tab.
-  const target = () => active ?? views.get('query');
+  // The query tab shown last, or the first one, or a new one.
+  const target = () => (active && views.has(active.id) ? active : views.get(tabs.ofKind('query')[0]) ?? newTab({ background: true }));
 
   // Open a file's SQL in a tab of its own.
   function loadFile(text, filePath) {
@@ -489,6 +505,9 @@ export function setupQuery(ctx) {
     },
     // Whether a page id is a query tab.
     isQueryTab: (id) => views.has(id),
+    // Save / Save As on a query tab.
+    saveTab: (id, saveAs) => views.get(id)?.saveFile(saveAs),
+    restoreTabs,
     // A .sql file dropped on the window.
     loadFile,
     // Put SQL in the current query tab (e.g. from the assistant).

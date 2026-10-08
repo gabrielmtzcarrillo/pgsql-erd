@@ -186,6 +186,15 @@ export async function createEditor(container, options = {}) {
         if (uris.some((u) => u.toString() === model.uri.toString())) cb(monaco.editor.getModelMarkers({ resource: model.uri }));
       });
     },
+    // Several documents in one editor (one per tab), each keeping its undo
+    // history: doc() is the one shown, showDoc() swaps another in.
+    doc: () => model,
+    newDoc: (text) => newModel(text),
+    showDoc(doc) {
+      model = doc;
+      editor.setModel(doc);
+    },
+    disposeDoc: (doc) => doc !== model && doc.dispose(),
     setReadOnly: (ro) => editor.updateOptions({ readOnly: ro }),
     focus: () => editor.focus(),
     layout: () => editor.layout(),
@@ -203,6 +212,7 @@ function textareaEditor(container, options) {
   ta.value = options.value ?? '';
   container.append(ta);
   ta.addEventListener('input', () => options.onChange?.());
+  let doc = { text: ta.value };
   ta.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       const b = (options.bindings ?? []).find((x) => x.keys.includes('Enter') && x.keys.includes('Shift') === e.shiftKey);
@@ -247,6 +257,14 @@ function textareaEditor(container, options) {
       ta.setSelectionRange(pos, pos);
     },
     onMarkers() {},
+    doc: () => doc,
+    newDoc: (text) => ({ text: text ?? '' }),
+    showDoc(d) {
+      doc.text = ta.value;
+      doc = d;
+      ta.value = d.text;
+    },
+    disposeDoc() {},
     setReadOnly: (ro) => (ta.readOnly = ro),
     focus: () => ta.focus(),
     layout() {},

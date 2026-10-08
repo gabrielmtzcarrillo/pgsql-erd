@@ -124,7 +124,7 @@ export function setupDataBrowser(ctx) {
       chips,
       grid,
     ]);
-    tabs.add({ id, title: table.replace(/^public\./, ''), tooltip: table, icon: 'toggle-tables', element, onClose: () => views.delete(table), canClose: () => view.confirmDiscard() });
+    tabs.add({ id, kind: 'data', title: table.replace(/^public\./, ''), tooltip: table, icon: 'toggle-tables', element, onClose: () => views.delete(table), canClose: () => view.confirmDiscard() });
 
     async function page(dir) {
       const total = view.data?.total ?? 0;

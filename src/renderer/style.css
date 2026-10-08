@@ -195,7 +195,10 @@ textarea { resize: vertical; width: 100%; }
 
 .workspace { flex: 1; display: flex; min-height: 0; }
 
-.canvas-wrap { flex: 1; position: relative; min-width: 0; background: var(--canvas); }
+.erd-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.erd-toolbar { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-bottom: 1px solid var(--border); background: var(--surface); flex-wrap: wrap; }
+.erd-toolbar .toolbar-sep { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--border); }
+.canvas-wrap { flex: 1; position: relative; min-width: 0; min-height: 0; background: var(--canvas); }
 
 /* Database explorer (left of the diagram) */
 .db-tree {
@@ -638,12 +641,30 @@ body[data-environment="production"] .ribbon { box-shadow: inset 0 -3px 0 var(--d
 .main-tabs button:hover { color: var(--text); background: var(--accent-soft); border-color: transparent; }
 .main-tabs button.active { background: var(--surface); border-color: var(--border); color: var(--text); font-weight: 600; }
 .main-tabs .btn-icon { width: 15px; height: 15px; }
-.data-tabs { display: contents; }
-.data-tabs button:first-child { margin-left: 10px; }
+/* The open tabs scroll (wheel or the active one coming into view); the +
+   buttons and the Assistant stay put. */
+.data-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-bottom: -1px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.data-tabs button { margin-bottom: 0; }
+.main-tabs > * { flex: none; }
+.main-tabs > .data-tabs { flex: 0 1 auto; }
+.main-tabs button:not(.closable) .tab-close { display: none; }
 .tab-title { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 .tab-close { margin-left: 2px; padding: 0 4px; border-radius: 2px; color: var(--muted); font-weight: 400; }
 .tab-close:hover { background: var(--danger); color: #fff; }
-.data-add { margin-left: 4px; font-size: 12px; }
+.data-add { margin-left: 2px; font-size: 12px; }
+.data-tabs + .data-add { margin-left: 10px; }
+/* the Assistant sits at the far end, after the + buttons */
+.main-tabs [data-main-tab="assistant"] { margin-left: auto; }
 .tab-page[hidden] { display: none !important; }
 
 /* Scripts tab */
@@ -1184,6 +1205,7 @@ dialog.medium { width: min(760px, 94vw); }
 :root[data-theme="vs"] .wb-tabs { background: var(--bg); }
 :root[data-theme="vs"] .wb-tabs button.active { background: var(--surface); border-bottom-color: var(--vs-title-active); }
 :root[data-theme="vs"] .q-toolbar,
+:root[data-theme="vs"] .erd-toolbar,
 :root[data-theme="vs"] .dt-toolbar { background: var(--bg); }
 :root[data-theme="vs"] .statusbar,
 :root[data-theme="vs"] .statusbar * { background-color: var(--vs-status); color: #ffffff; border-color: transparent; }

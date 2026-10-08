@@ -283,7 +283,7 @@ export function setupDatabase(ctx) {
   async function confirmSwitch(target) {
     const choice = await host.confirm({
       message: tr('Change the connection to {db}?', { db: describe(target) }),
-      detail: tr('The diagram, the data tabs and the query builder are closed and the query results cleared. Unsaved changes to the diagram are discarded.'),
+      detail: tr('The diagrams and the data tabs are closed, the query builders emptied and the query results cleared. Unsaved changes to the diagrams are discarded.'),
       buttons: [tr('Change Connection'), tr('Cancel')],
     });
     return choice === 0;

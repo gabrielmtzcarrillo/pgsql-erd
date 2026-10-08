@@ -14,10 +14,16 @@ filters, and an AI assistant that works with Ollama, vLLM, OpenAI and other Open
 
 ### Ribbon and tabs
 
-Commands are grouped Office-style (File, History, Diagram, Database, Scripts,
-SQL & Export) with two-tone colour icons; the native menus use the same icons. Below the ribbon,
-tabs switch between the **Diagram**, **Scripts**, **Query**, **Builder**, **Graph** and **Assistant**, followed by
-one tab per table whose data you are browsing.
+Commands are grouped Office-style (File, Database) with two-tone
+colour icons; the native menus use the same icons. Below the ribbon are the tabs: a window starts with
+one diagram, and the **+ Diagram**, **+ Scripts**, **+ Query**, **+ Builder**, **+ Graph** and **+ Data**
+buttons open as many more as you like (**+ Diagram** is also <kbd>Ctrl</kbd>+<kbd>N</kbd>); the
+**Assistant** sits at the far end. Opening a `.pgerd` file shows it in a diagram tab of its own (or the
+empty one you started with). **Save** and **Save As…** work on the tab in front: a diagram saves its
+`.pgerd` (Save As can also write SQL, SVG or PNG), Query and Builder tabs save their SQL to a `.sql`
+file, a Scripts tab saves its script to the project (Save As writes its code to a `.ts` file) and a
+Graph tab saves its Cypher query to a `.cypher` file. The Diagram tab has its own toolbar: **Undo**, **Redo**, **Tables**, **Table**, **Relationship**, **Delete**,
+**SQL Preview**, **Import from Database…** and **Compare**.
 
 ![Ribbon](docs/screenshots/ribbon.png)
 
@@ -162,7 +168,7 @@ A force-directed view; double-click a vertex to expand its neighbours.
 - Save back to `.pgerd`. Properties this app doesn't edit (tablespace, check constraints, and so
   on) are kept as they were.
 - Import tables from **Excel (`.xlsx`/`.xlsm`) or CSV** with **File → Import from Excel / CSV**
-  (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>E</kbd>), the **Excel** ribbon button, or by dropping the file on the window.
+  (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>E</kbd>), **Import Excel** in the ribbon's Database group, or by dropping the file on the window.
   Each sheet is read in one of two layouts:
   - **Column definitions:** a header row with *Column* and *Type* (plus any of *Table, Schema, Length, Scale,
     Nullable / Not null, PK, Unique, Default, References, Comment*), one row per column. A *Table* column splits
@@ -177,7 +183,8 @@ A force-directed view; double-click a vertex to expand its neighbours.
   snake_case unless you turn that off. Tables already in the diagram are updated and keep their position.
   Old `.xls` files are not supported; save them as `.xlsx` first.
 - Live SQL preview with syntax highlighting, and export to PostgreSQL DDL (`CREATE TABLE`, primary keys, unique
-  constraints, foreign keys, comments), SVG or PNG.
+  constraints, foreign keys, comments), SVG or PNG. **Save As…** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>)
+  writes any of these: the file type picked in the dialog (`.pgerd`, `.sql`, `.svg` or `.png`) decides the format.
 - An Office-style ribbon with labelled command groups and two-tone colour icons, which the
   native menus and dialogs share.
 - Themes in **View → Theme**: White, Dark, Visual Studio (classic Blue) and Windows ME, or follow the system's
@@ -186,7 +193,7 @@ A force-directed view; double-click a vertex to expand its neighbours.
 
 ## Database sync
 
-The **Database** menu (and the *Connect / Import / Compare* buttons in the ribbon) works with a live
+The **Database** menu (the *Connect* button in the ribbon, and **Import from Database…** and **Compare** on the Diagram tab) works with a live
 PostgreSQL 10+ server:
 
 - **Connect:** host, port, database, user, password and SSL mode. Connections can be saved as named
@@ -266,7 +273,7 @@ need schema changes), and are recorded in the audit log. Deletes and drops ask f
 queries that change the graph (`CREATE`, `MERGE`, `SET`, `DELETE`, `REMOVE`) only run when you tick
 **Allow changes**; other queries run in a read-only transaction. Graph element ids are 64-bit, so they are
 kept as strings and never rounded. AGE's own schemas (`ag_catalog` and one per graph) are left out of
-**Import** and **Compare**.
+**Import from Database…** and **Compare**.
 
 The session runs `LOAD 'age'`, falling back to `$libdir/plugins/age` for non-superusers, unless AGE is
 already in `shared_preload_libraries`.
@@ -333,7 +340,7 @@ to insert. **Ask assistant** sends the query, its plan and the hints to the Assi
 
 The database explorer sits beside the editor (**Explorer**): drag a table into the SQL, or double-click it,
 to insert its name. **+ Query** next to **+ Data** opens more query tabs, each with its own SQL, results
-and plan; opened or dropped `.sql` files get a tab of their own. Extra tabs and their SQL are remembered
+and plan; opened or dropped `.sql` files get a tab of their own. Query tabs and their SQL are remembered
 between sessions, and closing one with unsaved SQL asks first.
 
 ### Builder
@@ -350,7 +357,8 @@ Tables with a foreign key between them are joined automatically on its columns:
 Each join has a small menu on its line, by its SQL name: matching rows only (`INNER JOIN`), every row of one
 table (`LEFT` / `RIGHT JOIN`) or of both (`FULL JOIN`). Aliases can be renamed in the table headers; **Distinct** and
 **Limit** complete the statement. The SQL shows below the canvas as you go: **Open in Query** puts it in
-the Query tab and **Run** also runs it there. The query is remembered between sessions.
+the Query tab and **Run** also runs it there; **Save…** writes the SQL to a file. Each Builder tab has its
+own query, and they are remembered between sessions.
 
 ### Data tabs
 
