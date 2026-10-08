@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   parsePgerd, serializePgerd, stringifyPgerd, emptyModel, newTable, newColumn,
 } from '../src/renderer/lib/pgerd.js';
-import { generateSQL, formatType, quoteIdent, defaultForeignKeyName } from '../src/renderer/lib/sql.js';
+import { generateSQL, formatType, quoteIdent, defaultForeignKeyName, defaultExpr } from '../src/renderer/lib/sql.js';
 import { tableSize, routeLink, autoLayout } from '../src/renderer/lib/layout.js';
 
 const sample = readFileSync(new URL('../samples/shop.pgerd', import.meta.url), 'utf8');
@@ -97,6 +97,16 @@ test('generates PostgreSQL DDL', () => {
   assert.match(sql, /CONSTRAINT customer_email_key UNIQUE \(email\)/);
   assert.match(sql, /ON DELETE RESTRICT;/);
   assert.match(sql, /COMMENT ON TABLE public\.customer\n\s+IS 'Customers of the shop';/);
+});
+
+test('writes numeric defaults of bit columns as bit literals', () => {
+  assert.equal(defaultExpr({ type: 'bit', default: '1' }), "B'1'");
+  assert.equal(defaultExpr({ type: 'bit', length: 1, default: '0' }), "B'0'");
+  assert.equal(defaultExpr({ type: 'bit(8)', default: '5' }), "B'00000101'");
+  assert.equal(defaultExpr({ type: 'bit', length: 2, default: '7' }), "B'11'");
+  assert.equal(defaultExpr({ type: 'bit varying', default: '101' }), "B'101'");
+  assert.equal(defaultExpr({ type: 'bit', default: "B'1'" }), "B'1'");
+  assert.equal(defaultExpr({ type: 'integer', default: '1' }), '1');
 });
 
 test('formats types and identifiers', () => {

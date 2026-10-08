@@ -109,6 +109,42 @@ test('migration SQL brings the database in line with an edited diagram', { skip:
   assert.deepEqual(diffModels(await load(), erd).changes.map((c) => c.summary), []);
 });
 
+test('bit column defaults are written as bit literals PostgreSQL accepts', { skip: !enabled }, async () => {
+  const erd = parsePgerd('{"data":{"layers":[]}}');
+  const flags = newTable({
+    name: 'flags',
+    schema: 'bits',
+    columns: [
+      newColumn({ name: 'id', type: 'integer', pk: true, attnum: 0 }),
+      newColumn({ name: 'on', type: 'bit', notNull: true, default: '1', attnum: 1 }),
+      newColumn({ name: 'mask', type: 'bit', length: 8, default: '5', attnum: 2 }),
+      newColumn({ name: 'path', type: 'bit varying', default: '101', attnum: 3 }),
+      newColumn({ name: 'lit', type: 'bit', length: 4, default: "B'0110'", attnum: 4 }),
+    ],
+  });
+  erd.tables.push(flags);
+  const rows = (sql) => db.withClient(conn, async (c) => (await c.query(sql)).rows);
+  const values = () => rows('SELECT "on"::text, mask::text, path::text, lit::text FROM bits.flags ORDER BY id');
+
+  await db.execute(conn, generateSQL(erd));
+  assert.deepEqual(diffModels(await load(), erd).changes.map((c) => c.summary), []);
+  await db.execute(conn, 'INSERT INTO bits.flags (id) VALUES (1)');
+  assert.deepEqual(await values(), [{ on: '1', mask: '00000101', path: '101', lit: '0110' }]);
+
+  // ADD COLUMN ... NOT NULL DEFAULT fills the existing row; SET DEFAULT applies to new rows.
+  flags.columns.push(newColumn({ name: 'off', type: 'bit', notNull: true, default: '0', attnum: 5 }));
+  flags.columns.find((c) => c.name === 'on').default = '0';
+  flags.columns.find((c) => c.name === 'lit').default = "B'1001'";
+  const mig = diffModels(await load(), erd);
+  assert.deepEqual(mig.changes.map((c) => c.kind).sort(), ['add-column', 'alter-default', 'alter-default']);
+  await db.execute(conn, mig.sql);
+  assert.deepEqual(diffModels(await load(), erd).changes.map((c) => c.summary), []);
+  await db.execute(conn, 'INSERT INTO bits.flags (id) VALUES (2)');
+  const off = (await rows('SELECT "off"::text FROM bits.flags ORDER BY id')).map((r) => r.off);
+  assert.deepEqual(off, ['0', '0']);
+  assert.deepEqual((await values())[1], { on: '0', mask: '00000101', path: '101', lit: '1001' });
+});
+
 test('a failing migration is rolled back', { skip: !enabled }, async () => {
   const sql = 'BEGIN;\nCREATE TABLE public.should_not_exist (id int);\nSELECT 1/0;\nCOMMIT;';
   await assert.rejects(db.execute(conn, sql), /division by zero/);

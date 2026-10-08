@@ -53,6 +53,23 @@ export function formatType(col) {
 
 export const FK_ACTIONS = { a: 'NO ACTION', r: 'RESTRICT', c: 'CASCADE', n: 'SET NULL', d: 'SET DEFAULT' };
 
+// The DEFAULT expression for a column. A bare number on a bit column becomes a
+// bit-string literal, since PostgreSQL has no implicit integer -> bit cast
+// ("default expression is of type integer"): bit(n) takes the number's low n
+// bits like 5::bit(8) would; bit varying reads a 0/1 number as the bits.
+export function defaultExpr(col) {
+  const v = String(col.default ?? '').trim();
+  if (!/^\d+$/.test(v)) return col.default;
+  const type = formatType(col).toLowerCase();
+  const fixed = type.match(/^bit(?:\((\d+)\))?$/);
+  if (fixed) {
+    const n = Number(fixed[1] ?? 1);
+    return `B'${BigInt(v).toString(2).padStart(n, '0').slice(-n)}'`;
+  }
+  if (/^(bit varying|varbit)(\(\d+\))?$/.test(type) && /^[01]+$/.test(v)) return `B'${v}'`;
+  return col.default;
+}
+
 export function columnDDL(col) {
   const parts = [quoteIdent(col.name), formatType(col)];
   const raw = col.raw ?? {};
@@ -63,7 +80,7 @@ export function columnDDL(col) {
   }
   if (col.notNull || col.pk) parts.push('NOT NULL');
   if (col.default !== '' && col.default !== null && col.default !== undefined && raw.colconstype !== 'g') {
-    parts.push(`DEFAULT ${col.default}`);
+    parts.push(`DEFAULT ${defaultExpr(col)}`);
   }
   return parts.join(' ');
 }

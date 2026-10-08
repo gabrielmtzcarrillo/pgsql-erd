@@ -5,7 +5,7 @@
 import { foreignKeysOf } from './pgerd.js';
 import {
   quoteIdent, quoteLiteral, qualifiedName, formatType, columnDDL, createTableSQL,
-  addForeignKeySQL, foreignKeyPairs, uniqueConstraints,
+  addForeignKeySQL, foreignKeyPairs, uniqueConstraints, defaultExpr,
 } from './sql.js';
 import { tableKey } from './catalog.js';
 import { usesPgvector, CREATE_VECTOR_EXTENSION, VECTOR_EXTENSION } from '../../shared/pgvector.js';
@@ -67,7 +67,7 @@ export function normalizeDefault(v) {
   if (v === null || v === undefined) return '';
   let s = String(v).trim();
   for (;;) {
-    const next = s.replace(/::[a-z_][a-z0-9_ ]*(\([\d, ]+\))?(\[\])*$/i, '').trim();
+    const next = s.replace(/::(?:[a-z_][a-z0-9_ ]*|"[^"]+")(\([\d, ]+\))?(\[\])*$/i, '').trim();
     if (next === s) break;
     s = next;
   }
@@ -218,11 +218,11 @@ export function diffModels(db, erd, opts = {}) {
       const ei = identityOf(c);
       const di = identityOf(dc);
       if (!ei && !di && !(sequenceDefault(c) && sequenceDefault(dc)) && c.raw?.colconstype !== 'g' && dc.raw?.colconstype !== 'g' &&
-          normalizeDefault(c.default) !== normalizeDefault(dc.default)) {
+          normalizeDefault(defaultExpr(c)) !== normalizeDefault(dc.default)) {
         add('column', {
           kind: 'alter-default', table: key,
           summary: hasDefault(c) ? tr('Set default of {name} to {value}', { name: c.name, value: c.default }) : tr('Drop default of {name}', { name: c.name }),
-          sql: alter(hasDefault(c) ? `ALTER COLUMN ${col} SET DEFAULT ${c.default}` : `ALTER COLUMN ${col} DROP DEFAULT`),
+          sql: alter(hasDefault(c) ? `ALTER COLUMN ${col} SET DEFAULT ${defaultExpr(c)}` : `ALTER COLUMN ${col} DROP DEFAULT`),
         });
       }
       if (ei !== di) {
