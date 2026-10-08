@@ -38,26 +38,6 @@
     </div>
     <div class="group">
       <div class="group-items">
-        <button data-cmd="toggle-grid" title="Show grid (Ctrl+Alt+G)" data-i18n="ribbon: Grid">Grid</button>
-        <button data-cmd="toggle-snap" title="Snap tables to the grid (Ctrl+Shift+G). Hold Alt while dragging to invert." data-i18n="ribbon: Snap">Snap</button>
-        <label class="ribbon-field">
-          <select id="grid-size" title="Grid size (px)">
-            <option value="5">5</option>
-            <option value="10">10</option>
-            <option value="15">15</option>
-            <option value="20">20</option>
-            <option value="25">25</option>
-            <option value="30">30</option>
-            <option value="40">40</option>
-            <option value="50">50</option>
-          </select>
-          <span>Size</span>
-        </label>
-      </div>
-      <div class="group-label">Grid</div>
-    </div>
-    <div class="group">
-      <div class="group-items">
         <button data-cmd="db-connect" id="db-button" title="Connect to a PostgreSQL database">Connect</button>
         <button data-cmd="toggle-db-tree" title="Show the tables of the connected database">Explorer</button>
         <div class="stack">
@@ -323,6 +303,19 @@
     <span id="status-msg"></span>
     <span id="status-count"></span>
     <span id="status-view" class="status-view">
+      <button type="button" data-cmd="toggle-grid" title="Show grid (Ctrl+Alt+G)"></button>
+      <button type="button" data-cmd="toggle-snap" title="Snap tables to the grid (Ctrl+Shift+G). Hold Alt while dragging to invert."></button>
+      <select id="grid-size" title="Grid size (px)">
+        <option value="5">5</option>
+        <option value="10">10</option>
+        <option value="15">15</option>
+        <option value="20">20</option>
+        <option value="25">25</option>
+        <option value="30">30</option>
+        <option value="40">40</option>
+        <option value="50">50</option>
+      </select>
+      <span class="status-sep"></span>
       <button type="button" data-cmd="auto-layout" title="Auto layout (Ctrl+L)"></button>
       <button type="button" data-cmd="fit" title="Fit to window (Ctrl+0)"></button>
       <span class="status-sep"></span>

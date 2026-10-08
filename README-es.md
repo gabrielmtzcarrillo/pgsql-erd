@@ -16,7 +16,7 @@ funciona con Ollama, vLLM, OpenAI y otros servidores compatibles con OpenAI.
 ### Cinta de opciones y pestañas
 
 Los comandos se agrupan al estilo de Office (Archivo, Historial, Diagrama,
-Cuadrícula, Base de datos, Scripts, SQL y exportar) con iconos a dos colores; los menús nativos usan los
+Base de datos, Scripts, SQL y exportar) con iconos a dos colores; los menús nativos usan los
 mismos iconos. Debajo de la cinta, las pestañas cambian entre **Diagrama**, **Scripts**, **Consulta**,
 **Generador**, **Grafo** y **Asistente**, seguidas de una pestaña por cada tabla cuyos datos estés explorando.
 
@@ -156,13 +156,13 @@ Una vista dirigida por fuerzas; haz doble clic en un vértice para expandir sus 
 - Arrastra las tablas para moverlas. Arrastra el fondo para desplazarte y usa la rueda para acercar o alejar.
   La barra de estado reúne los controles de vista, como en Word: un control deslizante de zoom (100% en el
   centro) con botones para alejar y acercar y el nivel de zoom, además de **Ajustar** y **Organizar** para
-  ordenarlo todo.
-- Detrás del diagrama se dibuja una cuadrícula (**Mostrar**, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd>), con
+  ordenarlo todo, y los controles de la cuadrícula.
+- Detrás del diagrama se dibuja una cuadrícula (botón de cuadrícula en la barra de estado, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd>), con
   una línea más marcada cada cinco celdas. Con **Imán** activado (<kbd>Ctrl</kbd>+<kbd>Mayús</kbd>+<kbd>G</kbd>),
   las tablas arrastradas, los desplazamientos con las flechas, las tablas nuevas y la organización automática
   se ajustan a las líneas de la cuadrícula; mantén <kbd>Alt</kbd> al arrastrar para invertir el ajuste en ese
-  movimiento, y <kbd>Mayús</kbd>+flecha mueve de 1 en 1 px. El tamaño de la cuadrícula se elige con
-  **Tamaño**, junto al botón Imán, y se guarda en el `gridSize` del archivo.
+  movimiento, y <kbd>Mayús</kbd>+flecha mueve de 1 en 1 px. El tamaño de la cuadrícula se elige en la
+  lista junto al botón Imán, y se guarda en el `gridSize` del archivo.
 - Deshacer/rehacer, y un aviso de cambios sin guardar al cerrar la ventana.
 - Guarda de nuevo en `.pgerd`. Las propiedades que esta aplicación no edita (tablespace, restricciones check,
   etc.) se conservan tal como estaban.

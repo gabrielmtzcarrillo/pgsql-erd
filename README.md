@@ -14,7 +14,7 @@ filters, and an AI assistant that works with Ollama, vLLM, OpenAI and other Open
 
 ### Ribbon and tabs
 
-Commands are grouped Office-style (File, History, Diagram, Grid, Database, Scripts,
+Commands are grouped Office-style (File, History, Diagram, Database, Scripts,
 SQL & Export) with two-tone colour icons; the native menus use the same icons. Below the ribbon,
 tabs switch between the **Diagram**, **Scripts**, **Query**, **Builder**, **Graph** and **Assistant**, followed by
 one tab per table whose data you are browsing.
@@ -152,12 +152,12 @@ A force-directed view; double-click a vertex to expand its neighbours.
   - add and remove relationships, optionally creating the FK column for you
 - Drag tables to move them. Drag the background to pan and scroll to zoom. The status bar holds the
   view controls, as in Word: a zoom slider (100% in the middle) with zoom out/in buttons and the
-  zoom level, plus **Fit** and **Auto layout** to tidy up.
-- A grid is drawn behind the diagram (**Grid**, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd>), with a
+  zoom level, plus **Fit** and **Auto layout** to tidy up, and the grid controls.
+- A grid is drawn behind the diagram (grid button in the status bar, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd>), with a
   heavier line every fifth cell. With **Snap** on (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>),
   dragged tables, arrow-key nudges, new tables and auto layout all land on grid lines; hold
   <kbd>Alt</kbd> while dragging to invert snapping for that move, and <kbd>Shift</kbd>+arrow nudges
-  by 1px. The grid size is picked with **Size**, next to the Snap button and saved in the file's `gridSize`.
+  by 1px. The grid size is picked in the list next to the Snap button and saved in the file's `gridSize`.
 - Undo/redo, and a prompt about unsaved changes when you close the window.
 - Save back to `.pgerd`. Properties this app doesn't edit (tablespace, check constraints, and so
   on) are kept as they were.

@@ -191,8 +191,6 @@ textarea { resize: vertical; width: 100%; }
 .ribbon .stack { display: flex; flex-direction: column; justify-content: center; gap: 1px; }
 .ribbon .stack button { flex-direction: row; gap: 5px; min-width: 0; padding: 1px 5px; }
 .ribbon .stack .btn-icon { width: 16px; height: 16px; }
-.ribbon-field { display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 3px; padding: 4px 4px 3px; font-size: 12px; }
-.ribbon-field select { padding: 2px 4px; }
 .zoom-label { min-width: 44px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .workspace { flex: 1; display: flex; min-height: 0; }
@@ -507,6 +505,8 @@ button.active { border-color: var(--accent); color: var(--accent); }
 .status-view[hidden] { display: none; }
 .status-view button { padding: 1px 3px; border-color: transparent; background: transparent; }
 .status-view button:hover:not(:disabled) { background: var(--accent-soft); }
+.status-view button.active { background: var(--accent-soft); border-color: var(--accent); }
+#grid-size { margin-left: 2px; padding: 0 2px; font-size: 12px; }
 .status-view .btn-icon { width: 15px; height: 15px; }
 .status-view .status-sep { width: 1px; align-self: stretch; margin: 2px 6px; background: var(--border); }
 #zoom-slider { width: 120px; margin: 0 2px; padding: 0; accent-color: var(--accent); }
@@ -1108,7 +1108,8 @@ dialog.medium { width: min(760px, 94vw); }
   background: transparent;
   border-color: var(--me-light) var(--me-shadow) var(--me-shadow) var(--me-light);
 }
-:root[data-theme="winme"] .ribbon button.active { background: #e8e6e1; border-color: var(--me-shadow) var(--me-light) var(--me-light) var(--me-shadow); }
+:root[data-theme="winme"] .ribbon button.active,
+:root[data-theme="winme"] .status-view button.active { background: #e8e6e1; border-color: var(--me-shadow) var(--me-light) var(--me-light) var(--me-shadow); }
 :root[data-theme="winme"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
 :root[data-theme="winme"] select,
 :root[data-theme="winme"] textarea {
