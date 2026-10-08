@@ -14,7 +14,7 @@ import { quoteIdent, qualifiedName } from './sql.js';
 import { tableKey } from './catalog.js';
 
 export const JOIN_TYPES = ['inner', 'left', 'right', 'full'];
-const JOIN_SQL = { inner: 'JOIN', left: 'LEFT JOIN', right: 'RIGHT JOIN', full: 'FULL JOIN' };
+const JOIN_SQL = { inner: 'INNER JOIN', left: 'LEFT JOIN', right: 'RIGHT JOIN', full: 'FULL JOIN' };
 const FLIP = { inner: 'inner', left: 'right', right: 'left', full: 'full' };
 
 // A short alias from the initials of the table name: order_items -> oi.
@@ -73,7 +73,7 @@ export function autoJoins(fks, tables, joins, added) {
       if (taken.has(fk.id) || used.has(fk.id)) continue;
       let join = null;
       // For a self-reference the table already there is the referencing one:
-      // employees e JOIN employees e2 ON e2.id = e.manager_id.
+      // employees e INNER JOIN employees e2 ON e2.id = e.manager_id.
       if (fk.from === okey && fk.to === key) join = { a: other.id, b: added.id };
       else if (fk.from === key && fk.to === okey) join = { a: added.id, b: other.id };
       if (!join) continue;
@@ -123,7 +123,7 @@ export function buildSQL({ tables, joins = [], distinct = false, limit = null })
             return j.a === t.id ? `${a} = ${b}` : `${b} = ${a}`;
           })
         );
-        from.push(`  ${JOIN_SQL[type] ?? 'JOIN'} ${ref(t)} ON ${cond.join(' AND ')}`);
+        from.push(`  ${JOIN_SQL[type] ?? 'INNER JOIN'} ${ref(t)} ON ${cond.join(' AND ')}`);
         placed.add(t.id);
         grew = true;
         break;

@@ -81,8 +81,8 @@ test('query builder: relationships become joins', () => {
       '  c.name,',
       '  ol.line',
       'FROM public.orders o',
-      '  JOIN public.customers c ON c.id = o.customer_id',
-      '  JOIN public.order_lines ol ON ol.order_id = o.id;',
+      '  INNER JOIN public.customers c ON c.id = o.customer_id',
+      '  INNER JOIN public.order_lines ol ON ol.order_id = o.id;',
     ].join('\n')
   );
 });
@@ -90,7 +90,7 @@ test('query builder: relationships become joins', () => {
 test('query builder: a second copy of a table takes the next foreign key', () => {
   const s = build(['public.orders', 'public.addresses', 'public.addresses']);
   assert.deepEqual(s.joins.map((j) => j.fk), ['public.orders:orders_billing_fk', 'public.orders:orders_shipping_fk']);
-  assert.match(buildSQL(s), /JOIN public\.addresses a ON a\.id = o\.billing_id\n {2}JOIN public\.addresses a2 ON a2\.id = o\.shipping_id;$/);
+  assert.match(buildSQL(s), /INNER JOIN public\.addresses a ON a\.id = o\.billing_id\n {2}INNER JOIN public\.addresses a2 ON a2\.id = o\.shipping_id;$/);
 });
 
 test('query builder: self references join the new copy as the referenced row', () => {
@@ -100,7 +100,7 @@ test('query builder: self references join the new copy as the referenced row', (
   s.tables[1].columns = ['name'];
   assert.equal(
     buildSQL(s),
-    'SELECT\n  e.name AS e_name,\n  e2.name AS e2_name\nFROM hr.employees e\n  JOIN hr.employees e2 ON e2.id = e.manager_id;'
+    'SELECT\n  e.name AS e_name,\n  e2.name AS e2_name\nFROM hr.employees e\n  INNER JOIN hr.employees e2 ON e2.id = e.manager_id;'
   );
 });
 

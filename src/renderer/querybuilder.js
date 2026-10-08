@@ -255,15 +255,16 @@ export function setupQueryBuilder(ctx) {
     return { left: cardEl.offsetLeft, right: cardEl.offsetLeft + cardEl.offsetWidth, y };
   }
 
-  // Short label and explanation of each join type, by the tables' aliases.
+  // SQL name (not translated) and explanation of each join type, by the
+  // tables' aliases.
   function joinTypes(j) {
     const a = tableById(j.a).alias;
     const b = tableById(j.b).alias;
     return {
-      inner: [tr('Matching'), tr('Only rows of {a} and {b} that match', { a, b })],
-      left: [tr('All of {alias}', { alias: a }), tr('Every row of {a}, with {b} where it matches', { a, b })],
-      right: [tr('All of {alias}', { alias: b }), tr('Every row of {a}, with {b} where it matches', { a: b, b: a })],
-      full: [tr('All of both'), tr('Every row of {a} and of {b}, matched where they can be', { a, b })],
+      inner: ['INNER JOIN', tr('Only rows of {a} and {b} that match', { a, b })],
+      left: ['LEFT JOIN', tr('Every row of {a}, with {b} where it matches', { a, b })],
+      right: ['RIGHT JOIN', tr('Every row of {a}, with {b} where it matches', { a: b, b: a })],
+      full: ['FULL JOIN', tr('Every row of {a} and of {b}, matched where they can be', { a, b })],
     };
   }
 

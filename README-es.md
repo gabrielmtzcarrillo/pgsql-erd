@@ -363,8 +363,8 @@ del encabezado marca todas. Las tablas con una clave foránea entre ellas se une
   consigo misma
 - arrastra una columna sobre la columna de otra tabla para unirlas a mano
 
-Cada unión tiene un pequeño menú sobre su línea: solo las filas que coinciden (`JOIN`), todas las filas de una
-tabla (`LEFT` / `RIGHT JOIN`) o de ambas (`FULL JOIN`). Los alias se pueden cambiar en los encabezados de las
+Cada unión tiene un pequeño menú sobre su línea, con su nombre SQL: solo las filas que coinciden (`INNER JOIN`),
+todas las filas de una tabla (`LEFT` / `RIGHT JOIN`) o de ambas (`FULL JOIN`). Los alias se pueden cambiar en los encabezados de las
 tablas; **Sin duplicados** y **Límite** completan la sentencia. El SQL aparece debajo del lienzo mientras
 trabajas: **Abrir en Consulta** lo pone en la pestaña Consulta y **Ejecutar** además lo ejecuta ahí. La
 consulta se recuerda entre sesiones.

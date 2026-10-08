@@ -342,8 +342,8 @@ Tables with a foreign key between them are joined automatically on its columns:
 - a table that references itself (`employees.manager_id`) can be added twice for a self join
 - drag a column onto a column of another table to join them by hand
 
-Each join has a small menu on its line: matching rows only (`JOIN`), every row of one table (`LEFT` /
-`RIGHT JOIN`) or of both (`FULL JOIN`). Aliases can be renamed in the table headers; **Distinct** and
+Each join has a small menu on its line, by its SQL name: matching rows only (`INNER JOIN`), every row of one
+table (`LEFT` / `RIGHT JOIN`) or of both (`FULL JOIN`). Aliases can be renamed in the table headers; **Distinct** and
 **Limit** complete the statement. The SQL shows below the canvas as you go: **Open in Query** puts it in
 the Query tab and **Run** also runs it there. The query is remembered between sessions.
 
