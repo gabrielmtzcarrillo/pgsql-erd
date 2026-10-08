@@ -303,12 +303,12 @@
   <dialog id="link-dialog">
     <form method="dialog" id="link-form">
       <h3>New relationship</h3>
-      <p class="muted" data-i18n>Adds a foreign key from the <em>referencing</em> (many) table to the <em>referenced</em> (one) table.</p>
+      <p class="muted" data-i18n>Adds a foreign key from the <em>referencing</em> (many) table to the <em>referenced</em> (one) table. The <em>foreign key column</em> lives in the referencing table and points at the referenced column, usually its primary key.</p>
       <div class="grid2">
         <label>Referencing table<select name="localTable" required></select></label>
-        <label>Column<select name="localCol" required></select></label>
+        <label>Foreign key column<select name="localCol" required></select></label>
         <label>Referenced table<select name="refTable" required></select></label>
-        <label>Column<select name="refCol" required></select></label>
+        <label>Referenced column (PK / unique)<select name="refCol" required></select></label>
         <label>Type
           <select name="type">
             <option value="onetomany">One to many</option>

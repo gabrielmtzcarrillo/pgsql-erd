@@ -257,12 +257,23 @@ textarea { resize: vertical; width: 100%; }
 .erd-table.selected .t-body { stroke: var(--erd-accent); stroke-width: 2; }
 .erd-table.link-target .t-body { stroke: var(--erd-accent); stroke-width: 2.4; }
 .erd-table .t-link-handle {
-  fill: var(--erd-accent); stroke: var(--erd-table-bg); stroke-width: 2;
+  fill: var(--erd-table-bg); stroke: var(--erd-table-border); stroke-width: 1;
   cursor: crosshair; opacity: 0; transition: opacity 0.12s;
 }
+.erd-table .t-link-handle:hover { fill: var(--erd-accent); }
 .erd-table:hover .t-link-handle, .erd-table.selected .t-link-handle { opacity: 1; }
+.erd-table .t-col-handle {
+  fill: var(--erd-table-bg); stroke: var(--erd-table-border); stroke-width: 1;
+  cursor: crosshair; opacity: 0; transition: opacity 0.12s;
+}
+/* Follow the table's border, which turns to the accent when selected. */
+.erd-table.selected :is(.t-link-handle, .t-col-handle) { stroke: var(--erd-accent); stroke-width: 2; }
+.erd-table:hover .t-col-handle { opacity: 0.55; }
+.erd-table .t-row:hover .t-col-handle { opacity: 1; }
+.erd-table .t-col-handle:hover { fill: var(--erd-accent); }
+.erd-table .t-row.link-target .t-row-bg { fill: var(--accent-soft); }
 #canvas.linking, #canvas.linking .erd-table { cursor: crosshair; }
-#canvas.linking .t-link-handle { opacity: 0; }
+#canvas.linking .t-link-handle, #canvas.linking .t-col-handle { opacity: 0; }
 .link-draft { stroke: var(--erd-accent); stroke-width: 2; stroke-dasharray: 6 4; pointer-events: none; }
 
 /* Diagram context menu */

@@ -342,7 +342,7 @@ function renderTable(t) {
   }
   if (t.description) g.append(el('title', {}, t.description));
   // Drag from this handle onto another table to add a relationship.
-  g.append(el('circle', { class: 't-link-handle', cx: width, cy: HEADER_H / 2, r: 6 }, [
+  g.append(el('circle', { class: 't-link-handle', cx: width, cy: HEADER_H / 2, r: 8 }, [
     el('title', {}, tr('Drag to another table to add a relationship')),
   ]));
 
@@ -364,6 +364,13 @@ function renderTable(t) {
     if (fks.has(c.attnum)) tip.push('FOREIGN KEY');
     if (c.default) tip.push(`DEFAULT ${c.default}`);
     row.append(el('title', {}, tip.join(' ')));
+    // Drag from a column's handle (the foreign key) onto another table's
+    // column (the referenced one) to add a relationship between them.
+    for (const cx of [0, width]) {
+      row.append(el('circle', { class: 't-col-handle', cx, cy: y + ROW_H / 2, r: 6 }, [
+        el('title', {}, tr('Drag to the referenced column to add a foreign key')),
+      ]));
+    }
     g.append(row);
   });
   return g;
@@ -964,7 +971,7 @@ function refreshLinkDialogColumns() {
   fillSelect(f.localCol, localOpts, match ? String(match.attnum) : f.localCol.value || 'new');
 }
 
-function openLinkDialog({ localTable, refTable } = {}) {
+function openLinkDialog({ localTable, localCol, refTable, refCol } = {}) {
   if (!state.model.tables.length) return status(tr('Add a table first.'));
   const f = linkForm.elements;
   const opts = [...state.model.tables]
@@ -979,6 +986,13 @@ function openLinkDialog({ localTable, refTable } = {}) {
   f.fkName.value = '';
   f.type.value = 'onetomany';
   refreshLinkDialogColumns();
+  // The referenced column decides the suggested foreign key column, so pick
+  // it first and refresh again before choosing the foreign key column.
+  if (refCol !== undefined) {
+    f.refCol.value = String(refCol);
+    refreshLinkDialogColumns();
+  }
+  if (localCol !== undefined) f.localCol.value = String(localCol);
   linkDialog.returnValue = '';
   linkDialog.showModal();
 }
@@ -1105,26 +1119,38 @@ function tableAt(clientX, clientY) {
 }
 
 // Dragging from a table's link handle draws a line; dropping it on another
-// table opens the relationship dialog with both tables filled in.
-function startLinkDrag(t) {
+// table opens the relationship dialog with both tables filled in. Dragging
+// from a column's handle does the same for that column (the foreign key),
+// and dropping it on a column picks that one as the referenced column.
+function startLinkDrag(t, handle) {
+  const col = handle?.classList.contains('t-col-handle') ? Number(handle.closest('.t-row').dataset.attnum) : undefined;
   const s = state.sizes.get(t.id);
-  const x = t.x + s.width, y = t.y + HEADER_H / 2;
+  const x = t.x + (col === undefined ? s.width : Number(handle.getAttribute('cx')));
+  const y = t.y + (col === undefined ? HEADER_H / 2 : Number(handle.getAttribute('cy')));
   const line = el('line', { class: 'link-draft', x1: x, y1: y, x2: x, y2: y });
   viewport.append(line);
   svg.classList.add('linking');
-  return { kind: 'link', t, line, target: null, targetEl: null };
+  return { kind: 'link', t, col, line, target: null, targetCol: undefined, targetEl: null };
 }
 
 function moveLinkDrag(e) {
   const p = toDiagram(e.clientX, e.clientY);
   drag.line.setAttribute('x2', p.x);
   drag.line.setAttribute('y2', p.y);
+  const hitEl = document.elementFromPoint(e.clientX, e.clientY);
   const hit = tableAt(e.clientX, e.clientY);
-  const target = hit && hit !== drag.t ? hit : null;
-  if (target === drag.target) return;
+  const rowEl = drag.col !== undefined ? hitEl?.closest?.('.t-row') : null;
+  const hitCol = rowEl ? Number(rowEl.dataset.attnum) : undefined;
+  // A column may reference another column of its own table (a self
+  // reference); a whole table may only be linked to another table.
+  const target = hit && (hit !== drag.t || (hitCol !== undefined && hitCol !== drag.col)) ? hit : null;
+  const targetCol = target ? hitCol : undefined;
+  if (target === drag.target && targetCol === drag.targetCol) return;
   drag.targetEl?.classList.remove('link-target');
   drag.target = target;
-  drag.targetEl = target ? tablesLayer.querySelector(`.erd-table[data-id="${CSS.escape(target.id)}"]`) : null;
+  drag.targetCol = targetCol;
+  drag.targetEl = !target ? null : targetCol !== undefined ? rowEl
+    : tablesLayer.querySelector(`.erd-table[data-id="${CSS.escape(target.id)}"]`);
   drag.targetEl?.classList.add('link-target');
 }
 
@@ -1135,8 +1161,9 @@ svg.addEventListener('pointerdown', (e) => {
   const linkEl = e.target.closest('.erd-link');
   const scriptEl = e.target.closest('.erd-script');
   svg.setPointerCapture(e.pointerId);
-  if (tableEl && e.button === 0 && e.target.closest('.t-link-handle')) {
-    drag = startLinkDrag(tableById(tableEl.dataset.id));
+  const handle = e.target.closest('.t-link-handle, .t-col-handle');
+  if (tableEl && e.button === 0 && handle) {
+    drag = startLinkDrag(tableById(tableEl.dataset.id), handle);
   } else if (scriptEl && e.button === 0) {
     if (state.selection?.id !== scriptEl.dataset.path) select({ type: 'script', id: scriptEl.dataset.path });
     drag = erdScripts.startDrag(scriptEl, e);
@@ -1217,12 +1244,14 @@ function ensureVisible(t) {
 
 function endDrag(e) {
   if (drag?.kind === 'link') {
-    const { t, target, line } = drag;
+    const { t, col, target, targetCol, line } = drag;
     line.remove();
     svg.classList.remove('linking');
     drag = null;
     render();
-    if (target && e.type === 'pointerup') openLinkDialog({ localTable: t.id, refTable: target.id });
+    if (target && e.type === 'pointerup') {
+      openLinkDialog({ localTable: t.id, localCol: col, refTable: target.id, refCol: targetCol });
+    }
     return;
   }
   if (drag?.kind === 'script') erdScripts.endDrag(drag);
@@ -1415,7 +1444,7 @@ function buildExportSVG() {
   const clone = viewport.cloneNode(true);
   clone.removeAttribute('transform');
   clone.querySelectorAll('.selected, .related, .focused').forEach((n) => n.classList.remove('selected', 'related', 'focused'));
-  clone.querySelectorAll('title, .t-link-handle, .link-draft').forEach((n) => n.remove());
+  clone.querySelectorAll('title, .t-link-handle, .t-col-handle, .link-draft').forEach((n) => n.remove());
   const out =
     `<svg xmlns="${SVG_NS}" width="${Math.ceil(b.width)}" height="${Math.ceil(b.height)}" ` +
     `viewBox="${b.x} ${b.y} ${b.width} ${b.height}">` +
