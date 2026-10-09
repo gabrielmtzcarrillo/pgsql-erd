@@ -9,7 +9,10 @@
 //
 // Each table node keeps its definition in node.otherInfo.data (name, schema,
 // columns, primary_key, foreign_key, ...). Links carry
-// data.{local,referenced}_{table_uuid,column_attnum}.
+// data.{local,referenced}_{table_uid,column_attnum}. pgAdmin looks the tables
+// up by those exact keys while drawing and goes blank if they are missing, so
+// files that older versions of this app wrote with *_table_uuid are read too
+// but always written back as *_table_uid.
 //
 // Internally we work with a simpler model (see emptyModel) and keep the raw
 // objects around so that unknown properties survive a load/save round trip.
@@ -198,15 +201,19 @@ export function parsePgerd(text) {
   // that was drawn but not stored as a foreign key.
   for (const l of modelsOf(linkLayer)) {
     const d = l.data;
-    if (!d || !byId.has(d.local_table_uuid) || !byId.has(d.referenced_table_uuid)) continue;
+    const localTable = d?.local_table_uid ?? d?.local_table_uuid;
+    const refTable = d?.referenced_table_uid ?? d?.referenced_table_uuid;
+    if (!d || !byId.has(localTable) || !byId.has(refTable)) continue;
     const existing = model.links.find(
       (x) =>
-        x.localTable === d.local_table_uuid &&
-        x.refTable === d.referenced_table_uuid &&
+        x.localTable === localTable &&
+        x.refTable === refTable &&
         x.localCol === d.local_column_attnum &&
         x.refCol === d.referenced_column_attnum
     );
     if (existing) {
+      // Keep the stored id so saving an unchanged diagram rewrites the same text.
+      if (l.id) existing.id = l.id;
       existing.raw = l;
       if (l.type) existing.type = l.type;
       continue;
@@ -214,9 +221,9 @@ export function parsePgerd(text) {
     addLink({
       id: l.id ?? uuid(),
       type: l.type ?? 'onetomany',
-      localTable: d.local_table_uuid,
+      localTable,
       localCol: d.local_column_attnum,
-      refTable: d.referenced_table_uuid,
+      refTable,
       refCol: d.referenced_column_attnum,
       group: uuid(),
       fkName: '',
@@ -266,6 +273,12 @@ export function foreignKeysOf(model, table) {
   return [...groups.values()];
 }
 
+// Raw link data without the *_table_uuid keys older versions of this app wrote.
+function linkData(data) {
+  const { local_table_uuid, referenced_table_uuid, ...rest } = data ?? {};
+  return rest;
+}
+
 export function serializePgerd(model) {
   const tablesById = new Map(model.tables.map((t) => [t.id, t]));
   const nodeModels = {};
@@ -277,8 +290,12 @@ export function serializePgerd(model) {
     const tablePorts = ports.get(table.id);
     const name = `coll-port-${attnum}`;
     if (!tablePorts.has(name)) {
+      // Reuse the port id already in the file (pgAdmin adds -left/-right to the name).
+      const rawPort = (table.raw?.ports ?? []).find(
+        (p) => p?.name === name || p?.name === `${name}-${alignment}`
+      );
       tablePorts.set(name, {
-        id: uuid(),
+        id: rawPort?.id ?? uuid(),
         type,
         x: 0,
         y: 0,
@@ -302,6 +319,7 @@ export function serializePgerd(model) {
     sourcePort.links.push(l.id);
     targetPort.links.push(l.id);
     const raw = l.raw ?? {};
+    const rawPoints = Array.isArray(raw.points) ? raw.points : [];
     linkModels[l.id] = {
       selected: false,
       width: 1,
@@ -318,14 +336,14 @@ export function serializePgerd(model) {
       target: local.id,
       targetPort: targetPort.id,
       points: [
-        { id: uuid(), type: 'point', x: ref.x, y: ref.y },
-        { id: uuid(), type: 'point', x: local.x, y: local.y },
+        { id: rawPoints[0]?.id ?? uuid(), type: 'point', x: ref.x, y: ref.y },
+        { id: (rawPoints.length > 1 && rawPoints.at(-1).id) || uuid(), type: 'point', x: local.x, y: local.y },
       ],
       data: {
-        ...(raw.data ?? {}),
-        local_table_uuid: local.id,
+        ...linkData(raw.data),
+        local_table_uid: local.id,
         local_column_attnum: l.localCol,
-        referenced_table_uuid: ref.id,
+        referenced_table_uid: ref.id,
         referenced_column_attnum: l.refCol,
       },
     };
@@ -443,6 +461,8 @@ export function serializePgerd(model) {
   };
 }
 
+// Indented, one property per line, so saved diagrams diff well in git.
+// pgAdmin parses the file with JSON.parse and does not mind the whitespace.
 export function stringifyPgerd(model) {
-  return JSON.stringify(serializePgerd(model));
+  return `${JSON.stringify(serializePgerd(model), null, 2)}\n`;
 }

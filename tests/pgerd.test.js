@@ -55,8 +55,8 @@ test('serialized output has the structure pgAdmin expects', () => {
     const tgt = nodes[link.target];
     assert.ok(src.ports.some((p) => p.id === link.sourcePort && p.links.includes(link.id)));
     assert.ok(tgt.ports.some((p) => p.id === link.targetPort && p.links.includes(link.id)));
-    assert.equal(link.data.local_table_uuid, link.target);
-    assert.equal(link.data.referenced_table_uuid, link.source);
+    assert.equal(link.data.local_table_uid, link.target);
+    assert.equal(link.data.referenced_table_uid, link.source);
     assert.ok(tgt.otherInfo.data.foreign_key.length > 0);
   }
 });
@@ -158,4 +158,30 @@ test('keeps the custom palette in the file, outside the pgAdmin data', () => {
   assert.deepEqual(again.palette, ['#aa3366', '#2f6fb3']);
   again.palette = [];
   assert.equal('pgsqlErd' in serializePgerd(again), false, 'emptied palette is dropped');
+});
+
+test('reads links saved with *_table_uuid and writes the *_table_uid keys pgAdmin reads', () => {
+  const old = sample.replaceAll('"local_table_uid"', '"local_table_uuid"').replaceAll('"referenced_table_uid"', '"referenced_table_uuid"');
+  const m = parsePgerd(old);
+  assert.equal(m.links.length, parsePgerd(sample).links.length);
+  const links = serializePgerd(m).data.layers.find((l) => l.type === 'diagram-links').models;
+  for (const link of Object.values(links)) {
+    assert.equal(link.data.local_table_uid, link.target);
+    assert.equal(link.data.referenced_table_uid, link.source);
+    assert.equal('local_table_uuid' in link.data, false);
+    assert.equal('referenced_table_uuid' in link.data, false);
+  }
+});
+
+test('saves the file pretty-printed so it diffs well', () => {
+  const m = parsePgerd(sample);
+  const text = stringifyPgerd(m);
+  assert.ok(text.startsWith('{\n  "version": '));
+  assert.ok(text.endsWith('}\n'));
+  assert.equal(parsePgerd(text).tables.length, m.tables.length);
+});
+
+test('saving an unchanged diagram again writes the same text', () => {
+  const once = stringifyPgerd(parsePgerd(sample));
+  assert.equal(stringifyPgerd(parsePgerd(once)), once);
 });
