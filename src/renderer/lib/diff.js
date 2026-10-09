@@ -87,6 +87,35 @@ function balanced(s) {
   return depth === 0;
 }
 
+// Type families whose members a foreign key can mix: PostgreSQL needs the key
+// column's type to compare with the referenced one, directly or through an
+// implicit cast (integer -> bigint or numeric, varchar -> text, ...).
+const FK_FAMILY = {
+  smallint: 'int', integer: 'int', bigint: 'int',
+  numeric: 'num', real: 'num', 'double precision': 'num',
+  text: 'str', 'character varying': 'str', character: 'str', name: 'str',
+};
+
+export function fkTypesCompatible(local, ref) {
+  const a = parseType(local);
+  const b = parseType(ref);
+  if (a.arr !== b.arr) return false;
+  const ta = SERIALS[a.type] ?? a.type;
+  const tb = SERIALS[b.type] ?? b.type;
+  if (ta === tb) return true;
+  const fa = FK_FAMILY[ta];
+  const fb = FK_FAMILY[tb];
+  return !!fa && (fa === fb || (fa === 'int' && fb === 'num'));
+}
+
+// Warning for a foreign key whose column types PostgreSQL cannot compare.
+function fkTypeWarning(fk) {
+  const bad = fk.pairs.filter(([a, b]) => !fkTypesCompatible(a, b));
+  if (!bad.length) return '';
+  const list = bad.map(([a, b]) => `${a.name} ${formatType(a)} → ${b.name} ${formatType(b)}`).join(', ');
+  return ` ${tr('(incompatible column types: {list}; the database rejects it)', { list })}`;
+}
+
 // serial columns and explicit nextval() defaults are equivalent.
 const sequenceDefault = (c) => isSerial(c) || /^nextval\(/i.test(String(c.default ?? ''));
 const identityOf = (c) => (c.raw?.colconstype === 'i' ? c.raw.attidentity || 'd' : '');
@@ -102,6 +131,7 @@ function foreignKeys(model, t) {
       const raw = links[0].rawFk ?? {};
       return {
         links,
+        pairs: fk.pairs,
         name: links[0].fkName,
         ref: fk.ref,
         cols: fk.pairs.map(([a]) => a.name),
@@ -113,39 +143,96 @@ function foreignKeys(model, t) {
     .filter(Boolean);
 }
 
+// Columns renamed in the diagram (c.renamedFrom) whose old name the database
+// still has and whose new name it does not. A name the diagram uses again for
+// another column is left alone (swaps fall back to drop and add).
+function findRenames(db, erdTables) {
+  const out = [];
+  for (const t of db.tables) {
+    const key = tableKey(t);
+    const e = erdTables.get(key);
+    if (!e) continue;
+    const dbNames = new Set(t.columns.map((c) => c.name));
+    const erdNames = new Set(e.columns.map((c) => c.name));
+    const taken = new Set();
+    for (const c of e.columns) {
+      const from = c.renamedFrom;
+      if (!from || from === c.name || !dbNames.has(from) || dbNames.has(c.name) || erdNames.has(from) || taken.has(from)) continue;
+      taken.add(from);
+      out.push({ key, table: t, from, to: c.name });
+    }
+  }
+  return out;
+}
+
+// A copy of the database model with the renamed columns under their new names.
+function applyRenames(db, renames) {
+  const copy = { ...db, tables: db.tables.map((t) => ({ ...t })) };
+  for (const t of copy.tables) {
+    const map = new Map(renames.filter((r) => r.key === tableKey(t)).map((r) => [r.from, r.to]));
+    if (!map.size) continue;
+    t.columns = t.columns.map((c) => (map.has(c.name) ? { ...c, name: map.get(c.name) } : c));
+    if (t.rawData) {
+      const rename = (list) => (list ?? []).map((con) => ({
+        ...con,
+        columns: (con.columns ?? []).map((c) => (map.has(c.column) ? { ...c, column: map.get(c.column) } : c)),
+      }));
+      t.rawData = { ...t.rawData, primary_key: rename(t.rawData.primary_key), unique_constraint: rename(t.rawData.unique_constraint) };
+    }
+  }
+  return copy;
+}
+
 /**
  * @param db   model built from the database catalog (with .schemas)
  * @param erd  the diagram
- * @param opts.destructive  emit DROP COLUMN (otherwise they are commented out)
+ * @param opts.destructive  emit DROP COLUMN (otherwise they are marked skipped)
  * @param opts.dropTables   emit DROP TABLE for tables missing from the diagram
  * @param opts.schemas      schemas to compare (default: the diagram's schemas)
+ * @param opts.recreateColumns  change a column's type by dropping it and
+ *                          adding it again (deletes its data) instead of
+ *                          ALTER COLUMN ... TYPE ... USING a cast; keys on
+ *                          the column are re-created
  * db.extensions (names of installed extensions) decides whether pgvector
  * has to be created for vector columns; without it, pgvector counts as
  * installed when a database table already has a vector column.
  */
 export function diffModels(db, erd, opts = {}) {
-  const { destructive = false, dropTables = false } = opts;
+  const { destructive = false, dropTables = false, recreateColumns = false } = opts;
   const schemas = new Set(opts.schemas ?? erd.tables.map((t) => t.schema || 'public'));
-  const dbTables = new Map(
-    db.tables.filter((t) => schemas.has(t.schema || 'public')).map((t) => [tableKey(t), t])
-  );
   const erdTables = new Map(
     erd.tables.filter((t) => schemas.has(t.schema || 'public')).map((t) => [tableKey(t), t])
+  );
+  const renames = findRenames(db, erdTables);
+  // Compare with the database as it is once the renames have run.
+  if (renames.length) db = applyRenames(db, renames);
+  const dbTables = new Map(
+    db.tables.filter((t) => schemas.has(t.schema || 'public')).map((t) => [tableKey(t), t])
   );
   // Tables outside the compared schemas may still be referenced by foreign keys.
   const erdAll = new Set(erd.tables.map(tableKey));
 
   const phases = {
-    dropFk: [], dropConstraint: [], dropColumn: [], dropTable: [], createSchema: [], createExtension: [],
+    rename: [], dropFk: [], dropConstraint: [], dropColumn: [], dropTable: [], createSchema: [], createExtension: [],
     createTable: [], column: [], addConstraint: [], addFk: [], comment: [],
   };
   const changes = [];
+  const recreated = new Map(); // table key -> names of columns dropped and added again
   const add = (phase, change) => {
-    const skipped = !!change.destructive && !(change.kind === 'drop-table' ? dropTables : destructive);
+    const allowed = { 'drop-table': dropTables, 'recreate-column': recreateColumns }[change.kind] ?? destructive;
+    const skipped = !!change.destructive && !allowed;
     const c = { ...change, skipped };
     phases[phase].push(c);
     changes.push(c);
   };
+
+  // Columns renamed in the diagram, before anything refers to the new names.
+  for (const r of renames) {
+    add('rename', {
+      kind: 'rename-column', table: r.key, summary: tr('Rename column {from} to {to}', { from: r.from, to: r.to }),
+      sql: `ALTER TABLE IF EXISTS ${qualifiedName(r.table)}\n    RENAME COLUMN ${quoteIdent(r.from)} TO ${quoteIdent(r.to)};`,
+    });
+  }
 
   // Schemas.
   const dbSchemas = new Set(db.schemas ?? db.tables.map((t) => t.schema));
@@ -195,15 +282,30 @@ export function diffModels(db, erd, opts = {}) {
     const dbCols = new Map(d.columns.map((c) => [c.name, c]));
     const missingCols = new Set([...dbCols.keys()].filter((n) => !erdCols.has(n)));
     const touchesMissing = (cols) => cols.some((c) => missingCols.has(c));
+    const remade = new Set(
+      recreateColumns ? e.columns.filter((c) => dbCols.has(c.name) && normalizeType(c) !== normalizeType(dbCols.get(c.name))).map((c) => c.name) : []
+    );
+    recreated.set(key, remade);
+    const touchesRemade = (cols) => cols.some((c) => remade.has(c));
 
     for (const c of e.columns) {
       const dc = dbCols.get(c.name);
       const col = quoteIdent(c.name);
-      if (!dc) {
-        const notNullNoDefault = (c.notNull || c.pk) && !hasDefault(c) && !isSerial(c) && !identityOf(c);
+      const notNullNoDefault = (c.notNull || c.pk) && !hasDefault(c) && !isSerial(c) && !identityOf(c);
+      const rowsWarning = notNullNoDefault ? ` ${tr('(NOT NULL without default: fails if the table has rows)')}` : '';
+      if (remade.has(c.name)) {
+        // One statement, so the column is never left dropped. Its keys are
+        // dropped before and re-created after (see below).
         add('column', {
-          kind: 'add-column', table: key, summary: tr('Add column {name}', { name: `${c.name} ${formatType(c)}` }) +
-            (notNullNoDefault ? ` ${tr('(NOT NULL without default: fails if the table has rows)')}` : ''),
+          kind: 'recreate-column', table: key, destructive: true,
+          summary: tr('Drop and re-create {name} as {to} (deletes its data)', { name: c.name, to: formatType(c) }) + rowsWarning,
+          sql: alter(`DROP COLUMN IF EXISTS ${col},\n    ADD COLUMN ${columnDDL({ ...c, pk: false })}`),
+        });
+        continue;
+      }
+      if (!dc) {
+        add('column', {
+          kind: 'add-column', table: key, summary: tr('Add column {name}', { name: `${c.name} ${formatType(c)}` }) + rowsWarning,
           sql: alter(`ADD COLUMN ${columnDDL({ ...c, pk: false })}`),
         });
         continue;
@@ -254,12 +356,15 @@ export function diffModels(db, erd, opts = {}) {
     // Primary key.
     const epk = pkColumns(e);
     const dpk = pkColumns(d);
-    if (!sameSet(epk, dpk)) {
+    if (!sameSet(epk, dpk) || touchesRemade(dpk)) {
       const dName = d.rawData?.primary_key?.[0]?.name;
       if (dpk.length && dName) {
         add('dropConstraint', {
           kind: 'drop-pk', table: key, columns: dpk, summary: tr('Drop primary key ({columns})', { columns: dpk.join(', ') }),
-          sql: alter(`DROP CONSTRAINT IF EXISTS ${quoteIdent(dName)}`), destructive: touchesMissing(dpk),
+          sql: alter(`DROP CONSTRAINT IF EXISTS ${quoteIdent(dName)}`),
+          // A table has one primary key: the new one needs the old one gone,
+          // even when its column is kept (e.g. a renamed key column).
+          destructive: touchesMissing(dpk) && !epk.length,
         });
       }
       if (epk.length) {
@@ -275,14 +380,14 @@ export function diffModels(db, erd, opts = {}) {
     const eu = uniqueConstraints(e);
     const du = uniqueConstraints(d);
     for (const u of du) {
-      if (eu.some((x) => sameSet(x.columns, u.columns)) || !u.name) continue;
+      if ((eu.some((x) => sameSet(x.columns, u.columns)) && !touchesRemade(u.columns)) || !u.name) continue;
       add('dropConstraint', {
         kind: 'drop-unique', table: key, columns: u.columns, summary: tr('Drop unique constraint {name} ({columns})', { name: u.name, columns: u.columns.join(', ') }),
         sql: alter(`DROP CONSTRAINT IF EXISTS ${quoteIdent(u.name)}`), destructive: touchesMissing(u.columns),
       });
     }
     for (const u of eu) {
-      if (du.some((x) => sameSet(x.columns, u.columns))) continue;
+      if (du.some((x) => sameSet(x.columns, u.columns)) && !touchesRemade(u.columns)) continue;
       add('addConstraint', {
         kind: 'add-unique', table: key, summary: tr('Add unique constraint ({columns})', { columns: u.columns.join(', ') }),
         sql: alter(`ADD ${u.name ? `CONSTRAINT ${quoteIdent(u.name)} ` : ''}UNIQUE (${u.columns.map(quoteIdent).join(', ')})`),
@@ -298,7 +403,7 @@ export function diffModels(db, erd, opts = {}) {
     const keeper = new Map(); // sig -> name of the copy kept
     for (const fk of dfks) {
       const match = efks.find((x) => x.sig === fk.sig);
-      if (!match || match.actions !== fk.actions || !fk.name) continue;
+      if (!match || match.actions !== fk.actions || !fk.name || touchesRemade(fk.cols)) continue;
       if (!keeper.has(fk.sig) || fk.name === match.name) keeper.set(fk.sig, fk.name);
     }
     for (const fk of dfks) {
@@ -316,7 +421,8 @@ export function diffModels(db, erd, opts = {}) {
       }
       add('dropFk', {
         kind: 'drop-fk', table: key, fkSig: fk.sig, fkName: fk.name,
-        summary: tr('Drop foreign key {name}', { name: `${fk.name} (${fk.cols.join(', ')}) → ${tableKey(fk.ref)}` }) + (match ? ` ${tr('(actions changed)')}` : ''),
+        summary: tr('Drop foreign key {name}', { name: `${fk.name} (${fk.cols.join(', ')}) → ${tableKey(fk.ref)}` }) +
+          (match && touchesRemade(fk.cols) ? ` ${tr('(re-created with the column)')}` : match ? ` ${tr('(actions changed)')}` : ''),
         sql: alter(`DROP CONSTRAINT IF EXISTS ${quoteIdent(fk.name)}`),
         destructive: !match && touchesMissing(fk.cols),
       });
@@ -336,17 +442,18 @@ export function diffModels(db, erd, opts = {}) {
     const dfks = d ? foreignKeys(db, d) : [];
     for (const fk of foreignKeys(erd, e)) {
       const match = dfks.find((x) => x.sig === fk.sig);
-      if (match && match.actions === fk.actions) continue;
+      if (match && match.actions === fk.actions && !fk.cols.some((c) => recreated.get(key)?.has(c))) continue;
       add('addFk', {
         kind: 'add-fk', table: key, fkSig: fk.sig,
-        summary: tr('Add foreign key {name}', { name: `(${fk.cols.join(', ')}) → ${tableKey(fk.ref)}(${fk.refCols.join(', ')})` }),
+        summary: tr('Add foreign key {name}', { name: `(${fk.cols.join(', ')}) → ${tableKey(fk.ref)}(${fk.refCols.join(', ')})` }) + fkTypeWarning(fk),
         sql: addForeignKeySQL(erd, e, fk.links),
       });
     }
   }
 
-  // Dropping a primary key or unique constraint fails while foreign keys
-  // reference it: drop those first and re-create them afterwards.
+  // Dropping a primary key or unique constraint, or a column re-created with
+  // a new type, fails while foreign keys reference it: drop those first and
+  // re-create them afterwards.
   const fkKey = (table, name) => `${table}\0${name}`;
   const droppedFks = new Set(phases.dropFk.filter((c) => !c.skipped).map((c) => fkKey(c.table, c.fkName)));
   const refDrops = [...phases.dropConstraint]
@@ -356,7 +463,8 @@ export function diffModels(db, erd, opts = {}) {
     for (const fk of foreignKeys(db, d)) {
       const key = tableKey(d);
       if (!fk.name || droppedFks.has(fkKey(key, fk.name))) continue;
-      const hit = refDrops.some((r) => r.table === tableKey(fk.ref) && sameSet(r.columns, fk.refCols));
+      const hit = refDrops.some((r) => r.table === tableKey(fk.ref) && sameSet(r.columns, fk.refCols)) ||
+        fk.refCols.some((c) => recreated.get(tableKey(fk.ref))?.has(c));
       if (!hit) continue;
       droppedFks.add(fkKey(key, fk.name));
       add('dropFk', {
@@ -375,28 +483,25 @@ export function diffModels(db, erd, opts = {}) {
       } else if (kept && !phases.addFk.some((c) => c.fkSig === fk.sig && c.table === key)) {
         add('addFk', {
           kind: 'add-fk', table: key, fkSig: fk.sig,
-          summary: tr('Re-create foreign key {name}', { name: `(${kept.cols.join(', ')}) → ${tableKey(kept.ref)}(${kept.refCols.join(', ')})` }),
+          summary: tr('Re-create foreign key {name}', { name: `(${kept.cols.join(', ')}) → ${tableKey(kept.ref)}(${kept.refCols.join(', ')})` }) + fkTypeWarning(kept),
           sql: addForeignKeySQL(erd, e, kept.links),
         });
       }
     }
   }
 
-  const order = ['dropFk', 'dropConstraint', 'dropColumn', 'dropTable', 'createSchema', 'createExtension', 'createTable', 'column', 'addConstraint', 'addFk', 'comment'];
+  const order = ['rename', 'dropFk', 'dropConstraint', 'dropColumn', 'dropTable', 'createSchema', 'createExtension', 'createTable', 'column', 'addConstraint', 'addFk', 'comment'];
   const ordered = order.flatMap((p) => phases[p]);
   return { changes: ordered, sql: migrationSQL(ordered) };
 }
 
+// SQL for the changes that are not skipped; skipped ones are left out.
 export function migrationSQL(changes) {
   const active = changes.filter((c) => !c.skipped);
-  const skipped = changes.filter((c) => c.skipped);
   if (!changes.length) return `-- ${tr('The database already matches the diagram.')}\n`;
+  if (!active.length) return `-- ${tr('No changes to apply.')}\n`;
   const out = [`-- ${tr('Migration generated by pgsql-erd')}`, 'BEGIN;', ''];
   for (const c of active) out.push(`-- ${c.summary}`, c.sql, '');
   out.push('COMMIT;');
-  if (skipped.length) {
-    out.push('', `-- ${tr('Skipped destructive changes (enable them to include):')}`);
-    for (const c of skipped) out.push(...c.sql.split('\n').map((l) => `-- ${l}`));
-  }
   return out.join('\n') + '\n';
 }

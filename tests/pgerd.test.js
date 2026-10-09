@@ -160,6 +160,24 @@ test('keeps the custom palette in the file, outside the pgAdmin data', () => {
   assert.equal('pgsqlErd' in serializePgerd(again), false, 'emptied palette is dropped');
 });
 
+test('remembers renamed columns in otherInfo, outside the pgAdmin table data', () => {
+  const m = parsePgerd(sample);
+  const t = m.tables[0];
+  const node = (json) => json.data.layers.find((l) => l.type === 'diagram-nodes').models[t.id];
+  assert.equal('renamedColumns' in node(serializePgerd(m)).otherInfo, false);
+  const c = t.columns[1];
+  c.renamedFrom = c.name;
+  c.name = 'renamed';
+  const json = serializePgerd(m);
+  assert.deepEqual(node(json).otherInfo.renamedColumns, { [c.attnum]: c.renamedFrom });
+  assert.ok(node(json).otherInfo.data.columns.every((col) => !('renamedFrom' in col)));
+  const again = parsePgerd(JSON.stringify(json));
+  assert.equal(again.tables[0].columns[1].renamedFrom, c.renamedFrom);
+  assert.equal(again.tables[0].columns[0].renamedFrom, undefined);
+  delete again.tables[0].columns[1].renamedFrom;
+  assert.equal('renamedColumns' in node(serializePgerd(again)).otherInfo, false, 'cleared renames are dropped');
+});
+
 test('reads links saved with *_table_uuid and writes the *_table_uid keys pgAdmin reads', () => {
   const old = sample.replaceAll('"local_table_uid"', '"local_table_uuid"').replaceAll('"referenced_table_uid"', '"referenced_table_uuid"');
   const m = parsePgerd(old);

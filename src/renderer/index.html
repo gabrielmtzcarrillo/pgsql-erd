@@ -317,9 +317,13 @@
         </label>
         <label>Constraint name<input name="fkName" placeholder="(auto)"></label>
       </div>
+      <div id="link-type-warning" class="link-warning" hidden>
+        <span id="link-type-warning-text"></span>
+        <button type="button" id="link-type-fix" data-icon="suggest">Change type</button>
+      </div>
       <menu>
         <button value="cancel" formnovalidate data-icon="close">Cancel</button>
-        <button value="ok" class="primary" data-icon="plus">Create</button>
+        <button value="ok" class="primary" id="link-create" data-icon="plus">Create</button>
       </menu>
     </form>
   </dialog>
@@ -415,6 +419,7 @@
       <div class="db-toolbar">
         <label class="check"><input type="checkbox" id="db-opt-destructive"> Include DROP COLUMN / key changes on dropped columns</label>
         <label class="check"><input type="checkbox" id="db-opt-droptables"> Drop tables that are not in the diagram</label>
+        <label class="check" title="Instead of converting the values with a cast, which fails between incompatible types. The column's data is lost and it moves to the end of the table."><input type="checkbox" id="db-opt-recreate"> Drop and re-create columns whose type changed</label>
       </div>
       <div class="db-split">
         <div id="db-compare-list" class="db-list"></div>

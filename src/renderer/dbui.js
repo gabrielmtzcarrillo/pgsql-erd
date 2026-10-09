@@ -2,7 +2,7 @@
 // diagram with the database to generate (and optionally run) migration SQL.
 
 import { modelFromCatalog, tableKey } from './lib/catalog.js';
-import { diffModels } from './lib/diff.js';
+import { diffModels, migrationSQL } from './lib/diff.js';
 import { mergeFromDb } from './lib/sync.js';
 import { autoLayout, contentBounds, placeBelow } from './lib/layout.js';
 import { highlightSQL } from './lib/highlight.js';
@@ -443,9 +443,14 @@ export function setupDatabase(ctx) {
   const compareStatus = $('#db-compare-status');
   const optDestructive = $('#db-opt-destructive');
   const optDropTables = $('#db-opt-droptables');
+  const optRecreate = $('#db-opt-recreate');
   let dbModel = null;
   let result = null;
   const schemaChoice = new Map(); // schema -> checked
+  // Changes are identified by what they do, so the choice survives a refresh.
+  const changeId = (c) => `${c.kind}\0${c.table}\0${c.summary}`;
+  const excluded = new Set(); // ids of changes the user unchecked
+  const selectedChanges = () => (result?.changes ?? []).filter((c) => !c.skipped && !excluded.has(changeId(c)));
 
   function selectedSchemas() {
     return [...schemaChoice].filter(([, v]) => v).map(([k]) => k);
@@ -473,8 +478,11 @@ export function setupDatabase(ctx) {
     result = diffModels(dbModel, state.model, {
       destructive: optDestructive.checked,
       dropTables: optDropTables.checked,
+      recreateColumns: optRecreate.checked,
       schemas: selectedSchemas(),
     });
+    // Tables only in the database are left alone unless dropping them is on.
+    result.changes = result.changes.filter((c) => !(c.kind === 'drop-table' && c.skipped));
     const byTable = new Map();
     for (const c of result.changes) {
       if (!byTable.has(c.table)) byTable.set(c.table, []);
@@ -483,28 +491,62 @@ export function setupDatabase(ctx) {
     const sym = (k) => (k.startsWith('add') || k.startsWith('create') ? ['add', '+'] : k.startsWith('drop') ? ['drop', '−'] : ['alter', '~']);
     const items = [];
     for (const [table, list] of byTable) {
-      items.push(h('div', { class: 'chg-table' }, table));
+      const usable = list.filter((c) => !c.skipped);
+      const all = h('input', { type: 'checkbox', disabled: !usable.length });
+      const boxes = [];
+      const syncAll = () => {
+        const on = usable.filter((c) => !excluded.has(changeId(c))).length;
+        all.checked = usable.length > 0 && on === usable.length;
+        all.indeterminate = on > 0 && on < usable.length;
+      };
+      all.addEventListener('change', () => {
+        for (const c of usable) all.checked ? excluded.delete(changeId(c)) : excluded.add(changeId(c));
+        for (const [c, cb] of boxes) cb.checked = !c.skipped && all.checked;
+        updateSelection();
+      });
+      items.push(h('label', { class: 'chg-table' }, [all, table]));
       for (const c of list) {
         const [cls, s] = sym(c.kind);
+        const cb = h('input', { type: 'checkbox', disabled: c.skipped, checked: !c.skipped && !excluded.has(changeId(c)) });
+        cb.addEventListener('change', () => {
+          cb.checked ? excluded.delete(changeId(c)) : excluded.add(changeId(c));
+          syncAll();
+          updateSelection();
+        });
+        boxes.push([c, cb]);
         items.push(
-          h('div', { class: `chg ${cls}${c.skipped ? ' skipped' : ''}`, title: c.skipped ? tr('Skipped: enable destructive changes to include') : '' }, [
+          h('label', { class: `chg ${cls}${c.skipped ? ' skipped' : ''}`, title: c.skipped ? tr('Skipped: enable destructive changes to include') : '' }, [
+            cb,
             h('span', { class: 'sym' }, s),
             h('span', {}, c.summary),
           ])
         );
       }
+      syncAll();
     }
     compareList.replaceChildren(
       ...(items.length ? items : [h('div', { class: 'db-empty' }, tr('No differences: the database matches the diagram.'))])
     );
-    highlightSQL(compareSql, result.sql);
+    updateSelection();
+  }
+
+  // Rebuilds the SQL and status from the checked changes, so the migration
+  // can be applied in phases.
+  function updateSelection() {
+    const selected = selectedChanges();
     const active = result.changes.filter((c) => !c.skipped).length;
     const skipped = result.changes.length - active;
+    highlightSQL(
+      compareSql,
+      selected.length ? migrationSQL(selected) : active ? `-- ${tr('No changes selected.')}\n` : migrationSQL(result.changes)
+    );
     setStatus(
       compareStatus,
-      `${conn.description} — ${trn(active, '{n} change', '{n} changes')}` + (skipped ? `, ${trn(skipped, '{n} destructive change skipped', '{n} destructive changes skipped')}` : '')
+      `${conn.description} — ${trn(active, '{n} change', '{n} changes')}` +
+        (selected.length !== active ? `, ${tr('{n} selected', { n: selected.length })}` : '') +
+        (skipped ? `, ${trn(skipped, '{n} destructive change skipped', '{n} destructive changes skipped')}` : '')
     );
-    $('#db-compare-exec').disabled = active === 0;
+    $('#db-compare-exec').disabled = selected.length === 0;
   }
 
   async function refreshCompare() {
@@ -526,12 +568,14 @@ export function setupDatabase(ctx) {
     compareList.replaceChildren();
     compareSql.textContent = '';
     schemaChoice.clear();
+    excluded.clear();
     compareDialog.showModal();
     await refreshCompare();
   }
 
   optDestructive.addEventListener('change', recompute);
   optDropTables.addEventListener('change', recompute);
+  optRecreate.addEventListener('change', recompute);
   $('#db-compare-refresh').addEventListener('click', refreshCompare);
   $('#db-compare-copy').addEventListener('click', async () => {
     await navigator.clipboard.writeText(compareSql.textContent);
@@ -544,7 +588,8 @@ export function setupDatabase(ctx) {
   });
   $('#db-compare-exec').addEventListener('click', async () => {
     if (!result) return;
-    const active = result.changes.filter((c) => !c.skipped);
+    const active = selectedChanges();
+    if (!active.length) return;
     const drops = active.filter((c) => c.destructive).length;
     const choice = await host.confirm({
       message: trn(active.length, 'Run {n} change on {db}?', 'Run {n} changes on {db}?', { db: conn.description }),
@@ -556,7 +601,7 @@ export function setupDatabase(ctx) {
     if (choice !== 0) return;
     setStatus(compareStatus, tr('Running migration…'));
     try {
-      await call(host.db.execute, result.sql);
+      await call(host.db.execute, migrationSQL(active));
     } catch (err) {
       return setStatus(compareStatus, `${tr('Migration failed and was rolled back:')}\n${err.message}`, 'error');
     }

@@ -2,7 +2,8 @@ import {
   emptyModel, newTable, newColumn, nextAttnum, parsePgerd, stringifyPgerd, uuid, foreignKeysOf,
   cleanPalette,
 } from './lib/pgerd.js';
-import { generateSQL, formatType } from './lib/sql.js';
+import { generateSQL, formatType, uniqueConstraints } from './lib/sql.js';
+import { fkTypesCompatible } from './lib/diff.js';
 import {
   HEADER_H, ROW_H, PAD_X, BADGE_W, tableSize, routeLink, crowFoot, oneMarker, autoLayout,
   contentBounds,
@@ -685,9 +686,6 @@ function renderTablePanel(t) {
             oncontextmenu: (e) => { e.preventDefault(); setPalette(palette().filter((x) => x !== c)); },
           })))
       : null,
-    h('dl', { class: 'sb-facts' }, [
-      h('dt', {}, tr('Primary key')), h('dd', {}, pk.length ? pk.join(', ') : '—'),
-    ]),
   ];
 
   const columns = h('ul', { class: 'sb-cols' }, t.columns.map((c, i) => columnItem(t, c, i, fks)));
@@ -720,6 +718,7 @@ function renderTablePanel(t) {
       class: 'sb-add', icon: 'plus', title: tr('Add column'),
       onclick: (e) => { e.preventDefault(); addColumn(t); },
     }, tr('Add'))),
+    constraintsSection(t, pk),
     section('relations', tr('Relationships'), outgoing.length + incoming.length, relations),
     ...[tableScriptsSection(t)].filter(Boolean),
     h('div', { class: 'sb-footer' }, [
@@ -727,6 +726,55 @@ function renderTablePanel(t) {
       h('button', { class: 'danger', icon: 'delete', onclick: deleteSelection }, tr('Delete table')),
     ]),
   );
+}
+
+// Primary key and unique constraints, with their names (the primary key's
+// columns are chosen on the columns themselves).
+function constraintsSection(t, pk) {
+  const uniques = uniqueConstraints(t);
+  const nameInput = (con, placeholder, key) => {
+    const input = h('input', { value: con.name ?? '', placeholder, 'data-key': key, title: tr('Constraint name') });
+    input.addEventListener('change', () => commitField(() => (con.name = input.value.trim())));
+    return input;
+  };
+  const rows = [];
+  if (pk.length) {
+    t.rawData ??= {};
+    if (!t.rawData.primary_key?.length) t.rawData.primary_key = [{ name: '', columns: [] }];
+    rows.push(h('li', {}, [
+      h('span', { class: 'badge pk', title: tr('Primary key') }, iconElement('pk')),
+      nameInput(t.rawData.primary_key[0], `${t.name}_pkey`, 'pk-name'),
+      h('code', { class: 'grow' }, `(${pk.join(', ')})`),
+    ]));
+  }
+  for (const u of uniques) {
+    const con = t.rawData.unique_constraint.find((x) => (x.name ?? '') === u.name && x.columns?.every((c, i) => c.column === u.columns[i]));
+    rows.push(h('li', {}, [
+      h('span', { class: 'badge uq', title: tr('Unique constraint') }, 'UQ'),
+      nameInput(con, `${t.name}_${u.columns.join('_')}_key`, 'unique-name'),
+      h('code', { class: 'grow' }, `(${u.columns.join(', ')})`),
+      h('button', {
+        class: 'danger', icon: 'close', title: tr('Delete unique constraint'),
+        onclick: () => commit(() => (t.rawData.unique_constraint = t.rawData.unique_constraint.filter((x) => x !== con))),
+      }),
+    ]));
+  }
+  return section('constraints', tr('Constraints'), rows.length, [
+    rows.length
+      ? h('ul', { class: 'list sb-constraints' }, rows)
+      : h('p', { class: 'muted small' }, tr('No primary key or unique constraints.')),
+  ]);
+}
+
+// A renamed column keeps its place in the table's constraints, and remembers
+// its first name so comparing with the database renames it there too.
+function renameColumn(t, c, from, to) {
+  if (from === to) return;
+  c.renamedFrom ??= from;
+  if (c.renamedFrom === to) delete c.renamedFrom;
+  for (const con of [...(t.rawData?.primary_key ?? []), ...(t.rawData?.unique_constraint ?? [])]) {
+    for (const c of con.columns ?? []) if (c.column === from) c.column = to;
+  }
 }
 
 // Project scripts that use the table (validators, generators, …).
@@ -833,13 +881,14 @@ function columnEditor(t, c, i) {
     }));
     return h('label', { class: 'check' }, [cb, label]);
   };
+  const oldName = c.name;
   const move = (d) => commit(() => {
     const j = i + d;
     [t.columns[i], t.columns[j]] = [t.columns[j], t.columns[i]];
   });
   return h('div', { class: 'sb-col-editor' }, [
     h('div', { class: 'sb-grid' }, [
-      field(tr('Name'), bound(c, 'name', 'col-name')),
+      field(tr('Name'), bound(c, 'name', 'col-name', { after: (v) => renameColumn(t, c, oldName, v) })),
       field(tr('Type'), bound(c, 'type', 'col-type', {
         list: 'pg-types',
         after: (v) => {
@@ -884,6 +933,19 @@ function linkItem(l, dir) {
   ]);
 }
 
+// Warning, with a fix, for a relationship whose column types do not match.
+function linkTypeWarning(localCol, refCol) {
+  if (!localCol || !refCol || fkTypesCompatible(localCol, refCol)) return null;
+  const target = refColumnType(refCol);
+  return h('div', { class: 'sb-warning small' }, [
+    h('p', {}, tr('{local} is {localType} but {ref} is {refType}: PostgreSQL cannot create this foreign key.', {
+      local: localCol.name, localType: formatType(localCol), ref: refCol.name, refType: formatType(refCol),
+    })),
+    h('button', { icon: 'suggest', onclick: () => commit(() => Object.assign(localCol, target)) },
+      tr('Change {name} to {type}', { name: localCol.name, type: formatType({ ...localCol, ...target }) })),
+  ]);
+}
+
 function renderLinkPanel(l) {
   const local = tableById(l.localTable);
   const ref = tableById(l.refTable);
@@ -909,6 +971,7 @@ function renderLinkPanel(l) {
         ` ${tr('references')} `,
         h('code', {}, `${fullName(ref)}.${colOf(ref, l.refCol)?.name}`),
       ]),
+      linkTypeWarning(colOf(local, l.localCol), colOf(ref, l.refCol)),
       field(tr('Constraint name'), fkName),
       field(tr('Cardinality'), typeSel),
       h('div', { class: 'actions' }, [
@@ -1076,6 +1139,41 @@ function refreshLinkDialogColumns() {
   localOpts.unshift(['new', suggested ? tr('+ new column "{name}"', { name: suggested }) : tr('+ new column')]);
   const match = local?.columns.find((c) => c.name === suggested);
   fillSelect(f.localCol, localOpts, match ? String(match.attnum) : f.localCol.value || 'new');
+  validateLinkTypes();
+}
+
+// The foreign key column has to have a type PostgreSQL can compare with the
+// referenced column's (a new column copies it), or adding the constraint
+// fails. Blocks Create and offers to change the column's type.
+function validateLinkTypes() {
+  const f = linkForm.elements;
+  const local = tableById(f.localTable.value);
+  const refCol = colOf(tableById(f.refTable.value), Number(f.refCol.value));
+  const localCol = f.localCol.value === 'new' ? null : colOf(local, Number(f.localCol.value));
+  const bad = !!(localCol && refCol && !fkTypesCompatible(localCol, refCol));
+  $('#link-type-warning').hidden = !bad;
+  $('#link-create').disabled = bad;
+  if (!bad) return;
+  const target = refColumnType(refCol);
+  $('#link-type-warning-text').textContent = tr('{local} is {localType} but {ref} is {refType}: PostgreSQL cannot create this foreign key.', {
+    local: localCol.name, localType: formatType(localCol), ref: refCol.name, refType: formatType(refCol),
+  });
+  const fix = $('#link-type-fix');
+  (fix.querySelector('.label') ?? fix).textContent = tr('Change {name} to {type}', { name: localCol.name, type: formatType({ ...localCol, ...target }) });
+  fix.onclick = () => {
+    commit(() => Object.assign(localCol, target));
+    refreshLinkDialogColumns();
+  };
+}
+
+// Type, length and precision for a column that references refCol (serial
+// key columns are referenced with their underlying integer type).
+function refColumnType(refCol) {
+  return {
+    type: { serial: 'integer', bigserial: 'bigint', smallserial: 'smallint' }[refCol.type] ?? refCol.type,
+    length: refCol.length,
+    precision: refCol.precision,
+  };
 }
 
 function openLinkDialog({ localTable, localCol, refTable, refCol } = {}) {
@@ -1100,6 +1198,7 @@ function openLinkDialog({ localTable, localCol, refTable, refCol } = {}) {
     refreshLinkDialogColumns();
   }
   if (localCol !== undefined) f.localCol.value = String(localCol);
+  validateLinkTypes();
   linkDialog.returnValue = '';
   linkDialog.showModal();
 }
@@ -1107,6 +1206,7 @@ function openLinkDialog({ localTable, localCol, refTable, refCol } = {}) {
 ['localTable', 'refTable', 'refCol'].forEach((name) =>
   linkForm.elements[name].addEventListener('change', refreshLinkDialogColumns)
 );
+linkForm.elements.localCol.addEventListener('change', validateLinkTypes);
 
 linkDialog.addEventListener('close', () => {
   if (linkDialog.returnValue !== 'ok') return;
@@ -1118,12 +1218,9 @@ linkDialog.addEventListener('close', () => {
   commit(() => {
     let localCol;
     if (f.localCol.value === 'new') {
-      const baseType = { serial: 'integer', bigserial: 'bigint', smallserial: 'smallint' }[refCol.type] ?? refCol.type;
       localCol = newColumn({
         name: `${ref.name}_${refCol.name}`,
-        type: baseType,
-        length: refCol.length,
-        precision: refCol.precision,
+        ...refColumnType(refCol),
         attnum: nextAttnum(local),
       });
       local.columns.push(localCol);

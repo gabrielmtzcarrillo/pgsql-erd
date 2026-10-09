@@ -19,7 +19,10 @@
 //
 // Settings of our own go in a top-level "pgsqlErd" object next to "data",
 // which pgAdmin does not read: { palette: ['#rrggbb', ...] } holds the
-// custom header colors saved from the table editor.
+// custom header colors saved from the table editor. A table's
+// otherInfo.renamedColumns ({ attnum: name before the rename }) remembers
+// columns renamed in the diagram, so comparing with the database can rename
+// them instead of dropping and adding them.
 
 export const DEFAULT_VERSION = 80000;
 
@@ -130,8 +133,10 @@ export function parsePgerd(text) {
     const pkNames = new Set(
       (d.primary_key ?? []).flatMap((pk) => (pk.columns ?? []).map((c) => c.column))
     );
+    const renamed = node.otherInfo?.renamedColumns ?? {};
     const columns = (d.columns ?? []).map((c, i) =>
       newColumn({
+        ...(typeof renamed[c.attnum ?? i] === 'string' ? { renamedFrom: renamed[c.attnum ?? i] } : {}),
         name: c.name ?? `column_${i}`,
         type: c.cltype ?? c.type ?? '',
         length: emptyToNull(c.attlen),
@@ -396,6 +401,10 @@ export function serializePgerd(model) {
     };
 
     const raw = t.raw ?? {};
+    const { renamedColumns: _, ...rawOtherInfo } = raw.otherInfo ?? {};
+    const renamedColumns = Object.fromEntries(
+      t.columns.filter((c) => c.renamedFrom && c.renamedFrom !== c.name).map((c) => [c.attnum, c.renamedFrom])
+    );
     const tablePorts = [...(ports.get(t.id)?.values() ?? [])];
     nodeModels[t.id] = {
       selected: false,
@@ -411,7 +420,12 @@ export function serializePgerd(model) {
       color: raw.color ?? 'rgb(0,192,255)',
       ports: tablePorts,
       otherInfo: withFillColor(
-        { ...(raw.otherInfo ?? {}), data, note: t.note ?? '' },
+        {
+          ...rawOtherInfo,
+          data,
+          note: t.note ?? '',
+          ...(Object.keys(renamedColumns).length ? { renamedColumns } : {}),
+        },
         t.color
       ),
     };

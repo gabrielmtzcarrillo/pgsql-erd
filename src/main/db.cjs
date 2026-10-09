@@ -146,7 +146,10 @@ async function execute(conn, sql) {
     } catch (err) {
       await c.query('ROLLBACK').catch(() => {});
       const where = err.position ? ` (at character ${err.position})` : '';
-      throw new Error(`${err.message}${where}`);
+      // DETAIL and HINT often hold the actual reason (e.g. which key columns
+      // have incompatible types).
+      const extra = [err.detail, err.hint && `HINT: ${err.hint}`].filter(Boolean).map((s) => `\n${s}`).join('');
+      throw new Error(`${err.message}${where}${extra}`);
     }
     return { ok: true };
   });
