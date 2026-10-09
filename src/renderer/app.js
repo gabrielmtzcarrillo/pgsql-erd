@@ -64,7 +64,7 @@ const state = {
   model: emptyModel(),
   filePath: null,
   dirty: false,
-  selection: null, // { type: 'table' | 'link', id }
+  selection: null, // { type: 'table' | 'link' | 'script', id } or { type: 'tables', ids }
   sizes: new Map(),
   undo: [],
   redo: [],
@@ -246,6 +246,7 @@ function restore(from, to) {
   emit('model');
   if (state.selection?.type === 'table' && !tableById(state.selection.id)) state.selection = null;
   if (state.selection?.type === 'link' && !linkById(state.selection.id)) state.selection = null;
+  if (state.selection?.type === 'tables') state.selection = tablesSelection(state.selection.ids.filter(tableById));
   setDirty(true);
   render();
   renderPanel();
@@ -318,7 +319,7 @@ function fkColumns(table) {
 
 function renderTable(t) {
   const { width, height } = state.sizes.get(t.id);
-  const sel = state.selection?.type === 'table' && state.selection.id === t.id;
+  const sel = selectedTables().includes(t.id);
   const g = el('g', {
     class: `erd-table${sel ? ' selected' : ''}`,
     'data-id': t.id,
@@ -391,9 +392,8 @@ function renderLink(l) {
   if (!local || !ref || !colOf(local, l.localCol) || !colOf(ref, l.refCol)) return null;
   const r = routeLink(l, local, ref, state.sizes);
   const sel = state.selection?.type === 'link' && state.selection.id === l.id;
-  const related =
-    state.selection?.type === 'table' &&
-    (state.selection.id === l.localTable || state.selection.id === l.refTable);
+  const tables = selectedTables();
+  const related = tables.includes(l.localTable) || tables.includes(l.refTable);
   const g = el('g', {
     class: `erd-link${sel ? ' selected' : ''}${related ? ' related' : ''}`,
     'data-id': l.id,
@@ -529,6 +529,7 @@ function renderPanel() {
   const sel = state.selection;
   let visible = true;
   if (sel?.type === 'table' && tableById(sel.id)) renderTablePanel(tableById(sel.id));
+  else if (sel?.type === 'tables') renderTablesPanel(sel.ids.map(tableById).filter(Boolean));
   else if (sel?.type === 'link' && linkById(sel.id)) renderLinkPanel(linkById(sel.id));
   else if (sel?.type === 'script' && erdScripts?.exists(sel.id))
     panel.replaceChildren(sidebarHeader(erdScripts.title(sel.id), tr('Script')), ...erdScripts.panel(sel.id));
@@ -571,6 +572,69 @@ function renderDiagramPanel() {
   panel.replaceChildren(
     sidebarHeader(tr('Tables'), countsText()),
     h('div', { class: 'sb-pad' }, [filter, list]),
+  );
+}
+
+// Several tables picked with Ctrl+click or a Shift+drag rectangle. The
+// schema and header color fields are applied to all of them at once.
+function renderTablesPanel(tables) {
+  const sorted = [...tables].sort((a, b) => fullName(a).localeCompare(fullName(b)));
+  const common = (get) => (new Set(tables.map(get)).size === 1 ? get(tables[0]) : undefined);
+
+  const schemas = [...new Set(state.model.tables.map((t) => t.schema || 'public'))].sort();
+  const schemaInput = h('input', {
+    type: 'text', list: 'multi-schemas', 'data-key': 'multi-schema',
+    value: common((t) => t.schema || 'public') ?? '', placeholder: tr('(mixed)'),
+  });
+  // undefined: leave each table's color as it is; null: the default color.
+  let color;
+  const colorInput = h('input', { type: 'color', value: common((t) => t.color) ?? '#2f6fb3', 'data-key': 'multi-color' });
+  const colorNote = h('span', { class: 'muted small' });
+  const setColor = (c) => {
+    color = c;
+    if (c) colorInput.value = c;
+    colorNote.textContent = c === null ? tr('default') : '';
+  };
+  colorInput.addEventListener('input', () => setColor(colorInput.value));
+  if (common((t) => t.color) === undefined) colorNote.textContent = tr('(mixed)');
+
+  const apply = () => {
+    const schema = schemaInput.value.trim();
+    commit(() => {
+      for (const t of tables) {
+        if (schema) t.schema = schema;
+        if (color !== undefined) t.color = color;
+      }
+    });
+    status(trn(tables.length, 'Updated {n} table', 'Updated {n} tables'));
+  };
+
+  panel.replaceChildren(
+    sidebarHeader(trn(tables.length, '{n} table selected', '{n} tables selected'), tr('Drag any of them to move them together')),
+    h('div', { class: 'sb-pad' }, [
+      field(tr('Schema'), schemaInput),
+      h('datalist', { id: 'multi-schemas' }, schemas.map((v) => h('option', { value: v }))),
+      h('div', { class: 'sb-inline' }, [
+        h('span', { class: 'muted' }, tr('Header color')),
+        colorInput,
+        colorNote,
+        h('button', { icon: 'reset', onclick: () => setColor(null) }, tr('Reset')),
+      ]),
+      palette().length
+        ? h('div', { class: 'sb-palette', role: 'list', 'aria-label': tr('Custom palette') }, palette().map((c) =>
+            h('button', { class: 'sb-palette-swatch', role: 'listitem', style: `background:${c}`, title: c, onclick: () => setColor(c) })))
+        : null,
+      h('div', {}, [h('button', { class: 'primary', icon: 'ok', onclick: apply }, tr('Apply'))]),
+      h('ul', { class: 'list' }, sorted.map((t) =>
+        h('li', { class: 'clickable', onclick: () => { select({ type: 'table', id: t.id }); centerOn(t); } }, [
+          h('span', { class: 'sb-swatch small', style: `background:${t.color || 'var(--erd-header-bg)'}` }),
+          h('span', { class: 'grow' }, fullName(t)),
+          h('span', { class: 'muted' }, trn(t.columns.length, '{n} col', '{n} cols')),
+        ]))),
+    ]),
+    h('div', { class: 'sb-footer' }, [
+      h('button', { class: 'danger', icon: 'delete', onclick: deleteSelection }, trn(tables.length, 'Delete {n} table', 'Delete {n} tables')),
+    ]),
   );
 }
 
@@ -886,9 +950,24 @@ function renderLinkPanel(l) {
 
 // ---------------------------------------------------------------- model edits
 
+// Ids of the selected tables: the selected table, or several picked with
+// Ctrl+click or a Shift+drag rectangle.
+function selectedTables() {
+  const sel = state.selection;
+  if (sel?.type === 'table') return [sel.id];
+  if (sel?.type === 'tables') return sel.ids;
+  return [];
+}
+
+// The selection for a set of table ids: nothing, one table or several.
+function tablesSelection(ids) {
+  if (!ids.length) return null;
+  return ids.length === 1 ? { type: 'table', id: ids[0] } : { type: 'tables', ids };
+}
+
 // `col` expands that column's editor in the sidebar.
 function select(sel, { col } = {}) {
-  if (sel?.id !== state.selection?.id) state.expandedCol = null;
+  if (sel?.id !== state.selection?.id || sel?.type !== state.selection?.type) state.expandedCol = null;
   if (col !== undefined) state.expandedCol = col;
   state.selection = sel;
   render();
@@ -958,10 +1037,11 @@ function addTable(at) {
 function deleteSelection() {
   const sel = state.selection;
   if (!sel || sel.type === 'script') return;
-  if (sel.type === 'table') {
+  if (sel.type === 'table' || sel.type === 'tables') {
+    const ids = new Set(selectedTables());
     commit(() => {
-      state.model.tables = state.model.tables.filter((t) => t.id !== sel.id);
-      removeLinks((l) => l.localTable === sel.id || l.refTable === sel.id);
+      state.model.tables = state.model.tables.filter((t) => !ids.has(t.id));
+      removeLinks((l) => ids.has(l.localTable) || ids.has(l.refTable));
       state.selection = null;
     });
   } else {
@@ -1181,6 +1261,32 @@ function moveLinkDrag(e) {
   drag.targetEl?.classList.add('link-target');
 }
 
+// Shift+drag draws a rectangle that selects the tables it touches; with Ctrl
+// too they are added to the current selection.
+function startMarquee(e, additive) {
+  const p = toDiagram(e.clientX, e.clientY);
+  const rect = el('rect', { class: 'marquee', x: p.x, y: p.y, width: 0, height: 0 });
+  viewport.append(rect);
+  return { kind: 'marquee', p, rect, base: additive ? selectedTables() : [], inside: [] };
+}
+
+function moveMarquee(e) {
+  const { p, rect } = drag;
+  const q = toDiagram(e.clientX, e.clientY);
+  const x0 = Math.min(p.x, q.x), y0 = Math.min(p.y, q.y);
+  const x1 = Math.max(p.x, q.x), y1 = Math.max(p.y, q.y);
+  rect.setAttribute('x', x0);
+  rect.setAttribute('y', y0);
+  rect.setAttribute('width', x1 - x0);
+  rect.setAttribute('height', y1 - y0);
+  drag.inside = state.model.tables.filter((t) => {
+    const s = state.sizes.get(t.id);
+    return t.x <= x1 && t.y <= y1 && t.x + s.width >= x0 && t.y + s.height >= y0;
+  }).map((t) => t.id);
+  const picked = new Set([...drag.base, ...drag.inside]);
+  for (const g of tablesLayer.querySelectorAll('.erd-table')) g.classList.toggle('selected', picked.has(g.dataset.id));
+}
+
 svg.addEventListener('pointerdown', (e) => {
   closeContextMenu();
   if (e.button !== 0 && e.button !== 1) return;
@@ -1189,7 +1295,10 @@ svg.addEventListener('pointerdown', (e) => {
   const scriptEl = e.target.closest('.erd-script');
   svg.setPointerCapture(e.pointerId);
   const handle = e.target.closest('.t-link-handle, .t-col-handle');
-  if (tableEl && e.button === 0 && handle) {
+  const additive = e.ctrlKey || e.metaKey;
+  if (e.button === 0 && e.shiftKey) {
+    drag = startMarquee(e, additive);
+  } else if (tableEl && e.button === 0 && handle && !additive) {
     drag = startLinkDrag(tableById(tableEl.dataset.id), handle);
   } else if (scriptEl && e.button === 0) {
     if (state.selection?.id !== scriptEl.dataset.path) select({ type: 'script', id: scriptEl.dataset.path });
@@ -1198,16 +1307,28 @@ svg.addEventListener('pointerdown', (e) => {
     const t = tableById(tableEl.dataset.id);
     const rowEl = e.target.closest('.t-row');
     const col = rowEl ? Number(rowEl.dataset.attnum) : undefined;
-    if (state.selection?.id !== t.id || (col !== undefined && col !== state.expandedCol)) {
+    const ids = selectedTables();
+    // Applied on release without moving: Ctrl+click takes a selected table
+    // out of the selection, and a plain click in a group selects just it.
+    let click = null;
+    if (additive) {
+      if (ids.includes(t.id)) click = 'remove';
+      else select(tablesSelection([...ids, t.id]));
+    } else if (ids.length > 1 && ids.includes(t.id)) {
+      click = 'only';
+    } else if (state.selection?.id !== t.id || (col !== undefined && col !== state.expandedCol)) {
       select({ type: 'table', id: t.id }, { col });
     }
     // Bring to front.
     state.model.tables = [...state.model.tables.filter((x) => x !== t), t];
-    drag = { kind: 'table', t, sx: e.clientX, sy: e.clientY, ox: t.x, oy: t.y, moved: false };
+    // The other selected tables move along with this one.
+    const others = selectedTables().filter((id) => id !== t.id).map(tableById).filter(Boolean)
+      .map((x) => ({ t: x, ox: x.x, oy: x.y }));
+    drag = { kind: 'table', t, col, click, others, sx: e.clientX, sy: e.clientY, ox: t.x, oy: t.y, moved: false };
   } else if (linkEl && e.button === 0) {
     select({ type: 'link', id: linkEl.dataset.id });
   } else {
-    if (state.selection && e.button === 0) select(null);
+    if (state.selection && e.button === 0 && !additive) select(null);
     const v = state.model.view;
     drag = { kind: 'pan', sx: e.clientX, sy: e.clientY, ox: v.offsetX, oy: v.offsetY };
     svg.classList.add('panning');
@@ -1217,6 +1338,7 @@ svg.addEventListener('pointerdown', (e) => {
 svg.addEventListener('pointermove', (e) => {
   if (!drag) return;
   if (drag.kind === 'link') return moveLinkDrag(e);
+  if (drag.kind === 'marquee') return moveMarquee(e);
   const dx = e.clientX - drag.sx;
   const dy = e.clientY - drag.sy;
   if (drag.kind === 'pan') {
@@ -1246,6 +1368,11 @@ svg.addEventListener('pointermove', (e) => {
   const on = state.snap !== e.altKey;
   drag.t.x = snap(nx, on);
   drag.t.y = snap(ny, on);
+  // The others keep their place relative to the dragged table.
+  for (const o of drag.others) {
+    o.t.x = o.ox + drag.t.x - drag.ox;
+    o.t.y = o.oy + drag.t.y - drag.oy;
+  }
   scheduleRender();
 });
 
@@ -1281,9 +1408,21 @@ function endDrag(e) {
     }
     return;
   }
+  if (drag?.kind === 'marquee') {
+    const { rect, base, inside } = drag;
+    rect.remove();
+    drag = null;
+    select(tablesSelection([...new Set([...base, ...inside])]));
+    return;
+  }
   if (drag?.kind === 'script') erdScripts.endDrag(drag);
   if (drag?.kind === 'table' && drag.moved) setDirty(true);
-  if (drag?.kind === 'table' && !drag.moved) ensureVisible(drag.t);
+  if (drag?.kind === 'table' && !drag.moved) {
+    const { t, col, click } = drag;
+    if (click === 'remove') select(tablesSelection(selectedTables().filter((id) => id !== t.id)));
+    else if (click === 'only') select({ type: 'table', id: t.id }, { col });
+    if (click !== 'remove') ensureVisible(t);
+  }
   if (drag?.kind === 'pan') svg.classList.remove('panning');
   drag = null;
   render();
@@ -1339,7 +1478,10 @@ svg.addEventListener('contextmenu', (e) => {
   const tableEl = e.target.closest('.erd-table');
   const linkEl = e.target.closest('.erd-link');
   let items;
-  if (tableEl) {
+  const tables = selectedTables();
+  if (tableEl && tables.length > 1 && tables.includes(tableEl.dataset.id)) {
+    items = [{ label: trn(tables.length, 'Delete {n} table', 'Delete {n} tables'), icon: 'delete', danger: true, run: deleteSelection }];
+  } else if (tableEl) {
     const t = tableById(tableEl.dataset.id);
     select({ type: 'table', id: t.id });
     items = [
@@ -1640,7 +1782,7 @@ function focusTable(key) {
 
 function selectedTableIds() {
   const sel = state.selection;
-  if (sel?.type === 'table') return [tableKey(tableById(sel.id))];
+  if (sel?.type === 'table' || sel?.type === 'tables') return selectedTables().map(tableById).filter(Boolean).map(tableKey);
   if (sel?.type === 'link') {
     const l = linkById(sel.id);
     return [tableById(l.localTable), tableById(l.refTable)].filter(Boolean).map(tableKey);
@@ -1753,9 +1895,9 @@ document.addEventListener('keydown', (e) => {
   } else if (mod && e.key.toLowerCase() === 'y') {
     e.preventDefault();
     runCommand('redo');
-  } else if (state.selection?.type === 'table' && e.key.startsWith('Arrow')) {
+  } else if (selectedTables().length && e.key.startsWith('Arrow')) {
     e.preventDefault();
-    const t = tableById(state.selection.id);
+    const [t, ...others] = selectedTables().map(tableById).filter(Boolean);
     // Shift nudges by 1px; otherwise move one cell, landing on the next grid
     // line when snapping is on.
     const g = gridSize();
@@ -1764,11 +1906,17 @@ document.addEventListener('keydown', (e) => {
       if (!state.snap) return v + dir * g;
       return dir > 0 ? Math.floor(v / g) * g + g : Math.ceil(v / g) * g - g;
     };
+    // Other selected tables move by the same step, keeping their layout.
+    const [x0, y0] = [t.x, t.y];
     commit(() => {
       if (e.key === 'ArrowLeft') t.x = move(t.x, -1);
       if (e.key === 'ArrowRight') t.x = move(t.x, 1);
       if (e.key === 'ArrowUp') t.y = move(t.y, -1);
       if (e.key === 'ArrowDown') t.y = move(t.y, 1);
+      for (const o of others) {
+        o.x += t.x - x0;
+        o.y += t.y - y0;
+      }
     }, { panel: false });
   }
 });

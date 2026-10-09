@@ -160,7 +160,11 @@ Una vista dirigida por fuerzas; haz doble clic en un vértice para expandir sus 
   - editar columnas: nombre, tipo, longitud/escala, NOT NULL, PK, valor predeterminado, orden
   - establecer esquema, comentario, nota y color del encabezado
   - agregar y quitar relaciones, creando opcionalmente la columna FK
-- Arrastra las tablas para moverlas. Arrastra el fondo para desplazarte y usa la rueda para acercar o alejar.
+- Arrastra las tablas para moverlas. <kbd>Ctrl</kbd>+clic selecciona varias tablas, y con <kbd>Shift</kbd>
+  pulsado puedes arrastrar un rectángulo para seleccionar las tablas que toque
+  (<kbd>Ctrl</kbd>+<kbd>Shift</kbd> las agrega a la selección); las tablas seleccionadas se arrastran, se
+  mueven con las flechas y se eliminan juntas, y el panel lateral les asigna esquema y color de
+  encabezado a la vez con **Aplicar**. Arrastra el fondo para desplazarte y usa la rueda para acercar o alejar.
   La barra de estado reúne los controles de vista, como en Word: un control deslizante de zoom (100% en el
   centro) con botones para alejar y acercar y el nivel de zoom, además de **Ajustar** y **Organizar** para
   ordenarlo todo, y los controles de la cuadrícula.

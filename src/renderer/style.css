@@ -275,6 +275,10 @@ textarea { resize: vertical; width: 100%; }
 #canvas.linking, #canvas.linking .erd-table { cursor: crosshair; }
 #canvas.linking .t-link-handle, #canvas.linking .t-col-handle { opacity: 0; }
 .link-draft { stroke: var(--erd-accent); stroke-width: 2; stroke-dasharray: 6 4; pointer-events: none; }
+.marquee {
+  fill: var(--accent-soft); stroke: var(--erd-accent); stroke-width: 1;
+  stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; pointer-events: none;
+}
 
 /* Diagram context menu */
 .ctx-menu {

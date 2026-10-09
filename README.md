@@ -156,7 +156,11 @@ A force-directed view; double-click a vertex to expand its neighbours.
   - edit columns: name, type, length/scale, NOT NULL, PK, default value, order
   - set schema, comment, note and header colour
   - add and remove relationships, optionally creating the FK column for you
-- Drag tables to move them. Drag the background to pan and scroll to zoom. The status bar holds the
+- Drag tables to move them. <kbd>Ctrl</kbd>+click tables to select several, or hold <kbd>Shift</kbd>
+  and drag a rectangle to select the tables it touches (<kbd>Ctrl</kbd>+<kbd>Shift</kbd> adds them to the
+  selection); the selected tables are dragged, nudged with the arrow keys and deleted together, and
+  the sidebar sets their schema and header colour at once with **Apply**.
+  Drag the background to pan and scroll to zoom. The status bar holds the
   view controls, as in Word: a zoom slider (100% in the middle) with zoom out/in buttons and the
   zoom level, plus **Fit** and **Auto layout** to tidy up, and the grid controls.
 - A grid is drawn behind the diagram (grid button in the status bar, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd>), with a
