@@ -1,5 +1,6 @@
 import {
   emptyModel, newTable, newColumn, nextAttnum, parsePgerd, stringifyPgerd, uuid, foreignKeysOf,
+  cleanPalette,
 } from './lib/pgerd.js';
 import { generateSQL, formatType } from './lib/sql.js';
 import {
@@ -573,6 +574,18 @@ function renderDiagramPanel() {
   );
 }
 
+// Custom header colors saved with the diagram (see pgerd.js). Not part of
+// undo: the palette is a tool, not part of the schema.
+function palette() {
+  return state.model.palette ?? [];
+}
+
+function setPalette(colors) {
+  state.model.palette = cleanPalette(colors);
+  setDirty(true);
+  renderPanel();
+}
+
 function renderTablePanel(t) {
   const fks = fkColumns(t);
   const outgoing = state.model.links.filter((l) => l.localTable === t.id);
@@ -593,7 +606,21 @@ function renderTablePanel(t) {
       h('span', { class: 'muted' }, tr('Header color')),
       colorInput,
       t.color ? h('button', { icon: 'reset', onclick: () => commit(() => (t.color = null)) }, tr('Reset')) : null,
+      t.color && !palette().includes(t.color.toLowerCase())
+        ? h('button', { icon: 'plus', title: tr('Save this color to the diagram palette'), onclick: () => setPalette([...palette(), t.color]) }, tr('Save to palette'))
+        : null,
     ]),
+    palette().length
+      ? h('div', { class: 'sb-palette', role: 'list', 'aria-label': tr('Custom palette') }, palette().map((c) =>
+          h('button', {
+            class: `sb-palette-swatch${t.color?.toLowerCase() === c ? ' current' : ''}`,
+            role: 'listitem',
+            style: `background:${c}`,
+            title: tr('{color} · Click to use, right-click to remove', { color: c }),
+            onclick: () => commit(() => (t.color = c)),
+            oncontextmenu: (e) => { e.preventDefault(); setPalette(palette().filter((x) => x !== c)); },
+          })))
+      : null,
     h('dl', { class: 'sb-facts' }, [
       h('dt', {}, tr('Primary key')), h('dd', {}, pk.length ? pk.join(', ') : '—'),
     ]),

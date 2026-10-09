@@ -450,6 +450,11 @@ textarea { resize: vertical; width: 100%; }
 .sb-inline { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin: 4px 0 8px; }
 .sb-inline input[type="color"] { width: 44px; height: 26px; padding: 1px 2px; }
 .sb-inline.end { margin-bottom: 0; gap: 6px; }
+.sb-palette { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.panel .sb-palette-swatch { width: 22px; height: 22px; min-width: 0; padding: 0; border-radius: 4px; border: 1px solid var(--border); box-shadow: none; cursor: pointer; }
+.panel .sb-palette-swatch:hover { transform: scale(1.1); }
+.panel .sb-palette-swatch.current { outline: 2px solid var(--accent); outline-offset: 1px; }
+.panel .sb-palette-swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .panel label.check { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; font-size: 13px; }
 .sb-facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 6px 0 0; font-size: 12px; }
 .sb-facts dt { color: var(--muted); }

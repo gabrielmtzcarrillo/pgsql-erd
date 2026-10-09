@@ -13,6 +13,10 @@
 //
 // Internally we work with a simpler model (see emptyModel) and keep the raw
 // objects around so that unknown properties survive a load/save round trip.
+//
+// Settings of our own go in a top-level "pgsqlErd" object next to "data",
+// which pgAdmin does not read: { palette: ['#rrggbb', ...] } holds the
+// custom header colors saved from the table editor.
 
 export const DEFAULT_VERSION = 80000;
 
@@ -30,8 +34,21 @@ export function emptyModel() {
     view: { offsetX: 0, offsetY: 0, zoom: 1, gridSize: 15 },
     tables: [],
     links: [],
+    palette: [],
     raw: null,
   };
+}
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
+// Keep the valid, distinct colors of a palette, lowercased, in order.
+export function cleanPalette(list) {
+  const out = [];
+  for (const c of Array.isArray(list) ? list : []) {
+    const v = typeof c === 'string' ? c.toLowerCase() : '';
+    if (HEX_COLOR.test(v) && !out.includes(v)) out.push(v);
+  }
+  return out;
 }
 
 export function newTable(props = {}) {
@@ -92,6 +109,7 @@ export function parsePgerd(text) {
   const model = emptyModel();
   model.version = json.version || DEFAULT_VERSION;
   model.raw = json;
+  model.palette = cleanPalette(json?.pgsqlErd?.palette);
   model.view = {
     offsetX: Number(data.offsetX) || 0,
     offsetY: Number(data.offsetY) || 0,
@@ -383,8 +401,14 @@ export function serializePgerd(model) {
 
   const rawData = model.raw?.data ?? {};
   const rawLayer = (type) => rawData.layers?.find((l) => l.type === type) ?? {};
+  const { pgsqlErd: rawOwn, ...rawRest } = model.raw ?? {};
+  const palette = cleanPalette(model.palette);
+  const own = { ...(rawOwn ?? {}) };
+  if (palette.length) own.palette = palette;
+  else delete own.palette;
   return {
-    ...(model.raw ?? {}),
+    ...rawRest,
+    ...(Object.keys(own).length ? { pgsqlErd: own } : {}),
     version: model.version || DEFAULT_VERSION,
     data: {
       ...rawData,

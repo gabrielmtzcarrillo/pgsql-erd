@@ -146,3 +146,16 @@ test('layout with a grid puts every table on a grid line without shrinking gaps'
     }
   }
 });
+
+test('keeps the custom palette in the file, outside the pgAdmin data', () => {
+  const m = parsePgerd(sample);
+  assert.deepEqual(m.palette, []);
+  assert.equal('pgsqlErd' in serializePgerd(m), false, 'no key while the palette is empty');
+  m.palette = ['#AA3366', '#aa3366', 'red', '#2f6fb3'];
+  const json = serializePgerd(m);
+  assert.deepEqual(json.pgsqlErd, { palette: ['#aa3366', '#2f6fb3'] });
+  const again = parsePgerd(JSON.stringify(json));
+  assert.deepEqual(again.palette, ['#aa3366', '#2f6fb3']);
+  again.palette = [];
+  assert.equal('pgsqlErd' in serializePgerd(again), false, 'emptied palette is dropped');
+});
