@@ -1430,6 +1430,165 @@ function endDrag(e) {
 svg.addEventListener('pointerup', endDrag);
 svg.addEventListener('pointercancel', endDrag);
 
+// ---------------------------------------------------------------- copy and paste
+
+// Tables copied with Ctrl+C or the context menu, with the relationships
+// between them (foreign keys to tables left out are not copied). Kept across
+// diagram tabs so they can be pasted in another one.
+let tableClipboard = null;
+
+const schemaOf = (t) => t.schema || 'public';
+const nameTaken = (schema, name) => state.model.tables.some((t) => schemaOf(t) === schema && t.name === name);
+
+// `name` when it is free in `schema` (and not in `taken`), else name_copy, name_copy2, …
+function freeName(schema, name, taken = new Set()) {
+  const free = (n) => !nameTaken(schema, n) && !taken.has(n);
+  if (free(name)) return name;
+  for (let i = 1; ; i++) {
+    const n = `${name}_copy${i > 1 ? i : ''}`;
+    if (free(n)) return n;
+  }
+}
+
+function copyTables(ids = selectedTables()) {
+  const set = new Set(ids);
+  const tables = state.model.tables.filter((t) => set.has(t.id));
+  if (!tables.length) return false;
+  const links = state.model.links.filter((l) => set.has(l.localTable) && set.has(l.refTable));
+  tableClipboard = structuredClone({ tables, links });
+  status(trn(tables.length, 'Copied {n} table', 'Copied {n} tables'));
+  return true;
+}
+
+// Asks for the pasted table's name and schema, or only the schema when
+// several tables are pasted (those whose name is taken there get a _copy
+// suffix). `at` puts the copies' top-left corner there (diagram coordinates);
+// otherwise they land a little below and right of the originals.
+function pasteTables(at) {
+  const clip = tableClipboard;
+  if (!clip) return;
+  const multi = clip.tables.length > 1;
+  const first = clip.tables[0];
+  const schemas = [...new Set([...state.model.tables.map(schemaOf), 'public'])].sort();
+  const common = new Set(clip.tables.map(schemaOf)).size === 1 ? schemaOf(first) : 'public';
+
+  const schemaInput = h('input', {
+    name: 'schema', list: 'paste-schemas', placeholder: 'public', autocomplete: 'off',
+    value: common === 'public' ? '' : common,
+  });
+  const nameInput = multi ? null : h('input', { name: 'name', autocomplete: 'off' });
+  const message = h('div', { class: 'paste-msg' });
+  const ok = h('button', { value: 'ok', class: 'primary', icon: 'paste' }, tr('Paste'));
+  const target = () => schemaInput.value.trim() || 'public';
+  let nameEdited = false;
+  let names = [];
+
+  const check = () => {
+    const schema = target();
+    if (!multi) {
+      if (!nameEdited) nameInput.value = freeName(schema, first.name);
+      const name = nameInput.value.trim();
+      const error = !name ? tr('Enter a table name.')
+        : nameTaken(schema, name) ? tr('A table named {name} already exists in {schema}.', { name, schema }) : '';
+      names = [name];
+      message.replaceChildren(error ? h('p', { class: 'error' }, error) : '');
+      ok.disabled = !!error;
+      return;
+    }
+    const taken = new Set();
+    names = clip.tables.map((t) => {
+      const n = freeName(schema, t.name, taken);
+      taken.add(n);
+      return n;
+    });
+    const renamed = clip.tables.map((t, i) => [t.name, names[i]]).filter(([a, b]) => a !== b);
+    message.replaceChildren(...(renamed.length
+      ? [
+          h('p', { class: 'warn' }, trn(renamed.length,
+            '{n} table already exists in {schema} and gets a new name:',
+            '{n} tables already exist in {schema} and get a new name:', { schema })),
+          h('ul', {}, renamed.map(([a, b]) => h('li', {}, `${a} → ${b}`))),
+        ]
+      : [h('p', { class: 'muted' }, tr('No name collisions in {schema}.', { schema }))]));
+  };
+
+  const dialog = h('dialog', {}, h('form', { method: 'dialog' }, [
+    h('h3', {}, multi ? trn(clip.tables.length, 'Paste {n} table', 'Paste {n} tables') : tr('Paste table')),
+    h('p', { class: 'muted' }, multi
+      ? tr('Pick the schema for the pasted tables. Leave it empty for public.')
+      : tr('Pick a name and schema for the pasted table. Leave the schema empty for public.')),
+    h('div', { class: 'grid2' }, [
+      nameInput ? h('label', {}, [tr('Name'), nameInput]) : null,
+      h('label', {}, [tr('Schema'), schemaInput]),
+    ]),
+    h('datalist', { id: 'paste-schemas' }, schemas.map((v) => h('option', { value: v }))),
+    message,
+    h('menu', {}, [h('button', { value: 'cancel', formnovalidate: '', icon: 'close' }, tr('Cancel')), ok]),
+  ]));
+  schemaInput.addEventListener('input', check);
+  nameInput?.addEventListener('input', () => { nameEdited = true; check(); });
+  // Enter pastes (the form's first button is Cancel).
+  dialog.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
+      e.preventDefault();
+      if (!ok.disabled) ok.click();
+    }
+  });
+  dialog.addEventListener('close', () => {
+    dialog.remove();
+    if (dialog.returnValue === 'ok') placePasted(clip, names, target(), at);
+  });
+  check();
+  document.body.append(dialog);
+  dialog.showModal();
+  (nameInput ?? schemaInput).select();
+}
+
+function placePasted(clip, names, schema, at) {
+  const minX = Math.min(...clip.tables.map((t) => t.x));
+  const minY = Math.min(...clip.tables.map((t) => t.y));
+  const dx = at ? at.x - minX : 30;
+  const dy = at ? at.y - minY : 30;
+  const ids = new Map();
+  const tables = clip.tables.map((t, i) => {
+    const c = structuredClone(t);
+    ids.set(t.id, uuid());
+    // Ports and the catalog oid belong to the original table.
+    const { oid, ...rest } = c;
+    return {
+      ...rest, id: ids.get(t.id), name: names[i], schema, x: snap(t.x + dx), y: snap(t.y + dy),
+      raw: c.raw && { ...c.raw, ports: [] },
+    };
+  });
+  const groups = new Map();
+  const links = clip.links.map((l) => {
+    if (!groups.has(l.group)) groups.set(l.group, uuid());
+    // Constraint names are unique per schema, so the copies get generated ones.
+    return {
+      ...l, id: uuid(), localTable: ids.get(l.localTable), refTable: ids.get(l.refTable),
+      group: groups.get(l.group), fkName: '', rawFk: null, raw: null,
+    };
+  });
+  commit(() => {
+    state.model.tables.push(...tables);
+    state.model.links.push(...links);
+    state.selection = tablesSelection(tables.map((t) => t.id));
+  });
+  status(trn(tables.length, 'Pasted {n} table', 'Pasted {n} tables'));
+}
+
+// Ctrl+C / Ctrl+V and the Edit menu's Copy and Paste, unless a field or a
+// text selection takes them.
+document.addEventListener('copy', (e) => {
+  if (isEditing(e) || document.querySelector('dialog[open]') || String(window.getSelection())) return;
+  if (copyTables()) e.preventDefault();
+});
+document.addEventListener('paste', (e) => {
+  if (isEditing(e) || document.querySelector('dialog[open]') || !tableClipboard) return;
+  e.preventDefault();
+  pasteTables();
+});
+
 // ---------------------------------------------------------------- context menu
 
 let contextMenu = null;
@@ -1480,12 +1639,17 @@ svg.addEventListener('contextmenu', (e) => {
   let items;
   const tables = selectedTables();
   if (tableEl && tables.length > 1 && tables.includes(tableEl.dataset.id)) {
-    items = [{ label: trn(tables.length, 'Delete {n} table', 'Delete {n} tables'), icon: 'delete', danger: true, run: deleteSelection }];
+    items = [
+      { label: trn(tables.length, 'Copy {n} table', 'Copy {n} tables'), icon: 'copy', run: () => copyTables() },
+      '-',
+      { label: trn(tables.length, 'Delete {n} table', 'Delete {n} tables'), icon: 'delete', danger: true, run: deleteSelection },
+    ];
   } else if (tableEl) {
     const t = tableById(tableEl.dataset.id);
     select({ type: 'table', id: t.id });
     items = [
       { label: tr('New relationship'), icon: 'add-link', run: () => openLinkDialog({ localTable: t.id }) },
+      { label: tr('Copy table'), icon: 'copy', run: () => copyTables([t.id]) },
       '-',
       { label: tr('Delete table'), icon: 'delete', danger: true, run: deleteSelection },
     ];
@@ -1498,6 +1662,10 @@ svg.addEventListener('contextmenu', (e) => {
       { label: tr('Add table here'), icon: 'add-table', run: () => addTable(at) },
       { label: tr('New relationship'), icon: 'add-link', run: () => openLinkDialog() },
     ];
+    if (tableClipboard) {
+      const n = tableClipboard.tables.length;
+      items.push('-', { label: n > 1 ? trn(n, 'Paste {n} table here', 'Paste {n} tables here') : tr('Paste table here'), icon: 'paste', run: () => pasteTables(at) });
+    }
   }
   showContextMenu(e.clientX, e.clientY, items);
 });

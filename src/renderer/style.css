@@ -552,6 +552,11 @@ dialog .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1
 dialog label { display: flex; flex-direction: column; gap: 3px; color: var(--muted); font-size: 12px; }
 /* Long option text (table and column names) must not widen the dialog. */
 dialog .grid2 select, dialog .grid2 input:not([type="checkbox"]):not([type="radio"]) { width: 100%; min-width: 0; }
+.paste-msg { min-height: 1.4em; font-size: 12px; max-height: 160px; overflow: auto; }
+.paste-msg p { margin: 0 0 4px; }
+.paste-msg ul { margin: 0; padding-left: 18px; }
+.paste-msg .error { color: var(--danger); }
+.paste-msg .warn { color: #b7791f; }
 dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 8px 0 0; }
 
 /* Database dialogs */

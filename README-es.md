@@ -168,6 +168,12 @@ Una vista dirigida por fuerzas; haz doble clic en un vértice para expandir sus 
   La barra de estado reúne los controles de vista, como en Word: un control deslizante de zoom (100% en el
   centro) con botones para alejar y acercar y el nivel de zoom, además de **Ajustar** y **Organizar** para
   ordenarlo todo, y los controles de la cuadrícula.
+- Copia tablas con <kbd>Ctrl</kbd>+<kbd>C</kbd> o **Copiar tabla** en su menú contextual, y pégalas con
+  <kbd>Ctrl</kbd>+<kbd>V</kbd> o **Pegar tabla aquí** sobre el fondo, también en otro diagrama. Al pegar una
+  tabla se piden su nombre y su esquema (vacío equivale a `public` y se sugieren los esquemas
+  existentes) y no se permite repetir un nombre; al pegar varias se pide el esquema y los nombres
+  que ya existen en él reciben el sufijo `_copy`. Las claves foráneas entre las tablas copiadas apuntan
+  a las copias nuevas; las que apuntan a tablas que no se copiaron se omiten.
 - Detrás del diagrama se dibuja una cuadrícula (botón de cuadrícula en la barra de estado, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd>), con
   una línea más marcada cada cinco celdas. Con **Imán** activado (<kbd>Ctrl</kbd>+<kbd>Mayús</kbd>+<kbd>G</kbd>),
   las tablas arrastradas, los desplazamientos con las flechas, las tablas nuevas y la organización automática

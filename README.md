@@ -163,6 +163,12 @@ A force-directed view; double-click a vertex to expand its neighbours.
   Drag the background to pan and scroll to zoom. The status bar holds the
   view controls, as in Word: a zoom slider (100% in the middle) with zoom out/in buttons and the
   zoom level, plus **Fit** and **Auto layout** to tidy up, and the grid controls.
+- Copy tables with <kbd>Ctrl</kbd>+<kbd>C</kbd> or **Copy table** in their context menu, and paste them
+  with <kbd>Ctrl</kbd>+<kbd>V</kbd> or **Paste table here** on the background, also into another diagram.
+  Pasting one table asks for its name and schema (empty means `public`, and existing schemas are
+  suggested) and won't paste over a table of the same name; pasting several asks for the schema
+  and gives a `_copy` suffix to names already taken there. Foreign keys between the copied tables
+  point at the new copies; foreign keys to tables that weren't copied are left out.
 - A grid is drawn behind the diagram (grid button in the status bar, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd>), with a
   heavier line every fifth cell. With **Snap** on (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>),
   dragged tables, arrow-key nudges, new tables and auto layout all land on grid lines; hold
