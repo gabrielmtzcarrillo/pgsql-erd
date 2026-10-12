@@ -469,6 +469,7 @@ textarea { resize: vertical; width: 100%; }
 .sb-inline { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin: 4px 0 8px; }
 .sb-inline input[type="color"] { width: 44px; height: 26px; padding: 1px 2px; }
 .sb-inline.end { margin-bottom: 0; gap: 6px; }
+.sb-accordion { padding-top: 8px; }
 .sb-accordion > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; user-select: none; }
 .sb-accordion > summary::-webkit-details-marker { display: none; }
 .sb-accordion > summary::before { content: "▸"; color: var(--muted); font-size: 11px; width: 10px; }
