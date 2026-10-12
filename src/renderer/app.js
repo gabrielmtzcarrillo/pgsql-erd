@@ -5,7 +5,7 @@ import {
 import { generateSQL, formatType, uniqueConstraints } from './lib/sql.js';
 import { fkTypesCompatible } from './lib/diff.js';
 import {
-  HEADER_H, ROW_H, PAD_X, BADGE_W, tableSize, routeLink, crowFoot, oneMarker, autoLayout,
+  HEADER_H, ROW_H, PAD_X, BADGE_W, tableSize, contentSize, routeLink, crowFoot, oneMarker, autoLayout,
   contentBounds, TITLE_ICON,
 } from './lib/layout.js';
 import { DIAGRAM_CSS, THEME_DIAGRAM, FONT, FONT_BOLD } from './lib/svgstyle.js';
@@ -382,6 +382,12 @@ function renderTable(t) {
     }
     g.append(row);
   });
+  // Drag the bottom right corner to resize the table; double-click it to fit
+  // the table to its content again.
+  g.append(el('path', {
+    class: 't-resize',
+    d: `M${width - 14},${height} L${width},${height - 14} L${width},${height - 6} a6,6 0 0 1 -6,6 z`,
+  }, [el('title', {}, tr('Drag to resize, double-click to fit the content'))]));
   return g;
 }
 
@@ -1437,6 +1443,9 @@ function centerOn(t) {
 // ---------------------------------------------------------------- pointer interaction
 
 let drag = null;
+// The last press on a resize grip. The table is re-rendered between the two
+// clicks, so the browser doesn't see a double-click there; it is detected here.
+let lastGrip = null;
 
 // Screen (client) coordinates to diagram coordinates.
 function toDiagram(clientX, clientY) {
@@ -1522,8 +1531,27 @@ svg.addEventListener('pointerdown', (e) => {
   svg.setPointerCapture(e.pointerId);
   const handle = e.target.closest('.t-link-handle, .t-col-handle');
   const additive = e.ctrlKey || e.metaKey;
+  const grip = e.target.closest('.t-resize');
   if (e.button === 0 && e.shiftKey) {
     drag = startMarquee(e, additive);
+  } else if (tableEl && e.button === 0 && grip && !additive) {
+    const t = tableById(tableEl.dataset.id);
+    const again = lastGrip?.id === t.id && e.timeStamp - lastGrip.time < 500;
+    lastGrip = again ? null : { id: t.id, time: e.timeStamp };
+    if (again) {
+      // Double-click: fit the table to its content again.
+      if (t.width || t.height) {
+        commit(() => {
+          t.width = null;
+          t.height = null;
+        });
+      }
+      return;
+    }
+    if (state.selection?.id !== t.id) select({ type: 'table', id: t.id });
+    const s = state.sizes.get(t.id);
+    drag = { kind: 'resize', t, sx: e.clientX, sy: e.clientY, ow: s.width, oh: s.height, min: contentSize(t, measure), moved: false };
+    svg.classList.add('resizing');
   } else if (tableEl && e.button === 0 && handle && !additive) {
     drag = startLinkDrag(tableById(tableEl.dataset.id), handle);
   } else if (scriptEl && e.button === 0) {
@@ -1533,6 +1561,9 @@ svg.addEventListener('pointerdown', (e) => {
     const t = tableById(tableEl.dataset.id);
     const rowEl = e.target.closest('.t-row');
     const col = rowEl ? Number(rowEl.dataset.attnum) : undefined;
+    // Only the title bar moves the table; pressing on a column just selects
+    // it. Checked before selecting, which can change the layout.
+    const header = toDiagram(e.clientX, e.clientY).y - t.y < HEADER_H;
     const ids = selectedTables();
     // Applied on release without moving: Ctrl+click takes a selected table
     // out of the selection, and a plain click in a group selects just it.
@@ -1550,7 +1581,7 @@ svg.addEventListener('pointerdown', (e) => {
     // The other selected tables move along with this one.
     const others = selectedTables().filter((id) => id !== t.id).map(tableById).filter(Boolean)
       .map((x) => ({ t: x, ox: x.x, oy: x.y }));
-    drag = { kind: 'table', t, col, click, others, sx: e.clientX, sy: e.clientY, ox: t.x, oy: t.y, moved: false };
+    drag = { kind: 'table', t, col, click, others, header, sx: e.clientX, sy: e.clientY, ox: t.x, oy: t.y, moved: false };
   } else if (linkEl && e.button === 0) {
     select({ type: 'link', id: linkEl.dataset.id });
   } else {
@@ -1573,7 +1604,9 @@ svg.addEventListener('pointermove', (e) => {
     applyView();
     return;
   }
+  if (drag.kind === 'table' && !drag.header) return;
   if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+  if (drag.kind === 'resize') return moveResize(e, dx, dy);
   if (drag.kind === 'script') {
     // Script boxes aren't part of the diagram file, so no undo step.
     drag.moved = true;
@@ -1601,6 +1634,22 @@ svg.addEventListener('pointermove', (e) => {
   }
   scheduleRender();
 });
+
+// The right and bottom edges follow the pointer (snapped to the grid unless
+// Alt inverts the setting), but the table never shrinks below its content.
+function moveResize(e, dx, dy) {
+  if (!drag.moved) {
+    pushUndo();
+    drag.moved = true;
+    lastGrip = null;
+  }
+  const { t, ow, oh, min } = drag;
+  const z = state.model.view.zoom;
+  const on = state.snap !== e.altKey;
+  t.width = Math.max(min.width, Math.round(snap(t.x + ow + dx / z, on) - t.x));
+  t.height = Math.max(min.height, Math.round(snap(t.y + oh + dy / z, on) - t.y));
+  scheduleRender();
+}
 
 // Pan just enough to show the whole table (e.g. after the sidebar opened
 // and narrowed the canvas).
@@ -1648,6 +1697,10 @@ function endDrag(e) {
     if (click === 'remove') select(tablesSelection(selectedTables().filter((id) => id !== t.id)));
     else if (click === 'only') select({ type: 'table', id: t.id }, { col });
     if (click !== 'remove') ensureVisible(t);
+  }
+  if (drag?.kind === 'resize') {
+    svg.classList.remove('resizing');
+    if (drag.moved) setDirty(true);
   }
   if (drag?.kind === 'pan') svg.classList.remove('panning');
   drag = null;
@@ -2007,7 +2060,7 @@ function buildExportSVG() {
   const clone = viewport.cloneNode(true);
   clone.removeAttribute('transform');
   clone.querySelectorAll('.selected, .related, .focused').forEach((n) => n.classList.remove('selected', 'related', 'focused'));
-  clone.querySelectorAll('title, .t-link-handle, .t-col-handle, .link-draft').forEach((n) => n.remove());
+  clone.querySelectorAll('title, .t-link-handle, .t-col-handle, .t-resize, .link-draft').forEach((n) => n.remove());
   const out =
     `<svg xmlns="${SVG_NS}" width="${Math.ceil(b.width)}" height="${Math.ceil(b.height)}" ` +
     `viewBox="${b.x} ${b.y} ${b.width} ${b.height}">` +

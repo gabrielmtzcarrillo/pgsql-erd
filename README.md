@@ -156,7 +156,8 @@ A force-directed view; double-click a vertex to expand its neighbours.
   - edit columns: name, type, length/scale, NOT NULL, PK, default value, order
   - set schema, comment, note and header colour
   - add and remove relationships, optionally creating the FK column for you
-- Drag tables to move them. <kbd>Ctrl</kbd>+click tables to select several, or hold <kbd>Shift</kbd>
+- Drag a table by its title bar to move it, and by its bottom right corner to resize it
+  (double-click the corner to fit it to its content again). <kbd>Ctrl</kbd>+click tables to select several, or hold <kbd>Shift</kbd>
   and drag a rectangle to select the tables it touches (<kbd>Ctrl</kbd>+<kbd>Shift</kbd> adds them to the
   selection); the selected tables are dragged, nudged with the arrow keys and deleted together, and
   the sidebar sets their schema and header colour at once with **Apply**.

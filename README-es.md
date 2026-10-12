@@ -160,7 +160,8 @@ Una vista dirigida por fuerzas; haz doble clic en un vértice para expandir sus 
   - editar columnas: nombre, tipo, longitud/escala, NOT NULL, PK, valor predeterminado, orden
   - establecer esquema, comentario, nota y color del encabezado
   - agregar y quitar relaciones, creando opcionalmente la columna FK
-- Arrastra las tablas para moverlas. <kbd>Ctrl</kbd>+clic selecciona varias tablas, y con <kbd>Shift</kbd>
+- Arrastra una tabla por su barra de título para moverla, y por su esquina inferior derecha para
+  cambiar su tamaño (doble clic en la esquina la ajusta de nuevo a su contenido). <kbd>Ctrl</kbd>+clic selecciona varias tablas, y con <kbd>Shift</kbd>
   pulsado puedes arrastrar un rectángulo para seleccionar las tablas que toque
   (<kbd>Ctrl</kbd>+<kbd>Shift</kbd> las agrega a la selección); las tablas seleccionadas se arrastran, se
   mueven con las flechas y se eliminan juntas, y el panel lateral les asigna esquema y color de

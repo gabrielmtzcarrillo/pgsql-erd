@@ -196,6 +196,27 @@ test('keeps a table icon in otherInfo and widens the table for it', () => {
   assert.equal('icon' in node(serializePgerd(again)).otherInfo, false, 'cleared icon is dropped');
 });
 
+test('keeps the size of a resized table in otherInfo, never smaller than its content', () => {
+  const m = parsePgerd(sample);
+  const t = m.tables[0];
+  const node = (json) => json.data.layers.find((l) => l.type === 'diagram-nodes').models[t.id];
+  const fit = tableSize(t, measure);
+  assert.equal(t.width, null);
+  assert.equal('width' in node(serializePgerd(m)).otherInfo, false);
+  t.width = fit.width + 100;
+  t.height = 10;
+  assert.deepEqual(tableSize(t, measure), { width: fit.width + 100, height: fit.height });
+  const json = serializePgerd(m);
+  assert.equal(node(json).otherInfo.width, fit.width + 100);
+  assert.equal('width' in node(json).otherInfo.data, false, 'not in the pgAdmin table data');
+  const again = parsePgerd(JSON.stringify(json));
+  assert.equal(again.tables[0].width, fit.width + 100);
+  again.tables[0].width = null;
+  again.tables[0].height = null;
+  const cleared = node(serializePgerd(again)).otherInfo;
+  assert.equal('width' in cleared || 'height' in cleared, false, 'a table fit to its content drops the size');
+});
+
 test('reads links saved with *_table_uuid and writes the *_table_uid keys pgAdmin reads', () => {
   const old = sample.replaceAll('"local_table_uid"', '"local_table_uuid"').replaceAll('"referenced_table_uid"', '"referenced_table_uuid"');
   const m = parsePgerd(old);

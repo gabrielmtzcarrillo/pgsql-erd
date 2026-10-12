@@ -10,7 +10,8 @@ export const BADGE_W = 26;
 export const MIN_W = 180;
 export const TITLE_ICON = 22; // header icon (16px) and the gap before the title
 
-export function tableSize(table, measure) {
+// The smallest size that fits the table's title and columns.
+export function contentSize(table, measure) {
   const header = measure(table.name, true) + PAD_X * 2 + 20 + (table.icon ? TITLE_ICON : 0);
   let widest = 0;
   for (const c of table.columns) {
@@ -19,6 +20,16 @@ export function tableSize(table, measure) {
   const width = Math.ceil(Math.max(MIN_W, header, widest + BADGE_W + PAD_X * 2));
   const height = HEADER_H + Math.max(1, table.columns.length) * ROW_H + 6;
   return { width, height };
+}
+
+// A table resized in the diagram keeps its width and height, but never
+// shrinks below its content.
+export function tableSize(table, measure) {
+  const { width, height } = contentSize(table, measure);
+  return {
+    width: Math.max(width, Math.round(table.width) || 0),
+    height: Math.max(height, Math.round(table.height) || 0),
+  };
 }
 
 export function columnY(table, attnum) {

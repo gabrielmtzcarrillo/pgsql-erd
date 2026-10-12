@@ -251,7 +251,14 @@ textarea { resize: vertical; width: 100%; }
 .grid-major { fill: none; stroke: var(--grid-major); stroke-width: 1; shape-rendering: crispEdges; }
 #grid-bg.hidden { display: none; }
 
-.erd-table { cursor: move; }
+.erd-table { cursor: default; }
+.erd-table :is(.t-header, .t-title, .t-icon, .t-note) { cursor: move; }
+.erd-table .t-resize {
+  fill: var(--erd-table-border); cursor: nwse-resize; opacity: 0; transition: opacity 0.12s;
+}
+.erd-table:hover .t-resize, .erd-table.selected .t-resize { opacity: 0.6; }
+.erd-table .t-resize:hover { fill: var(--erd-accent); opacity: 1; }
+#canvas.resizing, #canvas.resizing .erd-table * { cursor: nwse-resize; }
 .erd-table .t-row:hover .t-row-bg { fill: var(--erd-row-hover); }
 .erd-table .t-row.focused .t-row-bg { fill: var(--accent-soft); }
 .erd-table.selected .t-body { stroke: var(--erd-accent); stroke-width: 2; }

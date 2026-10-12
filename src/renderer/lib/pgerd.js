@@ -24,6 +24,8 @@
 // columns renamed in the diagram, so comparing with the database can rename
 // them instead of dropping and adding them, and otherInfo.icon names the
 // icon shown in the table's header (see TABLE_ICONS in icons.js).
+// otherInfo.width and otherInfo.height hold the size of a table resized in
+// the diagram; without them it is sized to fit its content.
 
 export const DEFAULT_VERSION = 80000;
 
@@ -69,6 +71,8 @@ export function newTable(props = {}) {
     icon: null,
     x: 0,
     y: 0,
+    width: null,
+    height: null,
     columns: [],
     raw: null,
     rawData: null,
@@ -161,6 +165,8 @@ export function parsePgerd(text) {
         icon: typeof node.otherInfo?.icon === 'string' ? node.otherInfo.icon : null,
         x: Number(node.x) || 0,
         y: Number(node.y) || 0,
+        width: Number(node.otherInfo?.width) > 0 ? Number(node.otherInfo.width) : null,
+        height: Number(node.otherInfo?.height) > 0 ? Number(node.otherInfo.height) : null,
         columns,
         raw: node,
         rawData: d,
@@ -404,7 +410,7 @@ export function serializePgerd(model) {
     };
 
     const raw = t.raw ?? {};
-    const { renamedColumns: _, icon: _icon, ...rawOtherInfo } = raw.otherInfo ?? {};
+    const { renamedColumns: _, icon: _icon, width: _w, height: _h, ...rawOtherInfo } = raw.otherInfo ?? {};
     const renamedColumns = Object.fromEntries(
       t.columns.filter((c) => c.renamedFrom && c.renamedFrom !== c.name).map((c) => [c.attnum, c.renamedFrom])
     );
@@ -429,6 +435,8 @@ export function serializePgerd(model) {
           note: t.note ?? '',
           ...(Object.keys(renamedColumns).length ? { renamedColumns } : {}),
           ...(t.icon ? { icon: t.icon } : {}),
+          ...(t.width > 0 ? { width: Math.round(t.width) } : {}),
+          ...(t.height > 0 ? { height: Math.round(t.height) } : {}),
         },
         t.color
       ),

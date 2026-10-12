@@ -748,6 +748,7 @@ export default {
   "Add table here": "Agregar tabla aquí",
   "Drag to another table to add a relationship": "Arrastre hasta otra tabla para agregar una relación",
   "Drag to the referenced column to add a foreign key": "Arrastre hasta la columna referenciada para agregar una clave foránea",
+  "Drag to resize, double-click to fit the content": "Arrastre para cambiar el tamaño, doble clic para ajustarlo al contenido",
   "SQL preview": "Vista previa SQL",
   "SQL Preview": "Vista previa SQL",
   "Results": "Resultados",
