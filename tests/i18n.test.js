@@ -12,6 +12,7 @@ import es from '../src/shared/locales/es.js';
 import { SCRIPT_TYPES } from '../src/shared/scripts.js';
 import { SCRIPT_PROFILES, SCRIPT_PERMISSION_LABELS, AI_PERMISSION_LABELS } from '../src/shared/permissions.js';
 import { VECTOR_DISTANCES } from '../src/shared/pgvector.js';
+import { TABLE_ICONS } from '../src/renderer/icons.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CATALOGS = { es };
@@ -86,6 +87,7 @@ function labelKeys() {
     ...Object.values(SCRIPT_PERMISSION_LABELS),
     ...Object.values(AI_PERMISSION_LABELS),
     ...VECTOR_DISTANCES.map((x) => x.label),
+    ...Object.values(TABLE_ICONS).map((x) => x.label),
   ];
 }
 

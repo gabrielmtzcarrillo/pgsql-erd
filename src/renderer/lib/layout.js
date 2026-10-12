@@ -8,9 +8,10 @@ export const ROW_H = 22;
 export const PAD_X = 10;
 export const BADGE_W = 26;
 export const MIN_W = 180;
+export const TITLE_ICON = 22; // header icon (16px) and the gap before the title
 
 export function tableSize(table, measure) {
-  const header = measure(table.name, true) + PAD_X * 2 + 20;
+  const header = measure(table.name, true) + PAD_X * 2 + 20 + (table.icon ? TITLE_ICON : 0);
   let widest = 0;
   for (const c of table.columns) {
     widest = Math.max(widest, measure(c.name) + measure(formatType(c)) + 24);

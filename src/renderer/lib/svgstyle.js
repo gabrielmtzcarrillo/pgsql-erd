@@ -96,6 +96,7 @@ export const DIAGRAM_CSS = `
   .erd-table .t-header { fill: var(--erd-header-bg); }
   .erd-table .t-title { fill: var(--erd-header-fg); font: ${FONT_BOLD}; }
   .erd-table .t-schema { fill-opacity: 0.75; font-weight: 400; }
+  .erd-table .t-icon { color: var(--erd-header-fg); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .erd-table .t-note { fill: var(--erd-header-fg); font: ${FONT}; }
   .erd-table .t-col { fill: var(--erd-text); font: ${FONT}; }
   .erd-table .t-col.nn { font-weight: 600; }

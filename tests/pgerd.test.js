@@ -178,6 +178,24 @@ test('remembers renamed columns in otherInfo, outside the pgAdmin table data', (
   assert.equal('renamedColumns' in node(serializePgerd(again)).otherInfo, false, 'cleared renames are dropped');
 });
 
+test('keeps a table icon in otherInfo and widens the table for it', () => {
+  const m = parsePgerd(sample);
+  const t = m.tables[0];
+  const node = (json) => json.data.layers.find((l) => l.type === 'diagram-nodes').models[t.id];
+  assert.equal(t.icon, null);
+  assert.equal('icon' in node(serializePgerd(m)).otherInfo, false);
+  const plain = tableSize({ ...t, name: 'a_rather_long_table_name', columns: [] }, measure).width;
+  t.icon = 'user';
+  assert.ok(tableSize({ ...t, name: 'a_rather_long_table_name', columns: [] }, measure).width > plain);
+  const json = serializePgerd(m);
+  assert.equal(node(json).otherInfo.icon, 'user');
+  assert.equal('icon' in node(json).otherInfo.data, false, 'not in the pgAdmin table data');
+  const again = parsePgerd(JSON.stringify(json));
+  assert.equal(again.tables[0].icon, 'user');
+  again.tables[0].icon = null;
+  assert.equal('icon' in node(serializePgerd(again)).otherInfo, false, 'cleared icon is dropped');
+});
+
 test('reads links saved with *_table_uuid and writes the *_table_uid keys pgAdmin reads', () => {
   const old = sample.replaceAll('"local_table_uid"', '"local_table_uuid"').replaceAll('"referenced_table_uid"', '"referenced_table_uuid"');
   const m = parsePgerd(old);

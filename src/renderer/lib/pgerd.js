@@ -22,7 +22,8 @@
 // custom header colors saved from the table editor. A table's
 // otherInfo.renamedColumns ({ attnum: name before the rename }) remembers
 // columns renamed in the diagram, so comparing with the database can rename
-// them instead of dropping and adding them.
+// them instead of dropping and adding them, and otherInfo.icon names the
+// icon shown in the table's header (see TABLE_ICONS in icons.js).
 
 export const DEFAULT_VERSION = 80000;
 
@@ -65,6 +66,7 @@ export function newTable(props = {}) {
     description: '',
     note: '',
     color: null,
+    icon: null,
     x: 0,
     y: 0,
     columns: [],
@@ -156,6 +158,7 @@ export function parsePgerd(text) {
         description: d.description ?? '',
         note: node.otherInfo?.note ?? '',
         color: node.otherInfo?.fillColor ?? node.otherInfo?.metadata?.fillColor ?? null,
+        icon: typeof node.otherInfo?.icon === 'string' ? node.otherInfo.icon : null,
         x: Number(node.x) || 0,
         y: Number(node.y) || 0,
         columns,
@@ -401,7 +404,7 @@ export function serializePgerd(model) {
     };
 
     const raw = t.raw ?? {};
-    const { renamedColumns: _, ...rawOtherInfo } = raw.otherInfo ?? {};
+    const { renamedColumns: _, icon: _icon, ...rawOtherInfo } = raw.otherInfo ?? {};
     const renamedColumns = Object.fromEntries(
       t.columns.filter((c) => c.renamedFrom && c.renamedFrom !== c.name).map((c) => [c.attnum, c.renamedFrom])
     );
@@ -425,6 +428,7 @@ export function serializePgerd(model) {
           data,
           note: t.note ?? '',
           ...(Object.keys(renamedColumns).length ? { renamedColumns } : {}),
+          ...(t.icon ? { icon: t.icon } : {}),
         },
         t.color
       ),

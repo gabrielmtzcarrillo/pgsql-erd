@@ -91,6 +91,75 @@ export const ICONS = {
   'quit': '<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/>',
 };
 
+// Icons a table can show in its header, chosen in the table editor; kept
+// apart from ICONS so they are not rendered as menu icons. Labels are in
+// English and translated where shown.
+export const TABLE_ICONS = {
+  'user': { label: 'User', svg: `<circle ${F} cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>` },
+  'users': { label: 'Users', svg: `<circle ${F} cx="9" cy="8" r="4"/><path d="M2 21v-1a6 6 0 0 1 6-6h2a6 6 0 0 1 6 6v1M16 3.1a4 4 0 0 1 0 7.8M22 21v-1a6 6 0 0 0-4-5.6"/>` },
+  'building': { label: 'Organization', svg: `<rect ${F} x="4" y="2" width="16" height="20" rx="1"/><path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/>` },
+  'home': { label: 'Home', svg: `<path ${F} d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>` },
+  'cart': { label: 'Cart', svg: `<path ${F} d="M6 6h15l-2 8H8z"/><path d="M2 3h3l3 11"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/>` },
+  'package': { label: 'Product', svg: `<path ${F} d="m21 8-9-5-9 5v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/>` },
+  'tag': { label: 'Tag', svg: `<path ${F} d="M3 3h8l10 10-8 8L3 11z"/><circle cx="7.5" cy="7.5" r="1.5"/>` },
+  'receipt': { label: 'Invoice', svg: `<path ${F} d="M5 2h14v20l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/>` },
+  'money': { label: 'Money', svg: `<rect ${F} x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/>` },
+  'card': { label: 'Payment', svg: `<rect ${F} x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>` },
+  'calendar': { label: 'Calendar', svg: `<rect ${F} x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/>` },
+  'clock': { label: 'Time', svg: `<circle ${F} cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>` },
+  'event': { label: 'Event', svg: `<path ${F} d="M13 2 3 14h9l-1 8 10-12h-9z"/>` },
+  'task': { label: 'Task', svg: `${SQUARE}<path d="m8 12 3 3 5-6"/>` },
+  'location': { label: 'Location', svg: `<path ${F} d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/>` },
+  'globe': { label: 'Globe', svg: `<circle ${F} cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>` },
+  'truck': { label: 'Shipping', svg: `<path ${F} d="M2 6h12v10H2z"/><path d="M14 9h4l4 4v3h-8"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>` },
+  'mail': { label: 'Mail', svg: `<rect ${F} x="2" y="5" width="20" height="14" rx="2"/><path d="m2 7 10 6 10-6"/>` },
+  'phone': { label: 'Phone', svg: `<path ${F} d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>` },
+  'message': { label: 'Message', svg: `<path ${F} d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>` },
+  'bell': { label: 'Notification', svg: `<path ${F} d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>` },
+  'document': { label: 'Document', svg: `${FILE}<path d="M8 13h8M8 17h6"/>` },
+  'book': { label: 'Book', svg: `<path ${F} d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>` },
+  'folder': { label: 'Folder', svg: `<path ${F} d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>` },
+  'image': { label: 'Image', svg: `${SQUARE}<circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>` },
+  'star': { label: 'Star', svg: `<path ${F} d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5-5.8-3.1-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9z"/>` },
+  'heart': { label: 'Favorite', svg: `<path ${F} d="M12 21s-8-5-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 6-8 11-8 11z"/>` },
+  'bookmark': { label: 'Bookmark', svg: `<path ${F} d="M6 3h12v18l-6-4-6 4z"/>` },
+  'flag': { label: 'Flag', svg: `<path ${F} d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>` },
+  'chart': { label: 'Chart', svg: `<path d="M3 3v18h18"/><rect ${F} x="7" y="12" width="3" height="6"/><rect ${F} x="12" y="8" width="3" height="10"/><rect ${F} x="17" y="5" width="3" height="13"/>` },
+  'list': { label: 'List', svg: `${SQUARE}<path d="M8 8h9M8 12h9M8 16h9M5.5 8h.01M5.5 12h.01M5.5 16h.01"/>` },
+  'layers': { label: 'Layers', svg: `<path ${F} d="m12 2 10 5-10 5L2 7z"/><path d="m2 12 10 5 10-5M2 17l10 5 10-5"/>` },
+  'database': { label: 'Database', svg: DATABASE },
+  'code': { label: 'Code', svg: `${SQUARE}<path d="m14 9 3 3-3 3M10 9l-3 3 3 3"/>` },
+  'braces': { label: 'JSON', svg: '<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/>' },
+  'hash': { label: 'Identifier', svg: '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>' },
+  'terminal': { label: 'Terminal', svg: `<rect ${F} x="2" y="4" width="20" height="16" rx="2"/><path d="m6 9 3 3-3 3M12 15h5"/>` },
+  'bug': { label: 'Bug', svg: `<rect ${F} x="7" y="7" width="10" height="14" rx="5"/><path d="M9 7a3 3 0 0 1 6 0M12 11v10M3 13h4M17 13h4M4 7l3 2M20 7l-3 2M4 20l3-2M20 20l-3-2"/>` },
+  'branch': { label: 'Branch', svg: `<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle ${F} cx="18" cy="7" r="2"/><path d="M6 7v10M18 9v1a4 4 0 0 1-4 4H8.5"/>` },
+  'commit': { label: 'Version', svg: `<circle ${F} cx="12" cy="12" r="4"/><path d="M3 12h5M16 12h5"/>` },
+  'test': { label: 'Testing', svg: `<path ${F} d="M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2.2h12.4a1.5 1.5 0 0 0 1.3-2.2L14 9V3z"/><path d="M8.5 3h7M7 15h10"/>` },
+  'rocket': { label: 'Deployment', svg: `<path ${F} d="M12 15 9 12a22 22 0 0 1 2-3.9A12.9 12.9 0 0 1 22 2c0 2.7-.8 7.5-6 11a22.4 22.4 0 0 1-4 2z"/><path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2.1-.1-2.9a2.2 2.2 0 0 0-2.9-.1zM9 12H4s.6-3 2-4c1.6-1.1 5 0 5 0M12 15v5s3-.6 4-2c1.1-1.6 0-5 0-5"/>` },
+  'server': { label: 'Server', svg: `<rect ${F} x="3" y="3" width="18" height="8" rx="2"/><rect ${F} x="3" y="13" width="18" height="8" rx="2"/><path d="M7 7h.01M7 17h.01"/>` },
+  'cloud': { label: 'Cloud', svg: `<path ${F} d="M17.5 19H8a6 6 0 1 1 5.7-7.9A4.5 4.5 0 1 1 17.5 19z"/>` },
+  'api': { label: 'API', svg: `<path ${F} d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z"/><path d="M12 22v-5M9 8V2M15 8V2"/>` },
+  'workflow': { label: 'Workflow', svg: `<rect ${F} x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M6.5 10v4a3 3 0 0 0 3 3H14"/>` },
+  'network': { label: 'Network', svg: `<rect ${F} x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M5 16v-2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2"/>` },
+  'monitor': { label: 'Monitor', svg: `<rect ${F} x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>` },
+  'smartphone': { label: 'Mobile', svg: `<rect ${F} x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>` },
+  'cpu': { label: 'Processor', svg: `<rect ${F} x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>` },
+  'sparkles': { label: 'AI', svg: `<path ${F} d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 14.5l.8 1.7 1.7.8-1.7.8-.8 1.7-.8-1.7-1.7-.8 1.7-.8zM5 16l.6 1.4L7 18l-1.4.6L5 20l-.6-1.4L3 18l1.4-.6z"/>` },
+  'brain': { label: 'Brain', svg: `<path ${F} d="M12 5a3 3 0 0 0-5.9-.8A3 3 0 0 0 3.5 8.5 3.5 3.5 0 0 0 4 15a3 3 0 0 0 3 4 3 3 0 0 0 5 1zM12 5a3 3 0 0 1 5.9-.8 3 3 0 0 1 2.6 4.3A3.5 3.5 0 0 1 20 15a3 3 0 0 1-3 4 3 3 0 0 1-5 1"/><path d="M12 5v15"/>` },
+  'bot': { label: 'Bot', svg: `<rect ${F} x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4M10 4h4M2 14h2M20 14h2M9 13v2M15 13v2"/>` },
+  'assistant': { label: 'Assistant', svg: `<path ${F} d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="m12 6 .8 1.7 1.7.8-1.7.8L12 11l-.8-1.7-1.7-.8 1.7-.8z"/>` },
+  'neural': { label: 'Neural network', svg: `<circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle ${F} cx="12" cy="12" r="2.5"/><circle cx="19" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="m6.6 7.3 3.5 3.1M6.6 16.7l3.5-3.1M13.9 10.4l3.5-3.1M13.9 13.6l3.5 3.1"/>` },
+  'vector': { label: 'Embedding', svg: `<path d="M3 3v18h18"/><path d="m7 17 11-11M18 6h-5M18 6v5"/><circle ${F} cx="7" cy="17" r="1.5"/>` },
+  'wand': { label: 'Magic', svg: `<path ${F} d="m14 8 2 2L5 21l-2-2z"/><path d="M15 4V2M15 10V8M11 6h2M17 6h2M18 3l1-1M18 9l1 1M12 3l-1-1"/>` },
+  'lightbulb': { label: 'Idea', svg: `<path ${F} d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5z"/><path d="M9 18h6M10 22h4"/>` },
+  'link': { label: 'Link', svg: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>' },
+  'settings': { label: 'Settings', svg: `<path ${F} d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.8l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.8v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>` },
+  'lock': { label: 'Lock', svg: `<rect ${F} x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>` },
+  'key': { label: 'Key', svg: `<circle ${F} cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.8-9.8M17 6l3 3M14.5 8.5l2.5 2.5"/>` },
+  'shield': { label: 'Security', svg: `<path ${F} d="M12 3 4 6v6c0 5 3.4 8.3 8 9 4.6-.7 8-4 8-9V6z"/>` },
+};
+
 // Tone colours as [on light backgrounds, on dark backgrounds].
 export const TONES = {
   blue: ['#1f6fc5', '#5aa9f0'],
@@ -132,6 +201,16 @@ export function iconMarkup(name, cls = 'btn-icon') {
   const style = tone ? ` style="--tone:${tone[0]};--tone-dark:${tone[1]}"` : '';
   return `<svg class="${cls}"${style} viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" `
     + `stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+}
+
+// A table icon (see TABLE_ICONS) in the text colour.
+export function tableIconElement(name, cls = 'btn-icon') {
+  const t = document.createElement('template');
+  t.innerHTML = TABLE_ICONS[name]
+    ? `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" `
+      + `stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${TABLE_ICONS[name].svg}</svg>`
+    : '';
+  return t.content.firstChild;
 }
 
 // A standalone icon element, e.g. for badges.

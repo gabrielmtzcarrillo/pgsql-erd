@@ -6,7 +6,7 @@ import { generateSQL, formatType, uniqueConstraints } from './lib/sql.js';
 import { fkTypesCompatible } from './lib/diff.js';
 import {
   HEADER_H, ROW_H, PAD_X, BADGE_W, tableSize, routeLink, crowFoot, oneMarker, autoLayout,
-  contentBounds,
+  contentBounds, TITLE_ICON,
 } from './lib/layout.js';
 import { DIAGRAM_CSS, THEME_DIAGRAM, FONT, FONT_BOLD } from './lib/svgstyle.js';
 import { initTheme, diagramTheme } from './theme.js';
@@ -24,7 +24,7 @@ import { tableKey } from './lib/catalog.js';
 import { setupSpreadsheetImport, SPREADSHEET_EXT } from './xlui.js';
 import { highlightSQL } from './lib/highlight.js';
 import { vectorKind, vectorIndexSQL } from '../shared/pgvector.js';
-import { ICONS, decorateButton, decorateButtons, iconElement } from './icons.js';
+import { ICONS, TABLE_ICONS, decorateButton, decorateButtons, iconElement, tableIconElement } from './icons.js';
 import { tr, trn, getLocale, translateDom } from '../shared/i18n.js';
 
 const host = window.erdHost;
@@ -334,7 +334,13 @@ function renderTable(t) {
   if (t.color) header.style.fill = t.color;
   g.append(header);
 
-  const title = el('text', { class: 't-title', x: PAD_X, y: 20 });
+  const icon = TABLE_ICONS[t.icon];
+  if (icon) {
+    const svgIcon = el('svg', { class: 't-icon', x: PAD_X, y: (HEADER_H - 16) / 2, width: 16, height: 16, viewBox: '0 0 24 24' });
+    svgIcon.innerHTML = icon.svg;
+    g.append(svgIcon);
+  }
+  const title = el('text', { class: 't-title', x: PAD_X + (t.icon ? TITLE_ICON : 0), y: 20 });
   if (t.schema && t.schema !== 'public') title.append(el('tspan', { class: 't-schema' }, `${t.schema}.`));
   title.append(el('tspan', {}, t.name));
   g.append(title);
@@ -577,7 +583,7 @@ function renderDiagramPanel() {
 }
 
 // Several tables picked with Ctrl+click or a Shift+drag rectangle. The
-// schema and header color fields are applied to all of them at once.
+// schema, header color and icon fields are applied to all of them at once.
 function renderTablesPanel(tables) {
   const sorted = [...tables].sort((a, b) => fullName(a).localeCompare(fullName(b)));
   const common = (get) => (new Set(tables.map(get)).size === 1 ? get(tables[0]) : undefined);
@@ -599,12 +605,21 @@ function renderTablesPanel(tables) {
   colorInput.addEventListener('input', () => setColor(colorInput.value));
   if (common((t) => t.color) === undefined) colorNote.textContent = tr('(mixed)');
 
+  // undefined: leave each table's icon as it is; null: no icon.
+  let icon;
+  const iconNote = h('span', { class: 'muted small' }, common((t) => t.icon ?? null) === undefined ? tr('(mixed)') : '');
+  const iconGrid = tableIconGrid(common((t) => t.icon ?? null), (name) => {
+    icon = name;
+    iconNote.textContent = '';
+  });
+
   const apply = () => {
     const schema = schemaInput.value.trim();
     commit(() => {
       for (const t of tables) {
         if (schema) t.schema = schema;
         if (color !== undefined) t.color = color;
+        if (icon !== undefined) t.icon = icon;
       }
     });
     status(trn(tables.length, 'Updated {n} table', 'Updated {n} tables'));
@@ -625,6 +640,8 @@ function renderTablesPanel(tables) {
         ? h('div', { class: 'sb-palette', role: 'list', 'aria-label': tr('Custom palette') }, palette().map((c) =>
             h('button', { class: 'sb-palette-swatch', role: 'listitem', style: `background:${c}`, title: c, onclick: () => setColor(c) })))
         : null,
+      h('div', { class: 'sb-inline' }, [h('span', { class: 'muted' }, tr('Icon')), iconNote]),
+      iconGrid,
       h('div', {}, [h('button', { class: 'primary', icon: 'ok', onclick: apply }, tr('Apply'))]),
       h('ul', { class: 'list' }, sorted.map((t) =>
         h('li', { class: 'clickable', onclick: () => { select({ type: 'table', id: t.id }); centerOn(t); } }, [
@@ -637,6 +654,39 @@ function renderTablesPanel(tables) {
       h('button', { class: 'danger', icon: 'delete', onclick: deleteSelection }, trn(tables.length, 'Delete {n} table', 'Delete {n} tables')),
     ]),
   );
+}
+
+// Grid of the icons a table can show in its header, with "no icon" first.
+// `current` is undefined when nothing is picked (tables with mixed icons).
+function tableIconGrid(current, onPick) {
+  const cells = [];
+  const mark = () => cells.forEach((b) => {
+    b.classList.toggle('current', b.iconName === current);
+    b.setAttribute('aria-checked', String(b.iconName === current));
+  });
+  const cell = (name, title, content) => {
+    const b = h('button', {
+      class: 'sb-icon-cell',
+      role: 'radio',
+      'aria-label': title,
+      title,
+      onclick: () => {
+        if (current === name) return;
+        current = name;
+        mark();
+        onPick(name);
+      },
+    }, content);
+    b.iconName = name;
+    cells.push(b);
+    return b;
+  };
+  const grid = h('div', { class: 'sb-icon-grid', role: 'radiogroup', 'aria-label': tr('Icon') }, [
+    cell(null, tr('No icon'), iconElement('close', 'btn-icon none')),
+    ...Object.entries(TABLE_ICONS).map(([name, i]) => cell(name, tr(i.label), tableIconElement(name))),
+  ]);
+  mark();
+  return grid;
 }
 
 // Custom header colors saved with the diagram (see pgerd.js). Not part of
@@ -686,6 +736,8 @@ function renderTablePanel(t) {
             oncontextmenu: (e) => { e.preventDefault(); setPalette(palette().filter((x) => x !== c)); },
           })))
       : null,
+    h('div', { class: 'sb-sub' }, tr('Icon')),
+    tableIconGrid(t.icon ?? null, (name) => commit(() => (t.icon = name))),
   ];
 
   const columns = h('ul', { class: 'sb-cols' }, t.columns.map((c, i) => columnItem(t, c, i, fks)));
@@ -871,6 +923,84 @@ function defaultInput(c) {
   ]);
 }
 
+// Type input with a drop-down of every type: the current one on top, then a
+// separator and the rest. Typing filters the list; Escape restores the value.
+function typePicker(input) {
+  const original = input.value;
+  let list = null;
+  let items = [];
+  let active = -1;
+  const onScroll = (e) => { if (!list?.contains(e.target)) close(); };
+  const close = () => {
+    list?.remove();
+    list = null;
+    window.removeEventListener('scroll', onScroll, true);
+  };
+  const pick = (type) => {
+    close();
+    input.value = type;
+    input.dispatchEvent(new Event('change'));
+  };
+  const highlight = (i) => {
+    items[active]?.classList.remove('active');
+    active = i;
+    items[active]?.classList.add('active');
+    items[active]?.scrollIntoView({ block: 'nearest' });
+  };
+  const open = () => {
+    close();
+    const q = input.value.trim().toLowerCase();
+    const match = (type) => input.value === original || type.toLowerCase().includes(q);
+    const current = original && match(original) ? [original] : [];
+    const rest = PG_TYPES.filter((type) => type !== original && match(type));
+    const item = (type) => h('div', {
+      class: 'ctx-item',
+      role: 'option',
+      onmousedown: (e) => { e.preventDefault(); pick(type); },
+    }, type);
+    const top = current.map(item);
+    const others = rest.map(item);
+    items = [...top, ...others];
+    active = -1;
+    if (!items.length) return;
+    const r = input.getBoundingClientRect();
+    list = h('div', { class: 'ctx-menu type-list', role: 'listbox' }, [
+      ...top,
+      top.length && others.length ? h('div', { class: 'ctx-sep' }) : null,
+      ...others,
+    ]);
+    list.style.left = `${r.left}px`;
+    list.style.top = `${r.bottom + 2}px`;
+    list.style.minWidth = `${r.width}px`;
+    list.style.maxHeight = `${Math.max(120, window.innerHeight - r.bottom - 12)}px`;
+    document.body.append(list);
+    window.addEventListener('scroll', onScroll, true);
+    // While typing, Enter keeps the typed text unless an item was arrowed to.
+    if (top.length && input.value === original) highlight(0);
+  };
+  input.addEventListener('focus', open);
+  input.addEventListener('click', () => { if (!list) open(); });
+  input.addEventListener('input', open);
+  input.addEventListener('blur', close);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      input.value = original;
+      close();
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!list) return open();
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      highlight((active + step + items.length) % items.length);
+    } else if (e.key === 'Enter' && list && active >= 0) {
+      e.preventDefault();
+      pick(items[active].textContent);
+    }
+  });
+  return input;
+}
+
 function columnEditor(t, c, i) {
   const check = (prop, label, key) => {
     const cb = h('input', { type: 'checkbox', checked: !!c[prop], 'data-key': key });
@@ -889,13 +1019,12 @@ function columnEditor(t, c, i) {
   return h('div', { class: 'sb-col-editor' }, [
     h('div', { class: 'sb-grid' }, [
       field(tr('Name'), bound(c, 'name', 'col-name', { after: (v) => renameColumn(t, c, oldName, v) })),
-      field(tr('Type'), bound(c, 'type', 'col-type', {
-        list: 'pg-types',
+      field(tr('Type'), typePicker(bound(c, 'type', 'col-type', {
         after: (v) => {
           if (!SIZED_TYPE.test(String(v).trim())) c.length = c.precision = null;
           uuidPkDefault(c);
         },
-      })),
+      }))),
     ]),
     h('div', { class: 'sb-grid' }, [
       field(vectorKind(c.type) ? tr('Dimensions') : tr('Length / precision'), bound(c, 'length', 'col-length', { type: 'number' })),
@@ -2240,7 +2369,6 @@ $('#recent-clear').addEventListener('click', () => host.recent.clear());
   style.textContent =
     Object.entries(THEME_DIAGRAM).map(([name, t]) => `:root[data-theme="${name}"]{${t.vars}}`).join('') + DIAGRAM_CSS;
   document.head.append(style);
-  $('#pg-types').replaceChildren(...PG_TYPES.map((t) => h('option', { value: t })));
 
   host.onFileOpened(({ filePath, text }) => openDiagramFile(text, filePath));
   // F5 is the menu accelerator for running scripts; on a query tab it runs the query.
