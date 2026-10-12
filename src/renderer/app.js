@@ -1146,6 +1146,18 @@ function renderLinkPanel(l) {
   });
 })();
 
+// The diagram toolbar stays on one row so the canvas below doesn't move
+// when the sidebar opens; when the labels don't fit, only icons are shown
+// (each button keeps its title as a tooltip).
+(function setupCompactToolbar() {
+  const bar = $('.erd-toolbar');
+  const fit = () => {
+    bar.classList.remove('compact');
+    bar.classList.toggle('compact', bar.scrollWidth > bar.clientWidth);
+  };
+  new ResizeObserver(fit).observe(bar);
+})();
+
 // ---------------------------------------------------------------- model edits
 
 // Ids of the selected tables: the selected table, or several picked with
