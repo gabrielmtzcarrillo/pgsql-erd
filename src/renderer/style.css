@@ -469,6 +469,14 @@ textarea { resize: vertical; width: 100%; }
 .sb-inline { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin: 4px 0 8px; }
 .sb-inline input[type="color"] { width: 44px; height: 26px; padding: 1px 2px; }
 .sb-inline.end { margin-bottom: 0; gap: 6px; }
+.sb-accordion > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; user-select: none; }
+.sb-accordion > summary::-webkit-details-marker { display: none; }
+.sb-accordion > summary::before { content: "▸"; color: var(--muted); font-size: 11px; width: 10px; }
+.sb-accordion[open] > summary::before { content: "▾"; }
+.sb-accordion[open] > summary { margin-bottom: 6px; }
+.sb-accordion-value { display: inline-flex; align-items: center; gap: 6px; }
+.sb-accordion-value .btn-icon { width: 16px; height: 16px; }
+.sb-accordion-value .btn-icon.none, :root[data-base="dark"] .sb-accordion-value .btn-icon.none { color: var(--muted); }
 .sb-icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 4px; margin: 0 0 8px; }
 .panel .sb-icon-cell { height: 30px; min-width: 0; padding: 0; border-radius: 4px; box-shadow: none; }
 .panel .sb-icon-cell .btn-icon { width: 18px; height: 18px; }

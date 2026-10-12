@@ -613,11 +613,7 @@ function renderTablesPanel(tables) {
 
   // undefined: leave each table's icon as it is; null: no icon.
   let icon;
-  const iconNote = h('span', { class: 'muted small' }, common((t) => t.icon ?? null) === undefined ? tr('(mixed)') : '');
-  const iconGrid = tableIconGrid(common((t) => t.icon ?? null), (name) => {
-    icon = name;
-    iconNote.textContent = '';
-  });
+  const iconPicker = tableIconPicker(common((t) => t.icon ?? null), (name) => (icon = name));
 
   const apply = () => {
     const schema = schemaInput.value.trim();
@@ -646,8 +642,7 @@ function renderTablesPanel(tables) {
         ? h('div', { class: 'sb-palette', role: 'list', 'aria-label': tr('Custom palette') }, palette().map((c) =>
             h('button', { class: 'sb-palette-swatch', role: 'listitem', style: `background:${c}`, title: c, onclick: () => setColor(c) })))
         : null,
-      h('div', { class: 'sb-inline' }, [h('span', { class: 'muted' }, tr('Icon')), iconNote]),
-      iconGrid,
+      iconPicker,
       h('div', {}, [h('button', { class: 'primary', icon: 'ok', onclick: apply }, tr('Apply'))]),
       h('ul', { class: 'list' }, sorted.map((t) =>
         h('li', { class: 'clickable', onclick: () => { select({ type: 'table', id: t.id }); centerOn(t); } }, [
@@ -660,6 +655,31 @@ function renderTablesPanel(tables) {
       h('button', { class: 'danger', icon: 'delete', onclick: deleteSelection }, trn(tables.length, 'Delete {n} table', 'Delete {n} tables')),
     ]),
   );
+}
+
+// The header icon picker, folded up to a row showing the current icon; it
+// stays open or closed as the selection changes. `current` is undefined when
+// nothing is picked (tables with mixed icons).
+function tableIconPicker(current, onPick) {
+  const d = h('details', { class: 'sb-accordion', open: openSections.get('icon') === true });
+  d.addEventListener('toggle', () => openSections.set('icon', d.open));
+  const value = h('span', { class: 'sb-accordion-value' });
+  const show = (name) => {
+    value.replaceChildren(...(name === undefined
+      ? [h('span', { class: 'muted small' }, tr('(mixed)'))]
+      : name && TABLE_ICONS[name]
+        ? [tableIconElement(name), tr(TABLE_ICONS[name].label)]
+        : [iconElement('close', 'btn-icon none'), tr('No icon')]));
+  };
+  show(current);
+  d.append(
+    h('summary', {}, [h('span', { class: 'muted' }, tr('Icon')), value]),
+    tableIconGrid(current, (name) => {
+      show(name);
+      onPick(name);
+    }),
+  );
+  return d;
 }
 
 // Grid of the icons a table can show in its header, with "no icon" first.
@@ -742,8 +762,7 @@ function renderTablePanel(t) {
             oncontextmenu: (e) => { e.preventDefault(); setPalette(palette().filter((x) => x !== c)); },
           })))
       : null,
-    h('div', { class: 'sb-sub' }, tr('Icon')),
-    tableIconGrid(t.icon ?? null, (name) => commit(() => (t.icon = name))),
+    tableIconPicker(t.icon ?? null, (name) => commit(() => (t.icon = name))),
   ];
 
   const columns = h('ul', { class: 'sb-cols' }, t.columns.map((c, i) => columnItem(t, c, i, fks)));
