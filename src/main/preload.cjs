@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('erdHost', {
   openDialog: () => ipcRenderer.invoke('open-dialog'),
   openSpreadsheet: () => ipcRenderer.invoke('open-spreadsheet'),
   openSql: () => ipcRenderer.invoke('open-sql'),
+  openImportTemplate: () => ipcRenderer.invoke('open-import-template'),
   saveFile: (opts) => ipcRenderer.invoke('save-file', opts),
   saveBinary: (opts) => ipcRenderer.invoke('save-binary', opts),
   // Save As in any format: pick a file (its type gives the format), then write it.

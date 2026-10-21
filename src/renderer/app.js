@@ -18,6 +18,7 @@ import { setupTabs } from './tabs.js';
 import { setupDataBrowser } from './databrowser.js';
 import { setupQuery } from './query.js';
 import { setupQueryBuilder } from './querybuilder.js';
+import { setupImportDesigner } from './importdesigner.js';
 import { setupGraph } from './graph.js';
 import { setupErdScripts } from './erdscripts.js';
 import { tableKey } from './lib/catalog.js';
@@ -2285,6 +2286,7 @@ const dataBrowser = setupDataBrowser(workbenchCtx);
 const query = setupQuery(workbenchCtx);
 const graph = setupGraph(workbenchCtx);
 const queryBuilder = setupQueryBuilder({ ...workbenchCtx, dbTree, openSql: query.setSql, runQuery: query.commands['query-run'] });
+const importDesigner = setupImportDesigner({ ...workbenchCtx, dbTree });
 erdScripts = setupErdScripts({ ...workbenchCtx, el, measure, workbench: workbench.api, select, render, focusTable });
 Object.assign(workbenchCtx, {
   aiConfig: assistant.aiConfig,
@@ -2292,7 +2294,7 @@ Object.assign(workbenchCtx, {
   openData: dataBrowser.open,
   openSql: query.setSql,
 });
-Object.assign(commands, dbCommands, dbTree.commands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, queryBuilder.commands, graph.commands, {
+Object.assign(commands, dbCommands, dbTree.commands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, queryBuilder.commands, importDesigner.commands, graph.commands, {
   'tab-erd': showDiagram,
   'toggle-erd-scripts': () => {
     showDiagram();
@@ -2303,6 +2305,7 @@ Object.assign(tabSavers, {
   query: query.saveTab,
   scripts: workbench.saveTab,
   builder: queryBuilder.saveTab,
+  import: importDesigner.saveTab,
   graph: graph.saveTab,
 });
 // A diagram tab brings its document; the diagram re-renders when its tab
@@ -2463,4 +2466,5 @@ $('#recent-clear').addEventListener('click', () => host.recent.clear());
   newDiagram();
   query.restoreTabs();
   queryBuilder.restoreTabs();
+  importDesigner.restoreTabs();
 })();

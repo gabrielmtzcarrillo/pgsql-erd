@@ -219,6 +219,23 @@ ipcMain.handle('open-spreadsheet', async (e) => {
   return { filePath, data: new Uint8Array(await fs.readFile(filePath)) };
 });
 
+// Pick an import template (.import.json) for the Import Designer tab.
+const MAX_TEMPLATE_FILE = 5 * 1024 * 1024;
+ipcMain.handle('open-import-template', async (e) => {
+  const res = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), {
+    title: tr('Open Import Template'),
+    properties: ['openFile'],
+    filters: [
+      { name: tr('Import template'), extensions: ['json'] },
+      { name: tr('All Files'), extensions: ['*'] },
+    ],
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  const filePath = res.filePaths[0];
+  if ((await fs.stat(filePath)).size > MAX_TEMPLATE_FILE) throw new Error(tr('The file is too large for an import template (over 5 MB).'));
+  return { filePath, text: (await fs.readFile(filePath, 'utf8')).replace(/^﻿/, '') };
+});
+
 // Pick a .sql file for the query tab and return its text.
 const MAX_SQL_FILE = 20 * 1024 * 1024;
 ipcMain.handle('open-sql', async (e) => {
@@ -244,6 +261,7 @@ ipcMain.handle('save-file', async (e, { filePath, text, saveAs, defaultName, kin
     svg: [{ name: tr('SVG Image'), extensions: ['svg'] }],
     cypher: [{ name: 'Cypher', extensions: ['cypher', 'cql'] }],
     ts: [{ name: 'TypeScript', extensions: ['ts'] }],
+    import: [{ name: tr('Import template'), extensions: ['json'] }],
   }[kind ?? 'pgerd'];
   let target = saveAs ? null : filePath;
   if (!target) {
@@ -474,6 +492,7 @@ function buildMenu() {
         { label: tr('Query Analyzer'), icon: menuIcon('toggle-sql'), accelerator: 'CmdOrCtrl+Alt+Q', click: cmd('query-tab') },
         { label: tr('New Query Tab'), icon: menuIcon('toggle-sql'), click: cmd('query-new') },
         { label: tr('Query Builder'), icon: menuIcon('query-builder'), accelerator: 'CmdOrCtrl+Alt+U', click: cmd('query-builder') },
+        { label: tr('Excel Import Designer'), icon: menuIcon('import-spreadsheet'), accelerator: 'CmdOrCtrl+Alt+M', click: cmd('import-designer') },
         { label: tr('Graphs (Apache AGE)'), icon: menuIcon('add-link'), accelerator: 'CmdOrCtrl+Alt+H', click: cmd('graph-tab') },
         { type: 'separator' },
         { label: tr('Open Audit Log'), icon: menuIcon('audit-log'), click: () => workbench.openAuditLog() },

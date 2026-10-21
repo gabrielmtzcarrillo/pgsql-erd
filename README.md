@@ -371,6 +371,31 @@ table (`LEFT` / `RIGHT JOIN`) or of both (`FULL JOIN`). Aliases can be renamed i
 the Query tab and **Run** also runs it there; **Save…** writes the SQL to a file. Each Builder tab has its
 own query, and they are remembered between sessions.
 
+### Import designer
+
+Maps the worksheets of an Excel workbook onto PostgreSQL tables and exports a reusable, portable **import
+template** (Database → Excel Import Designer, Ctrl+Alt+M, or **Import** in the tab bar). Three panels:
+the database explorer, a mapping canvas and a read-only preview of an example workbook.
+
+- Open an example `.xlsx` on the right and **Add as source**: one Excel source per worksheet. Pick how it is
+  found: by name, position or its headers; at a **fixed position** (e.g. headers at `C4`, data from `C5`, with
+  title rows above) or by **finding the header names** in a range of rows, so reordered columns and moved
+  headers still work. Click a cell of the preview to move the header or the first data row.
+- Drag tables from the explorer: each is an INSERT task (the same table can be added more than once). Drag
+  from an Excel column's dot to a table column to map it; **Map by name** connects the matching names.
+- **Insertion order** lists the tasks: reorder them by dragging or with the arrows, or **Suggest order** to put
+  referenced tables first (cycles are reported, never broken silently). Task 1 inserts all its rows, then task 2.
+- **Problems** checks the design against the example workbook and the database; **Preview** shows the rows each
+  task would insert. Nothing is ever written to the database.
+- **Export template…** saves a versioned `.import.json` with no sample data, credentials or paths. **Open
+  template…** brings one back with its mappings, order and layout. Undo/redo (Ctrl+Z / Ctrl+Y), zoom
+  (Ctrl + wheel) and Delete work on the canvas.
+
+The template is the product: a server or CLI can run it against any structurally compatible workbook using the
+same code (`src/shared/import-template.js`). It describes plain INSERTs only: values are copied as text, with no
+lookups, generated keys or transformations. See [docs/import-template-spec.md](docs/import-template-spec.md) and
+[docs/import-template.schema.json](docs/import-template.schema.json).
+
 ### Data tabs
 
 **Data** in the tab bar (or **Browse data** in a table's sidebar, or **Database → Browse Table Data…**)
@@ -533,6 +558,7 @@ src/renderer/graph.js     Graph tab (Apache AGE)
 src/renderer/databrowser.js data tabs and filters
 src/renderer/assistant.js Assistant tab and AI provider settings
 src/renderer/xlui.js      Excel / CSV import dialog
+src/renderer/importdesigner.js Import tabs (Excel -> PostgreSQL import designer)
 src/renderer/lib/pgerd.js .pgerd parsing and serialization
 src/renderer/lib/sql.js   PostgreSQL DDL generation
 src/renderer/lib/layout.js table geometry, relationship routing, auto layout

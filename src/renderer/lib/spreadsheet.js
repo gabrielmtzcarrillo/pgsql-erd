@@ -192,7 +192,7 @@ function resolvePart(base, target) {
   return parts.join('/');
 }
 
-// Sheets of an .xlsx workbook: [{ name, hidden, rows: string[][] }].
+// Sheets of an .xlsx workbook: [{ name, hidden, merges: ['A1:C2'], rows: string[][] }].
 export async function readXlsx(bytes) {
   const zip = readZip(bytes);
   const utf8 = new TextDecoder();
@@ -257,7 +257,8 @@ export async function readXlsx(bytes) {
       }
       rows[r] = Array.from(cells, (x) => x ?? '');
     }
-    sheets.push({ name: s.attrs.name ?? `Sheet${sheets.length + 1}`, hidden: !!s.attrs.state && s.attrs.state !== 'visible', rows: Array.from(rows, (x) => x ?? []) });
+    const merges = kids(find(doc, 'mergeCells'), 'mergeCell').map((m) => m.attrs.ref).filter(Boolean);
+    sheets.push({ name: s.attrs.name ?? `Sheet${sheets.length + 1}`, hidden: !!s.attrs.state && s.attrs.state !== 'visible', merges, rows: Array.from(rows, (x) => x ?? []) });
   }
   return sheets;
 }

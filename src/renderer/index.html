@@ -22,6 +22,7 @@
         <button data-cmd="db-connect" id="db-button" title="Connect to a PostgreSQL database">Connect</button>
         <button data-cmd="toggle-db-tree" title="Show the tables of the connected database">Explorer</button>
         <button data-cmd="import-spreadsheet" title="Import tables from an Excel workbook (.xlsx, .xlsm) or a CSV / TSV file (Ctrl+Alt+E)">Import Excel</button>
+        <button data-cmd="import-designer" title="Design a reusable template that inserts the rows of Excel worksheets into PostgreSQL tables (Ctrl+Alt+M)">Import designer</button>
       </div>
       <div class="group-label">Database</div>
     </div>
@@ -33,6 +34,7 @@
     <button type="button" class="data-add" data-cmd="script-tab-new" data-icon="plus" title="Open a new Scripts tab">Scripts</button>
     <button type="button" id="query-tab-add" class="data-add" data-icon="plus" title="Open another query tab">Query</button>
     <button type="button" class="data-add" data-cmd="builder-new" data-icon="plus" title="Build a query by dragging tables from the database explorer">Builder</button>
+    <button type="button" class="data-add" data-cmd="import-new" data-icon="plus" title="Map Excel worksheets onto PostgreSQL tables and export an import template">Import</button>
     <button type="button" class="data-add" data-cmd="graph-new" data-icon="plus" title="Apache AGE graphs: relationships, vertices, explorer and Cypher">Graph</button>
     <button type="button" id="data-tab-add" class="data-add" data-icon="plus" title="Browse the data of a table">Data</button>
     <button type="button" data-main-tab="assistant" data-icon="ai-assistant">Assistant</button>
@@ -212,6 +214,58 @@
       <div id="qb-resize" class="q-resize" title="Drag to resize"></div>
       <pre id="qb-sql" class="qb-sql"></pre>
     </section>
+  </section>
+
+  <section id="import-page" class="tab-page import-page" data-page="import" hidden>
+    <section class="imp-main">
+      <div class="q-toolbar">
+        <button type="button" data-cmd="toggle-db-tree" title="Show the tables of the connected database">Explorer</button>
+        <input id="imp-name" class="imp-name-input" placeholder="Template name" title="Name of the import template" spellcheck="false">
+        <input id="imp-id" class="imp-id-input" placeholder="template-id" title="Identifier of the template: letters, digits, - and _" spellcheck="false">
+        <label class="check" title="Whether a failure undoes every task or only the failing one">Transaction
+          <select id="imp-tx">
+            <option value="atomic">All tasks together</option>
+            <option value="perTask">One per task</option>
+          </select></label>
+        <button type="button" id="imp-undo" data-icon="undo" title="Undo (Ctrl+Z)"></button>
+        <button type="button" id="imp-redo" data-icon="redo" title="Redo (Ctrl+Y)"></button>
+        <button type="button" id="imp-zoom-out" data-icon="zoom-out" title="Zoom out (Ctrl + mouse wheel)"></button>
+        <button type="button" id="imp-zoom" title="Back to 100%">100%</button>
+        <button type="button" id="imp-zoom-in" data-icon="zoom-in" title="Zoom in (Ctrl + mouse wheel)"></button>
+        <span class="grow"></span>
+        <button type="button" id="imp-open" data-icon="open" title="Open an exported import template to keep editing it">Open template…</button>
+        <button type="button" id="imp-export" class="primary" data-icon="save" title="Check the design and save the portable .import.json template">Export template…</button>
+      </div>
+      <div id="imp-canvas" class="imp-canvas">
+        <div id="imp-sizer" class="imp-sizer"><div id="imp-area" class="imp-area"><svg id="imp-lines" class="imp-lines" xmlns="http://www.w3.org/2000/svg"></svg></div></div>
+        <div id="imp-empty" class="empty-hint">
+          <h2>Design an Excel import</h2>
+          <p>Open an example workbook on the right and add its worksheet as an Excel source, then drag tables here from the database explorer.</p>
+          <p>Drag from an Excel column to a table column to map it. Number the tasks in the order the tables must be filled, and export the template.</p>
+        </div>
+      </div>
+      <div id="imp-dock-resize" class="q-resize" title="Drag to resize"></div>
+      <div id="imp-dock" class="imp-dock">
+        <div id="imp-dock-tabs" class="imp-dock-tabs"></div>
+        <div id="imp-dock-body" class="imp-dock-body"></div>
+      </div>
+    </section>
+    <div id="imp-right-resize" class="imp-vresize" title="Drag to resize"></div>
+    <aside id="imp-right" class="imp-right">
+      <div class="imp-right-head">
+        <button type="button" id="imp-wb-open" data-icon="open" title="Open the example workbook (.xlsx). It is only used to design and preview; the template does not keep it.">Open workbook…</button>
+        <span id="imp-wb-name" class="muted small grow"></span>
+        <button type="button" id="imp-add-source" data-icon="plus" title="Add the worksheet shown below as an Excel source on the canvas">Add as source</button>
+      </div>
+      <div id="imp-sheets" class="imp-sheets"></div>
+      <div id="imp-settings" class="imp-settings"></div>
+      <div class="imp-pick">
+        <span class="muted small">Click a cell to set the</span>
+        <label class="check"><input type="radio" name="imp-pick" value="header" checked> header start</label>
+        <label class="check"><input type="radio" name="imp-pick" value="data"> first data row</label>
+      </div>
+      <div id="imp-grid" class="imp-grid"></div>
+    </aside>
   </section>
 
   <section id="graph-page" class="tab-page graph-page" data-page="graph" hidden>

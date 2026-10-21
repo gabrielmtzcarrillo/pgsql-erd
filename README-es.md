@@ -395,6 +395,36 @@ trabajas: **Abrir en Consulta** lo pone en la pestaña Consulta y **Ejecutar** a
 **Guardar…** escribe el SQL en un archivo. Cada pestaña Generador tiene su propia consulta, y se recuerdan
 entre sesiones.
 
+### Diseñador de importación
+
+Asigna las hojas de un libro de Excel a tablas de PostgreSQL y exporta una **plantilla de importación**
+reutilizable y portátil (Base de datos → Diseñador de importación desde Excel, Ctrl+Alt+M, o **Importación** en la
+barra de pestañas). Tres paneles: el explorador de la base de datos, un lienzo de mapeo y una vista de solo
+lectura de un libro de ejemplo.
+
+- Abre un `.xlsx` de ejemplo a la derecha y usa **Agregar como origen**: un origen de Excel por hoja. Elige cómo
+  se encuentra: por nombre, posición o sus encabezados; en una **posición fija** (p. ej. encabezados en `C4`,
+  datos desde `C5`, con filas de título arriba) o **buscando los nombres de encabezado** en un rango de filas,
+  de modo que columnas reordenadas y encabezados desplazados sigan funcionando. Haz clic en una celda de la
+  vista previa para mover el encabezado o la primera fila de datos.
+- Arrastra tablas desde el explorador: cada una es una tarea INSERT (la misma tabla se puede agregar más de una
+  vez). Arrastra del punto de una columna de Excel a una columna de la tabla para mapearla; **Mapear por nombre**
+  conecta los nombres que coinciden.
+- **Orden de inserción** lista las tareas: reordénalas arrastrando o con las flechas, o usa **Sugerir orden**
+  para poner primero las tablas referenciadas (los ciclos se informan, nunca se rompen en silencio). La tarea 1
+  inserta todas sus filas, luego la tarea 2.
+- **Problemas** revisa el diseño contra el libro de ejemplo y la base de datos; **Vista previa** muestra las filas
+  que insertaría cada tarea. Nunca se escribe nada en la base de datos.
+- **Exportar plantilla…** guarda un `.import.json` versionado, sin datos de ejemplo, credenciales ni rutas.
+  **Abrir plantilla…** la recupera con sus mapeos, orden y disposición. Deshacer/rehacer (Ctrl+Z / Ctrl+Y), zoom
+  (Ctrl + rueda) y Supr funcionan en el lienzo.
+
+La plantilla es el producto: un servidor o una CLI puede ejecutarla contra cualquier libro estructuralmente
+compatible con el mismo código (`src/shared/import-template.js`). Describe solo INSERT simples: los valores se
+copian como texto, sin búsquedas, claves generadas ni transformaciones. Consulta
+[docs/import-template-spec.md](docs/import-template-spec.md) y
+[docs/import-template.schema.json](docs/import-template.schema.json).
+
 ### Pestañas de datos
 
 **Datos**, en la barra de pestañas (o **Ver datos** en la barra lateral de una tabla, o **Base de datos →
@@ -574,6 +604,7 @@ src/renderer/graph.js     pestaña Grafo (Apache AGE)
 src/renderer/databrowser.js pestañas de datos y filtros
 src/renderer/assistant.js pestaña Asistente y configuración de los proveedores de IA
 src/renderer/xlui.js      diálogo de importación de Excel / CSV
+src/renderer/importdesigner.js pestañas Importación (diseñador de importación Excel -> PostgreSQL)
 src/renderer/lib/pgerd.js lectura y escritura de .pgerd
 src/renderer/lib/sql.js   generación de DDL de PostgreSQL
 src/renderer/lib/layout.js geometría de las tablas, trazado de relaciones, organización automática

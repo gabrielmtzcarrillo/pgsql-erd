@@ -1,0 +1,141 @@
+{
+  "format": "excel-pg-insert-template",
+  "specVersion": "1.0",
+  "templateId": "alumnos-v1",
+  "name": "Alta de alumnos y carreras",
+  "sources": [
+    {
+      "id": "srcCarreras",
+      "sheet": {
+        "mode": "name",
+        "value": "Carreras"
+      },
+      "header": {
+        "mode": "fixed",
+        "row": 4,
+        "startColumn": "C",
+        "expected": [
+          "ID Carrera",
+          "Carrera"
+        ],
+        "match": {
+          "trim": true,
+          "caseSensitive": false
+        }
+      },
+      "data": {
+        "firstRow": {
+          "mode": "afterHeader",
+          "offset": 1
+        },
+        "endMode": "lastNonEmptyMappedRow",
+        "skipEmptyRows": true
+      }
+    },
+    {
+      "id": "srcAlumnos",
+      "sheet": {
+        "mode": "requiredHeaders",
+        "headers": [
+          "Matrícula",
+          "Nombre",
+          "ID Carrera"
+        ]
+      },
+      "header": {
+        "mode": "detect",
+        "scanRows": {
+          "from": 1,
+          "to": 30
+        },
+        "match": {
+          "trim": true,
+          "caseSensitive": false
+        }
+      },
+      "data": {
+        "firstRow": {
+          "mode": "afterHeader",
+          "offset": 1
+        },
+        "endMode": "lastNonEmptyMappedRow",
+        "skipEmptyRows": true
+      }
+    }
+  ],
+  "execution": {
+    "operation": "insert",
+    "transaction": "atomic",
+    "tasks": [
+      {
+        "id": "insertCarreras",
+        "order": 1,
+        "sourceId": "srcCarreras",
+        "target": {
+          "schema": "public",
+          "table": "catCarreras"
+        },
+        "mappings": [
+          {
+            "source": {
+              "mode": "column",
+              "column": "C"
+            },
+            "targetColumn": "idCarrera"
+          },
+          {
+            "source": {
+              "mode": "column",
+              "column": "D"
+            },
+            "targetColumn": "nombre"
+          }
+        ]
+      },
+      {
+        "id": "insertAlumnos",
+        "order": 2,
+        "sourceId": "srcAlumnos",
+        "target": {
+          "schema": "public",
+          "table": "tbAlumnos"
+        },
+        "mappings": [
+          {
+            "source": {
+              "mode": "header",
+              "name": "Matrícula"
+            },
+            "targetColumn": "matricula"
+          },
+          {
+            "source": {
+              "mode": "header",
+              "name": "Nombre"
+            },
+            "targetColumn": "nombre"
+          },
+          {
+            "source": {
+              "mode": "header",
+              "name": "ID Carrera"
+            },
+            "targetColumn": "idCarrera"
+          }
+        ]
+      }
+    ]
+  },
+  "editor": {
+    "nodes": {
+      "srcCarreras": {
+        "x": 200,
+        "y": 100
+      },
+      "insertAlumnos": {
+        "x": 650,
+        "y": 450
+      }
+    }
+  }
+}
