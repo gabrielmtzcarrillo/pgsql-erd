@@ -1,4 +1,4 @@
-# Excel → PostgreSQL INSERT template, specification 1.0
+# Excel → PostgreSQL INSERT template, specification 1.4
 
 The Import Designer exports a **template**: a JSON document that tells a runner which worksheets of an Excel
 workbook to read and which `INSERT`s to perform, in which order. The designer is only one way to author it;
@@ -19,8 +19,11 @@ exactly one worksheet, one header row and its mapped columns.
 ## Versioning
 
 - `format` must be `"excel-pg-insert-template"`.
-- `specVersion` is `"<major>.<minor>"`. A reader of 1.x **must reject any other major version** and must not
-  guess. Minor versions only add optional fields; a 1.0 reader ignores unknown fields.
+- `specVersion` is `"<major>.<minor>"`. A reader **must reject a version above the one it implements** (another
+  major, or a newer minor) and must not guess: new fields can change what a template does, so ignoring them is
+  unsafe. This document is 1.4. A template is written with the lowest version that covers what it uses, so older
+  readers still run it. 1.1 adds *processor blocks* (`processor` on mappings, `parameters`, the `parameter`
+  source); 1.2 adds the `lookup` processor; 1.3 adds `inserted` keys; 1.4 adds the `case` processor and the optional `filter` of a table dropdown.
 - `editor` is presentation only (node positions). Runners **must ignore** it; it never changes behaviour.
 
 ## Document
@@ -30,6 +33,7 @@ exactly one worksheet, one header row and its mapped columns.
 | `templateId` | Identifier: a letter, then letters, digits, `-`, `_` (≤ 64). |
 | `name`, `description` | Free text. |
 | `limits` | Optional ceilings: `maxRows` (default 100000 data rows per task), `maxScanRows` (200), `maxColumns` (512). Exceeding one fails the run. |
+| `parameters[]` | Table dropdowns whose value is picked when the import runs (1.1, below). |
 | `sources[]` | Where rows come from (below). |
 | `execution.operation` | `"insert"`. Nothing else exists in 1.0: no update, upsert, delete or truncate. |
 | `execution.transaction` | `"atomic"`: one transaction for all tasks, any failure undoes everything. `"perTask"`: one transaction per task; tasks before a failure stay committed. |
@@ -84,6 +88,67 @@ Each task is `{ id, order, sourceId, target: { schema, table }, mappings[] }`.
 - Optional per mapping: `trim` (default `false`) trims the cell text; `blank` is what a blank cell becomes:
   `"null"` (default), `"emptyString"` or `"error"` (the run fails, naming sheet, row and column); `read` is
   `"text"`, the only value in 1.0.
+- A task needs at least one mapping that reads the worksheet or takes an inserted key (1.3); one with only
+  `parameter` sources has no rows.
+
+### Processor blocks (1.1, lookup 1.2)
+
+**Split.** `processor: { "type": "split", "delimiter": ",", "trim": true, "dropEmpty": true }` on a `column` or
+`header` mapping turns the cell text into an **array of strings**: it is cut at every occurrence of
+`delimiter` (literal text of 1 to 8 characters, default `,`; no quoting or escaping, no regular expressions),
+each element is trimmed (`trim`, default `true`) and empty elements are dropped (`dropEmpty`, default `true`).
+The cell's own `trim` is applied first. A blank cell follows the mapping's `blank` policy: `null`, an error, or,
+for `emptyString`, the empty array `[]`. The runner sends the array as one parameter for an array column such as
+`text[]` or `integer[]`; PostgreSQL converts each element from text.
+
+**Split after a case (1.4).** A split processor may carry `"case": "upper"` or `"lower"`: the text is converted first, then cut. The designer draws it as a case block feeding the split block.
+
+**Case (1.4).** `processor: { "type": "case", "mode": "upper" }` (`"upper"` or `"lower"`) writes the cell text in
+upper or lower case (locale independent). With `"split": { "delimiter": "|", "trim": true, "dropEmpty": true }`
+(same meaning as the split processor) the text is cut first and every element converted, so the result is an array;
+without it the result is a string. A blank cell follows the `blank` policy (`emptyString` gives `[]` with `split`).
+
+**Table dropdown filter (1.4).** A `parameters[].source` may carry `"filter": { "column": "active", "value": "true" }`, or `"filter": { "column": "campusId", "parameter": "campus" }` to follow the value picked in another dropdown (exactly one of `value` and `parameter`; the followed dropdown must be declared and the chain must not loop):
+only the rows whose `column`, compared as text, equals `value` are offered. It is optional; a runner that lists the
+rows of the dropdown must apply it.
+
+**Lookup (1.2): a foreign key from a value.** `processor: { "type": "lookup", "schema": "public", "table":
+"catCarreras", "matchColumn": "nombre", "valueColumn": "idCarrera", "onMissing": "error" }` replaces the cell
+text with the `valueColumn` of the row of that table whose `matchColumn` equals the text (compared as text, after
+the mapping's own `trim`). `matchColumn` must be a column of the table's primary key: the cell holds a key, and
+the lookup checks it exists (with `valueColumn` equal to `matchColumn` it is a pure existence check). The runner
+revalidates this against the database. It is done by the runner **when the task runs**, in the same transaction and after
+the earlier tasks, so the rows they inserted, with the ids the database generated for them, can be found; the
+designer warns when a task that fills the looked-up table comes later. No match: `onMissing` `"error"` (default;
+the run fails, naming sheet, row and value) or `"null"`; more than one match is always an error. A blank cell
+follows the mapping's `blank` policy and is not looked up. `extractRows()` leaves the cell text in place for
+the runner to resolve. The runner needs read access to the looked-up table.
+
+**Inserted key (1.3): `inserted.<primary key>`.** A mapping with `source: { "mode": "inserted", "taskId":
+"insertCarreras", "column": "idCarrera" }` takes the value of `column` that the INSERT of an **earlier** task
+returned for the same worksheet row. The runner performs that INSERT with `RETURNING "column"` and gives the
+returned value to this task's row, which makes the usual master/detail load (parent row, then child rows that
+need the generated id) possible from one worksheet. Rules: the referenced task must have a lower `order` and read
+the **same source** (rows are paired by worksheet row; a row the earlier task skipped, because all its mapped
+cells were blank, has no key and fails the run for that row); `column` is a column the earlier task's table
+returns, normally its primary key; the mapping has no `processor`, `trim` or `blank`; and a task needs at least
+one mapping that reads the worksheet **or** an inserted key. A task with no worksheet column of its own inserts one
+row for each row of the task whose key it uses (so a detail row per parent row, with the key and fixed values). `extractRows()` leaves such columns
+null and lists them in the task's `inserted` (`{ "targetColumn": "taskId.column" }`).
+
+**Table dropdown.** A mapping with `source: { "mode": "parameter", "name": "carrera" }` gets the same value in
+every row, chosen by whoever runs the import (not read from the worksheet). `parameters[]` declares it:
+
+```json
+{ "name": "carrera", "label": "Carrera", "default": "7",
+  "source": { "type": "table", "schema": "public", "table": "catCarreras", "valueColumn": "idCarrera", "labelColumn": "nombre" } }
+```
+
+A runner shows a dropdown of the rows of that table, listing `labelColumn` (or `valueColumn` without one) with
+a **search box**, and uses the `valueColumn` of the picked row as text. `default` is the value selected at
+first, which the runner may override; with neither a default nor a choice the run fails. Names are unique, and a
+mapping cannot name an undeclared parameter nor combine a parameter with a processor. The runner reads the
+dropdown's rows through the same least-privilege access it uses for inserts (the table must be allowed).
 
 ## Reading cells
 
@@ -96,6 +161,12 @@ Each task is `{ id, order, sourceId, target: { schema, table }, mappings[] }`.
 - **Formulas are never evaluated.** A runner uses the cached result stored in the file and reports a missing
   result rather than computing anything. Macros and external links are never executed or followed.
 - Error cells (`#N/A`, …) read as blank.
+
+The designer's **Run** button is a reference runner for the connected database: `src/main/database/import-runner.cjs`
+(`runImport()`), which receives the rows read by `extractRows()`. It sends values as parameters, quotes identifiers,
+applies `execution.transaction`, resolves `lookup` and `inserted` as described above, and reports the task and the
+worksheet row of a failure. It requires a connection whose policy allows writes and records the run in the audit
+log. It does not implement the allow-lists, upload limits or import hashes below, which a server runner needs.
 
 ## Runner obligations
 

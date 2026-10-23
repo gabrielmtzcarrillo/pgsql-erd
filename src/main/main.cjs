@@ -492,7 +492,7 @@ function buildMenu() {
         { label: tr('Query Analyzer'), icon: menuIcon('toggle-sql'), accelerator: 'CmdOrCtrl+Alt+Q', click: cmd('query-tab') },
         { label: tr('New Query Tab'), icon: menuIcon('toggle-sql'), click: cmd('query-new') },
         { label: tr('Query Builder'), icon: menuIcon('query-builder'), accelerator: 'CmdOrCtrl+Alt+U', click: cmd('query-builder') },
-        { label: tr('Excel Import Designer'), icon: menuIcon('import-spreadsheet'), accelerator: 'CmdOrCtrl+Alt+M', click: cmd('import-designer') },
+        { label: tr('Excel Import Designer'), icon: menuIcon('import-designer'), accelerator: 'CmdOrCtrl+Alt+M', click: cmd('import-designer') },
         { label: tr('Graphs (Apache AGE)'), icon: menuIcon('add-link'), accelerator: 'CmdOrCtrl+Alt+H', click: cmd('graph-tab') },
         { type: 'separator' },
         { label: tr('Open Audit Log'), icon: menuIcon('audit-log'), click: () => workbench.openAuditLog() },

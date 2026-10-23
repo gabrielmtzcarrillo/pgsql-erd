@@ -11,7 +11,7 @@
   <header class="toolbar ribbon">
     <div class="group">
       <div class="group-items">
-        <button data-cmd="open" title="Open .pgerd (Ctrl+O)">Open</button>
+        <button data-cmd="open" title="Open .pgerd, or an import template on an Import tab (Ctrl+O)">Open</button>
         <button data-cmd="save" title="Save (Ctrl+S)">Save</button>
         <button data-cmd="save-as" title="Save as a diagram, SQL file, SVG or PNG image (Ctrl+Shift+S)">Save As…</button>
       </div>
@@ -232,9 +232,12 @@
         <button type="button" id="imp-zoom-out" data-icon="zoom-out" title="Zoom out (Ctrl + mouse wheel)"></button>
         <button type="button" id="imp-zoom" title="Back to 100%">100%</button>
         <button type="button" id="imp-zoom-in" data-icon="zoom-in" title="Zoom in (Ctrl + mouse wheel)"></button>
+        <button type="button" id="imp-run" class="primary" data-icon="script-run" title="Insert the rows of the open workbook into the connected database, following this design">Run</button>
+        <button type="button" id="imp-add-split" data-icon="plus" title="Add a block that cuts a cell at a separator (a comma by default) into an array">Split block</button>
+        <button type="button" id="imp-add-case" data-icon="plus" title="Add a block that writes a cell in capitals or in small letters">Case block</button>
+        <button type="button" id="imp-add-choice" data-icon="plus" title="Add a block whose value is picked from the rows of a table when the import runs">Table dropdown</button>
+        <button type="button" id="imp-add-lookup" data-icon="plus" title="Add a block that finds the key of a row (such as a generated id) from a value of the worksheet">Lookup block</button>
         <span class="grow"></span>
-        <button type="button" id="imp-open" data-icon="open" title="Open an exported import template to keep editing it">Open template…</button>
-        <button type="button" id="imp-export" class="primary" data-icon="save" title="Check the design and save the portable .import.json template">Export template…</button>
       </div>
       <div id="imp-canvas" class="imp-canvas">
         <div id="imp-sizer" class="imp-sizer"><div id="imp-area" class="imp-area"><svg id="imp-lines" class="imp-lines" xmlns="http://www.w3.org/2000/svg"></svg></div></div>

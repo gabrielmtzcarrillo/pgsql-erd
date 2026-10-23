@@ -13,10 +13,11 @@
 import { TABLE_DRAG_TYPE } from './dbtree.js';
 import { tableKey } from './lib/catalog.js';
 import { readSpreadsheet } from './lib/spreadsheet.js';
-import { schemaFromErd, findTable } from '../shared/schema-model.js';
+import { schemaFromErd, findTable, allTables } from '../shared/schema-model.js';
 import {
   colLetter, colIndex, normHeader, newDesign, newSource, newTask, newId, designToTemplate, templateToDesign,
-  designDiagnostics, hasErrors, suggestOrder, resolveSource, extractRows, checkValue, inferHint, validateTemplate,
+  designDiagnostics, hasErrors, suggestOrder, resolveSource, extractRows, checkSample, inferHint, validateTemplate,
+  newSplit, newCase, blockSource, newChoice, newLookup, hasInput, procOf, mappingRef, columnRefs,
 } from '../shared/import-template.js';
 import { iconElement, decorateButtons } from './icons.js';
 import { tr, trn } from '../shared/i18n.js';
@@ -32,6 +33,7 @@ const MAX_COLS = 200;
 const MARGIN = 30;
 const GAP = 40;
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const ARROW = '<defs><marker id="imp-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--accent)"/></marker></defs>';
 
 export function setupImportDesigner(ctx) {
   const { host, h, status, db, tabs, events, dbTree } = ctx;
@@ -50,7 +52,7 @@ export function setupImportDesigner(ctx) {
 
   const makeRecord = (design, title, filePath = null) => ({
     design, title, filePath, wb: null, sheet: null, sel: null, undo: [], redo: [], resolved: {}, diag: [],
-    dock: 'inspector', zoom: 1, pick: 'header', dirty: false, order: null, loading: false,
+    dock: 'inspector', zoom: 1, pick: 'header', dirty: false, order: null, loading: false, run: null, running: false,
   });
 
   // ------------------------------------------------------------ persistence
@@ -72,6 +74,13 @@ export function setupImportDesigner(ctx) {
   }
 
   // ------------------------------------------------------------ database
+
+  // The data calls answer { ok, result } or { ok: false, error }.
+  const call = async (fn, ...args) => {
+    const res = await fn(...args);
+    if (!res?.ok) throw new Error(res?.error ?? tr('The database did not answer.'));
+    return res.result;
+  };
 
   let schemaCache = { model: null, value: null };
   // The connected database as a schema model; null without a connection.
@@ -134,18 +143,19 @@ export function setupImportDesigner(ctx) {
       T.resolved[ts.id] = res;
       if (!res.ok) continue;
       src.columns = res.columns.map((c) => ({ letter: c.letter, label: c.label }));
-      const match = { caseSensitive: src.header.caseSensitive };
+      const refresh = (ref) => {
+        const match = { caseSensitive: src.header.caseSensitive };
+        const c = src.header.mode === 'detect'
+          ? res.columns.find((x) => normHeader(x.label, match) === normHeader(ref.label, match))
+          : res.columns.find((x) => x.letter === ref.letter);
+        if (!c) return;
+        ref.letter = c.letter;
+        ref.label = c.label;
+      };
       for (const task of T.design.tasks) {
-        if (task.sourceId !== src.id) continue;
-        for (const m of task.mappings) {
-          const c = src.header.mode === 'detect'
-            ? res.columns.find((x) => normHeader(x.label, match) === normHeader(m.label, match))
-            : res.columns.find((x) => x.letter === m.letter);
-          if (!c) continue;
-          m.letter = c.letter;
-          m.label = c.label;
-        }
+        if (task.sourceId === src.id) for (const m of task.mappings) if (!m.via && !m.inserted) refresh(m);
       }
+      for (const p of T.design.processors ?? []) if (hasInput(p) && p.input?.sourceId === src.id) refresh(p.input);
     }
   }
 
@@ -166,7 +176,7 @@ export function setupImportDesigner(ctx) {
 
   function nextSpot(kind) {
     const nodes = [...area.querySelectorAll(`.imp-node.${kind}`)];
-    const x = kind === 'source' ? MARGIN : 540;
+    const x = { source: MARGIN, proc: 285, task: 540 }[kind];
     if (!nodes.length) return { x, y: MARGIN };
     return { x, y: Math.max(...nodes.map((n) => n.offsetTop + n.offsetHeight)) + GAP };
   }
@@ -206,13 +216,43 @@ export function setupImportDesigner(ctx) {
         t.sourceId = null;
         t.mappings = [];
       }
+      for (const p of d.processors ?? []) if (hasInput(p) && p.input?.sourceId === id) p.input = null;
     });
     if (T.sel?.id === id) T.sel = null;
   }
   function removeTask(id) {
-    edit((d) => (d.tasks = d.tasks.filter((t) => t.id !== id)));
+    edit((d) => {
+      d.tasks = d.tasks.filter((t) => t.id !== id);
+      for (const t of d.tasks) t.mappings = t.mappings.filter((m) => m.inserted?.taskId !== id);
+    });
     if (T.sel?.id === id || T.sel?.task === id) T.sel = null;
   }
+  function addBlock(kind) {
+    const pos = nextSpot('proc');
+    let p;
+    if (kind === 'split') p = newSplit(pos);
+    else if (kind === 'case') p = newCase(pos);
+    else if (kind === 'lookup') p = newLookup(pos);
+    else {
+      const names = new Set((T.design.processors ?? []).map((x) => x.name));
+      let n = 1;
+      while (names.has(`choice${n}`)) n++;
+      p = newChoice({ ...pos, name: `choice${n}` });
+    }
+    edit((d) => (d.processors ??= []).push(p));
+    select({ type: 'proc', id: p.id });
+  }
+  function removeProcessor(id) {
+    edit((d) => {
+      d.processors = (d.processors ?? []).filter((p) => p.id !== id);
+      for (const p of d.processors) if (p.input?.procId === id) p.input = null;
+      for (const t of d.tasks) t.mappings = t.mappings.filter((m) => m.via !== id);
+    });
+    if (T.sel?.id === id) T.sel = null;
+  }
+  // Edits a block in place (with an undo step).
+  const setBlock = (id, fn) => edit((d) => fn(d.processors.find((p) => p.id === id)));
+
   function removeMapping(taskId, mapId) {
     edit((d) => {
       const t = d.tasks.find((x) => x.id === taskId);
@@ -239,6 +279,78 @@ export function setupImportDesigner(ctx) {
       t.sourceId = sourceId;
       t.mappings = t.mappings.filter((m) => m.targetColumn !== targetColumn);
       t.mappings.push({ id, letter: col.letter, label: col.label, targetColumn, blank: 'null', trim: false });
+    });
+    select({ type: 'map', task: taskId, id });
+  }
+
+  // An Excel column feeds a split block.
+  function connectSplitInput(sourceId, key, procId) {
+    const src = sourceOf(sourceId);
+    const col = src?.columns.find((c) => (src.header.mode === 'detect' ? c.label : c.letter) === key);
+    if (!col) return;
+    if (src.header.mode === 'detect' && (!col.label || src.columns.filter((c) => normHeader(c.label) === normHeader(col.label)).length > 1)) {
+      return status(tr('That header is blank or repeated, so it cannot be found by name.'));
+    }
+    setBlock(procId, (p) => (p.input = { sourceId, letter: col.letter, label: col.label }));
+    select({ type: 'proc', id: procId });
+  }
+
+  // The text a case block gives feeds a split block.
+  function connectBlockInput(fromId, procId) {
+    const from = procOf(T.design, fromId);
+    const to = procOf(T.design, procId);
+    if (!from || !to || to.kind !== 'split') return status(tr('Only a split block can take its text from a case block.'));
+    if (from.kind !== 'case' || from.list) return status(tr('Only a case block that gives text (List off) can feed a split block.'));
+    setBlock(procId, (p) => (p.input = { procId: fromId }));
+    select({ type: 'proc', id: procId });
+  }
+
+  // The key an INSERT returns (inserted.<primary key>) feeds a column of a later task that reads the same worksheet rows.
+  function connectInserted(parentId, column, childId, targetColumn) {
+    const parent = taskOf(parentId);
+    const child = taskOf(childId);
+    if (!parent || !child || parent === child) return;
+    if (!parent.sourceId) return status(tr('Map some columns of {table} first: the rows come from its worksheet.', { table: `${parent.schema}.${parent.table}` }));
+    if (child.sourceId && child.sourceId !== parent.sourceId && child.mappings.length) {
+      return status(tr('{table} reads another worksheet than {parent}: rows are matched by worksheet row, so both must read the same source.', { table: `${child.schema}.${child.table}`, parent: `${parent.schema}.${parent.table}` }));
+    }
+    const id = newId('map');
+    let moved = false;
+    edit((d) => {
+      const c = d.tasks.find((x) => x.id === childId);
+      const pi = d.tasks.findIndex((x) => x.id === parentId);
+      const ci = d.tasks.findIndex((x) => x.id === childId);
+      // The key exists only once the parent has been inserted.
+      if (pi > ci) {
+        d.tasks.splice(ci, 0, d.tasks.splice(pi, 1)[0]);
+        moved = true;
+      }
+      c.sourceId ||= parent.sourceId;
+      c.mappings = c.mappings.filter((m) => m.targetColumn !== targetColumn);
+      c.mappings.push({ id, letter: '', label: '', inserted: { taskId: parentId, column }, targetColumn, blank: 'null', trim: false });
+    });
+    select({ type: 'map', task: childId, id });
+    if (moved) status(tr('{parent} was moved before {table}: it has to be inserted first.', { parent: `${parent.schema}.${parent.table}`, table: `${child.schema}.${child.table}` }));
+  }
+
+  // A block's output feeds a column of a task.
+  function connectProc(procId, taskId, targetColumn) {
+    const p = procOf(T.design, procId);
+    const task = taskOf(taskId);
+    if (!p || !task) return;
+    if (hasInput(p)) {
+      const root = blockSource(T.design, p);
+      if (!root) return status(tr('Connect an Excel column to the block first.'));
+      if (task.sourceId && task.sourceId !== root.sourceId && task.mappings.length) {
+        return status(tr('{table} already reads from another worksheet; a task has one source.', { table: `${task.schema}.${task.table}` }));
+      }
+    }
+    const id = newId('map');
+    edit((d) => {
+      const t = d.tasks.find((x) => x.id === taskId);
+      if (hasInput(p)) t.sourceId = blockSource(T.design, p).sourceId;
+      t.mappings = t.mappings.filter((m) => m.targetColumn !== targetColumn);
+      t.mappings.push({ id, letter: '', label: '', via: procId, targetColumn, blank: 'null', trim: false });
     });
     select({ type: 'map', task: taskId, id });
   }
@@ -284,7 +396,7 @@ export function setupImportDesigner(ctx) {
   function selectLight(sel) {
     pick(sel);
     for (const n of area.querySelectorAll('.imp-node')) {
-      n.classList.toggle('selected', sel?.id === n.dataset.id || sel?.task === n.dataset.id);
+      n.classList.toggle('selected', sel?.type !== 'link' && (sel?.id === n.dataset.id || sel?.task === n.dataset.id));
     }
     drawEdges();
     renderRight();
@@ -305,8 +417,8 @@ export function setupImportDesigner(ctx) {
   function render() {
     if (!T) return;
     const scroll = new Map([...area.querySelectorAll('.imp-node')].map((n) => [n.dataset.id, n.querySelector('.imp-cols')?.scrollTop ?? 0]));
-    $('#imp-empty').hidden = T.design.sources.length > 0 || T.design.tasks.length > 0;
-    area.replaceChildren(lines, ...T.design.sources.map(sourceNode), ...T.design.tasks.map(taskNode));
+    $('#imp-empty').hidden = T.design.sources.length > 0 || T.design.tasks.length > 0 || (T.design.processors ?? []).length > 0;
+    area.replaceChildren(lines, ...T.design.sources.map(sourceNode), ...(T.design.processors ?? []).map(procNode), ...T.design.tasks.map(taskNode));
     for (const n of area.querySelectorAll('.imp-node')) {
       const body = n.querySelector('.imp-cols');
       if (body) body.scrollTop = scroll.get(n.dataset.id) ?? 0;
@@ -330,7 +442,7 @@ export function setupImportDesigner(ctx) {
   // Red / amber outlines on nodes with problems.
   function markNodes() {
     for (const n of area.querySelectorAll('.imp-node')) {
-      const list = diagOf(n.classList.contains('source') ? 'sourceId' : 'taskId', n.dataset.id);
+      const list = diagOf(n.classList.contains('source') ? 'sourceId' : n.classList.contains('proc') ? 'processorId' : 'taskId', n.dataset.id);
       n.classList.toggle('has-error', list.some((d) => d.level === 'error'));
       n.classList.toggle('has-warning', !list.some((d) => d.level === 'error') && list.some((d) => d.level === 'warning'));
     }
@@ -347,6 +459,60 @@ export function setupImportDesigner(ctx) {
     return head;
   }
 
+  const boxStyle = (n) => `left:${n.x}px;top:${n.y}px${n.w && n.h ? `;width:${n.w}px;height:${n.h}px` : ''}`;
+  const sizedClass = (n) => (n.w && n.h ? ' sized' : '');
+
+  // The grip in a node's bottom right corner: drag to resize, double-click to fit the content again.
+  function withGrip(el, n) {
+    const grip = h('div', { class: 'imp-grip', title: tr('Drag to resize, double-click to fit the content') });
+    grip.addEventListener('pointerdown', (e) => startResize(e, n, el, grip));
+    grip.addEventListener('dblclick', () => {
+      if (n.w || n.h) edit(() => Object.assign(n, { w: null, h: null }));
+    });
+    el.append(grip);
+    return el;
+  }
+
+  function startResize(e, n, el, grip) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    grip.setPointerCapture(e.pointerId);
+    const before = JSON.stringify(T.design);
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const w0 = el.offsetWidth;
+    const h0 = el.offsetHeight;
+    // Never smaller than the title, the footer and a few columns.
+    const cols = el.querySelector('.imp-cols');
+    const minH = h0 - (cols ? cols.offsetHeight : 0) + 44;
+    let moved = false;
+    const move = (ev) => {
+      const w = Math.max(190, Math.round(w0 + (ev.clientX - sx) / scale()));
+      const hh = Math.max(minH, Math.round(h0 + (ev.clientY - sy) / scale()));
+      if (!moved && w === w0 && hh === h0) return;
+      moved = true;
+      n.w = w;
+      n.h = hh;
+      el.classList.add('sized');
+      el.style.width = `${w}px`;
+      el.style.height = `${hh}px`;
+      drawEdges();
+    };
+    const up = () => {
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      if (moved) {
+        T.undo.push(before);
+        T.redo = [];
+        T.dirty = true;
+        save();
+      }
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+  }
+
   function sourceNode(s) {
     const sel = T.sel?.type === 'source' && T.sel.id === s.id;
     const res = T.resolved[s.id];
@@ -355,14 +521,14 @@ export function setupImportDesigner(ctx) {
       const key = s.header.mode === 'detect' ? c.label : c.letter;
       const dup = s.header.mode === 'detect' && (!c.label || s.columns.filter((x) => normHeader(x.label, match) === normHeader(c.label, match)).length > 1);
       const port = h('span', { class: 'imp-port out', title: dup ? tr('This header is blank or repeated: it cannot be found by name.') : tr('Drag to a table column to map it') });
-      if (!dup || s.header.mode !== 'detect') port.addEventListener('pointerdown', (e) => startConnect(e, s.id, key));
+      if (!dup || s.header.mode !== 'detect') port.addEventListener('pointerdown', (e) => startConnect(e, { sourceId: s.id, key }));
       return h('div', { class: `imp-col${dup ? ' dup' : ''}`, 'data-key': key, title: `${c.letter} ${c.label}`.trim() }, [
         h('span', { class: 'imp-letter' }, c.letter || '·'),
         h('span', { class: 'imp-label' }, c.label || '—'),
         port,
       ]);
     });
-    const node = h('div', { class: `imp-node source${sel ? ' selected' : ''}`, 'data-id': s.id, style: `left:${s.x}px;top:${s.y}px` });
+    const node = h('div', { class: `imp-node source${sizedClass(s)}${sel ? ' selected' : ''}`, 'data-id': s.id, style: boxStyle(s) });
     node.addEventListener('pointerdown', () => !sel && selectLight({ type: 'source', id: s.id }));
     node.append(
       nodeHead(s, 'import-spreadsheet', sheetLabel(s), () => removeSource(s.id)),
@@ -371,7 +537,275 @@ export function setupImportDesigner(ctx) {
     const body = h('div', { class: 'imp-cols' }, rows.length ? rows : [h('div', { class: 'imp-note' }, T.wb ? tr('The columns appear when the worksheet is found.') : tr('Open the example workbook to list its columns.'))]);
     body.addEventListener('scroll', drawEdges);
     node.append(body);
-    return node;
+    return withGrip(node, s);
+  }
+
+  // Processor blocks: a split (text -> array) and a table dropdown.
+  // What a block reads: an Excel column, or the text of the case block before it.
+  const inLabel = (p, none) => (p.input?.procId ? tr('Text from the case block') : p.input?.sourceId ? `${p.input.letter} ${p.input.label}`.trim() : none);
+  const blockTitle = (p) => (p.kind === 'lookup' ? tr('Look up a foreign key') : p.kind === 'case' ? tr('Change the case') : tr('Split into an array'));
+
+  function procNode(p) {
+    const sel = T.sel?.type === 'proc' && T.sel.id === p.id;
+    const node = h('div', { class: `imp-node proc ${p.kind}${hasInput(p) ? ' hasin' : ''}${sizedClass(p)}${sel ? ' selected' : ''}`, 'data-id': p.id, style: boxStyle(p) });
+    node.addEventListener('pointerdown', () => !sel && selectLight({ type: 'proc', id: p.id }));
+    const out = h('span', { class: 'imp-port out', title: tr('Drag to a table column') });
+    out.addEventListener('pointerdown', (e) => startConnect(e, { procId: p.id }));
+    const input = (value, on, width, title) => h('input', { value, spellcheck: 'false', style: `width:${width}px`, title, onchange: (e) => on(e.target.value) });
+    const check = (label, value, on, title) => h('label', { class: 'check', title }, [h('input', { type: 'checkbox', checked: !!value, onchange: (e) => on(e.target.checked) }), label]);
+    if (p.kind === 'split') {
+      node.append(
+        nodeHead(p, 'toggle-sql', tr('Split into an array'), () => removeProcessor(p.id)),
+        h('div', { class: 'imp-cols' }, [
+          h('div', { class: 'imp-col proc-in', title: inLabel(p, tr('Drop an Excel column here')) }, [
+            h('span', { class: 'imp-port in' }),
+            h('span', { class: 'imp-label' }, inLabel(p, tr('Text from an Excel column'))),
+          ]),
+          h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, tr('Array of values')), out]),
+        ]),
+        h('div', { class: 'imp-procform' }, [
+          h('label', { title: tr('Text that separates the values; any length, taken literally.') }, [tr('Separator'), input(p.delimiter, (v) => setBlock(p.id, (x) => (x.delimiter = v)), 44)]),
+          check(tr('Trim'), p.trim, (v) => setBlock(p.id, (x) => (x.trim = v)), tr('Remove the spaces around each value')),
+          check(tr('Skip empty'), p.dropEmpty, (v) => setBlock(p.id, (x) => (x.dropEmpty = v)), tr('Leave out values that are empty')),
+        ]),
+      );
+      return withGrip(node, p);
+    }
+    if (p.kind === 'case') {
+      node.append(
+        nodeHead(p, 'code', tr('Change the case'), () => removeProcessor(p.id)),
+        h('div', { class: 'imp-cols' }, [
+          h('div', { class: 'imp-col proc-in', title: p.input ? `${p.input.letter} ${p.input.label}`.trim() : tr('Drop an Excel column here') }, [
+            h('span', { class: 'imp-port in' }),
+            h('span', { class: 'imp-label' }, p.input ? `${p.input.letter} ${p.input.label}`.trim() : tr('Text from an Excel column')),
+          ]),
+          h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, tr('Text with the new case')), out]),
+        ]),
+        h('div', { class: 'imp-procform' }, [
+          h('label', { title: tr('Write the whole text in capitals or in small letters.') }, [tr('Convert to'), h('select', { onchange: (e) => setBlock(p.id, (x) => (x.mode = e.target.value)) }, [
+            h('option', { value: 'upper', selected: p.mode === 'upper' }, tr('UPPERCASE')),
+            h('option', { value: 'lower', selected: p.mode === 'lower' }, tr('lowercase')),
+          ])]),
+          check(tr('List'), p.list, (v) => setBlock(p.id, (x) => (x.list = v)), tr('The cell holds several values: cut it at a separator and convert each one, giving an array')),
+          ...(p.list ? [
+            h('label', { title: tr('Text that separates the values; any length, taken literally.') }, [tr('Separator'), input(p.delimiter, (v) => setBlock(p.id, (x) => (x.delimiter = v)), 44)]),
+            check(tr('Trim'), p.trim, (v) => setBlock(p.id, (x) => (x.trim = v)), tr('Remove the spaces around each value')),
+            check(tr('Skip empty'), p.dropEmpty, (v) => setBlock(p.id, (x) => (x.dropEmpty = v)), tr('Leave out values that are empty')),
+          ] : []),
+        ]),
+      );
+      return withGrip(node, p);
+    }
+    if (p.kind === 'lookup') {
+      node.append(
+        nodeHead(p, 'add-link', tr('Look up a foreign key'), () => removeProcessor(p.id)),
+        h('div', { class: 'imp-cols' }, [
+          h('div', { class: 'imp-col proc-in', title: p.input ? `${p.input.letter} ${p.input.label}`.trim() : tr('Drop an Excel column here') }, [
+            h('span', { class: 'imp-port in' }),
+            h('span', { class: 'imp-label' }, p.input ? `${p.input.letter} ${p.input.label}`.trim() : tr('Value to look for')),
+          ]),
+          h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, tr('Value found')), out]),
+        ]),
+        tableForm(p, input, [['matchColumn', tr('Primary key to match'), (t) => t.primaryKey?.columns ?? []], ['valueColumn', tr('Column to return')]], [
+          h('label', { title: tr('What to insert when no row matches. More than one match is always an error.') }, [tr('If not found'), h('select', { onchange: (e) => setBlock(p.id, (x) => (x.onMissing = e.target.value)) }, [
+            h('option', { value: 'error', selected: p.onMissing === 'error' }, tr('Report an error')),
+            h('option', { value: 'null', selected: p.onMissing === 'null' }, tr('Insert NULL')),
+          ])]),
+        ], [], (t) => !!t.primaryKey),
+      );
+      return withGrip(node, p);
+    }
+    node.append(
+      nodeHead(p, 'toggle-tables', p.name || tr('Table dropdown'), () => removeProcessor(p.id)),
+      h('div', { class: 'imp-cols' }, [h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, tr('Chosen value')), out])]),
+      choiceForm(p, input),
+    );
+    return withGrip(node, p);
+  }
+
+  // A dropdown you can type in to narrow its options. `on` gets the picked option, or '' for the first entry (—).
+  function combo(value, options, on, width = 130) {
+    const box = h('input', { class: 'imp-combo', value, spellcheck: 'false', autocomplete: 'off', placeholder: '—', style: `width:${width}px` });
+    const pop = h('div', { class: 'imp-pop combo', hidden: true });
+    let shown = [];
+    let active = 0;
+    const paint = () => pop.replaceChildren(...(shown.length ? shown.map((o, i) => h('div', { class: `imp-opt${i === active ? ' active' : ''}`, onmousedown: (e) => { e.preventDefault(); pick(o); } }, [h('span', {}, o || '—')])) : [h('div', { class: 'imp-note' }, tr('No matches.'))]));
+    // Typing narrows the list; just opening it lists everything.
+    const open = (narrow) => {
+      const q = narrow ? box.value.trim().toLowerCase() : '';
+      shown = ['', ...options.filter((o) => !q || o.toLowerCase().includes(q))];
+      if (q) shown.shift();
+      active = 0;
+      pop.hidden = false;
+      paint();
+    };
+    const close = () => {
+      pop.hidden = true;
+      box.value = value;
+    };
+    function pick(o) {
+      pop.hidden = true;
+      if (o !== value) on(o);
+      else box.value = value;
+    }
+    box.addEventListener('focus', () => {
+      box.select();
+      open(false);
+    });
+    box.addEventListener('input', () => open(true));
+    box.addEventListener('blur', () => setTimeout(close, 120));
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (pop.hidden) open(false);
+        active = Math.max(0, Math.min(shown.length - 1, active + (e.key === 'ArrowDown' ? 1 : -1)));
+        paint();
+        pop.children[active]?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!pop.hidden && shown.length) pick(shown[active]);
+      } else if (e.key === 'Escape') {
+        close();
+        box.blur();
+      }
+    });
+    return h('div', { class: 'imp-search-wrap' }, [box, pop]);
+  }
+
+  // The table of a block and its columns, asked in turn: each column once the one before it is chosen.
+  // `columns` is [[property, label]]; `extra` fields follow. Changing a choice clears the ones after it.
+  // A column entry may give a function listing its choices from the table: [property, label, (table) => names].
+  // `only` keeps the tables that qualify.
+  function tableForm(p, input, columns, extra = [], lead = [], only = () => true) {
+    const sch = schema();
+    const tables = sch ? allTables(sch).filter(only) : [];
+    const tb = tables.find((t) => t.schema === p.schema && t.name === p.table);
+    const field = (label, el) => h('label', {}, [label, el]);
+    const select1 = (value, options, on) => combo(value, options, on);
+    const reset = (x, from) => {
+      for (const [prop] of columns.slice(from)) x[prop] = '';
+      if (p.kind === 'choice') Object.assign(x, { value: '', valueLabel: '' }, from === 0 ? { filterColumn: '', filterValue: '', filterParam: '' } : {});
+    };
+    const fields = [...lead];
+    fields.push(sch
+      ? field(tr('Table'), select1(p.table ? `${p.schema}.${p.table}` : '', tables.map((t) => `${t.schema}.${t.name}`), (v) => setBlock(p.id, (x) => {
+        const t = tables.find((y) => `${y.schema}.${y.name}` === v);
+        Object.assign(x, { schema: t?.schema ?? x.schema, table: t?.name ?? '' });
+        reset(x, 0);
+        // A single primary key column is the obvious value to look for, and to return.
+        if (p.kind === 'lookup' && t?.primaryKey?.columns.length === 1) x.matchColumn = x.valueColumn = t.primaryKey.columns[0];
+      })))
+      : field(tr('Table'), input(p.table ? `${p.schema}.${p.table}` : '', (v) => setBlock(p.id, (x) => {
+        const [a, b] = v.includes('.') ? v.split('.') : ['public', v];
+        Object.assign(x, { schema: a.trim(), table: b.trim() });
+        reset(x, 0);
+      }), 130, tr('Connect to the database to pick the table from a list.'))));
+    columns.forEach(([prop, label, choices], i) => {
+      if (i > 0 && !p[columns[i - 1][0]]) return;
+      if (!p.table) return;
+      const on = (v) => setBlock(p.id, (x) => {
+        x[prop] = v.trim();
+        reset(x, i + 1);
+      });
+      fields.push(field(label, sch ? select1(p[prop], tb ? (choices ? choices(tb) : tb.columns.map((c) => c.name)) : [], on) : input(p[prop], on, 110)));
+    });
+    return h('div', { class: `imp-procform ${p.kind === 'split' ? '' : 'choice'}` }, [...fields, ...extra]);
+  }
+
+  // Name, table, value and display column of a table dropdown, and its searchable default.
+  function choiceForm(p, input) {
+    const name = h('label', {}, [tr('Name'), input(p.name, (v) => setBlock(p.id, (x) => (x.name = v.trim())), 110, tr('Identifier of the dropdown in the template'))]);
+    return tableForm(p, input, [['valueColumn', tr('Value column')], ['labelColumn', tr('Display column')]], [...filterFields(p, input), searchBox(p)], [name]);
+  }
+
+  // Optional: only the rows whose column equals a value are offered.
+  function filterFields(p, input) {
+    if (!p.table || !p.valueColumn) return [];
+    const tb = schema() ? allTables(schema()).find((t) => t.schema === p.schema && t.name === p.table) : null;
+    const column = tb
+      ? combo(p.filterColumn, tb.columns.map((c) => c.name), (v) => setBlock(p.id, (x) => Object.assign(x, { filterColumn: v, filterValue: v ? x.filterValue : '', filterParam: v ? x.filterParam : '', value: '', valueLabel: '' })))
+      : input(p.filterColumn, (v) => setBlock(p.id, (x) => Object.assign(x, { filterColumn: v.trim(), value: '', valueLabel: '' })), 110);
+    // Other named dropdowns that do not already follow this one.
+    const others = (T.design.processors ?? []).filter((o) => o.kind === 'choice' && o.name && o !== p && o.filterParam !== p.name);
+    return [
+      h('label', { title: tr('Optional: offer only the rows whose column equals a value.') }, [tr('Filter column (optional)'), column]),
+      p.filterColumn ? h('label', { title: tr('A value you type, or the value picked in another table dropdown.') }, [tr('Equal to'), h('select', { onchange: (e) => setBlock(p.id, (x) => Object.assign(x, { filterParam: e.target.value, value: '', valueLabel: '' })) }, [
+        h('option', { value: '' }, tr('A value')),
+        ...others.map((o) => h('option', { value: o.name, selected: o.name === p.filterParam }, tr('Dropdown {name}', { name: o.name }))),
+      ])]) : null,
+      p.filterColumn && !p.filterParam ? h('label', {}, [tr('Value'), input(p.filterValue ?? '', (v) => setBlock(p.id, (x) => Object.assign(x, { filterValue: v, value: '', valueLabel: '' })), 110)]) : null,
+    ].filter(Boolean);
+  }
+
+  // A dropdown with a search box listing the values found in the value column. The pick is the default of the parameter.
+  function searchBox(p) {
+    const ready = db.connected() && p.table && p.valueColumn;
+    const picked = h('div', { class: 'imp-picked' }, [
+      h('span', { class: 'grow', title: p.value }, p.value !== '' && p.value != null ? `${p.valueLabel ? `${p.valueLabel} · ` : ''}${p.value}` : tr('No default value')),
+      p.value !== '' && p.value != null ? h('button', { type: 'button', class: 'imp-remove', icon: 'close', title: tr('Clear the default value'), onclick: () => setBlock(p.id, (x) => Object.assign(x, { value: '', valueLabel: '' })) }) : null,
+    ]);
+    const hint = !p.table ? tr('Choose a table first') : !p.valueColumn ? tr('Choose the value column first') : !db.connected() ? tr('Connect to the database to list the values') : tr('Search {column}…', { column: p.labelColumn || p.valueColumn });
+    const box = h('input', { type: 'search', class: 'imp-search', placeholder: hint, spellcheck: 'false', disabled: !ready });
+    const pop = h('div', { class: 'imp-pop', hidden: true });
+    let timer = 0;
+    let token = 0;
+    // The block's own filter, merged with the search on the same column when they coincide.
+    const filtersOf = (extra) => {
+      const out = {};
+      // A filter that follows another dropdown uses the default picked in that one.
+      const want = p.filterParam ? (T.design.processors ?? []).find((o) => o.kind === 'choice' && o.name === p.filterParam)?.value : p.filterValue;
+      if (p.filterColumn && want !== '' && want != null) out[p.filterColumn] = { cond: { op: 'equals', value: String(want) } };
+      for (const [k, f] of Object.entries(extra)) {
+        if (!f) continue;
+        out[k] = out[k] ? { values: [out[k].cond.value], cond: f.cond } : f;
+      }
+      return out;
+    };
+    async function search() {
+      pop.hidden = false;
+      pop.replaceChildren(h('div', { class: 'imp-note' }, tr('Searching…')));
+      const mine = ++token;
+      try {
+        const q = box.value.trim();
+        const table = `${p.schema}.${p.table}`;
+        let pairs;
+        let more;
+        if (p.labelColumn) {
+          // Value / display pairs, found by what is shown.
+          const res = await call(host.data.browse, {
+            table,
+            filters: filtersOf({ [p.labelColumn]: q ? { cond: { op: 'contains', value: q } } : null }),
+            sort: [{ column: p.labelColumn, direction: 'asc' }],
+            limit: 30,
+            offset: 0,
+          });
+          pairs = res.rows.map((r) => ({ value: r[p.valueColumn], label: r[p.labelColumn] }));
+          more = res.total > res.rows.length;
+        } else {
+          const res = await call(host.data.distinct, { table, column: p.valueColumn, search: q, filters: p.filterColumn === p.valueColumn ? undefined : filtersOf({}), limit: 30 });
+          pairs = res.values.map((v) => ({ value: v.value, label: '' }));
+          more = res.truncated;
+        }
+        if (mine !== token) return;
+        const seen = new Set();
+        const items = pairs.filter((x) => x.value !== null && x.value !== '' && !seen.has(x.value) && seen.add(x.value)).map((x) => h('div', { class: 'imp-opt', onmousedown: (e) => {
+          e.preventDefault();
+          setBlock(p.id, (d) => Object.assign(d, { value: String(x.value), valueLabel: x.label == null ? '' : String(x.label) }));
+        } }, [h('span', {}, String(x.label || x.value)), x.label ? h('span', { class: 'muted small' }, String(x.value)) : null]));
+        pop.replaceChildren(...(items.length ? items : [h('div', { class: 'imp-note' }, tr('No values match.'))]),
+          ...(more ? [h('div', { class: 'imp-note' }, tr('There are more values; type to narrow the list.'))] : []));
+      } catch (err) {
+        if (mine === token) pop.replaceChildren(h('div', { class: 'imp-note error' }, err.message));
+      }
+    }
+    box.addEventListener('focus', search);
+    const load = h('button', { type: 'button', icon: 'refresh', class: 'imp-load', disabled: !ready, title: tr('Read the values of the table from the database'), onclick: () => { box.focus(); search(); } }, tr('Load data'));
+    box.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(search, 200);
+    });
+    box.addEventListener('blur', () => setTimeout(() => (pop.hidden = true), 150));
+    return h('div', { class: 'imp-pick-wrap' }, [h('span', { class: 'imp-pick-label' }, tr('Default value')), picked, h('div', { class: 'imp-search-wrap' }, [box, pop]), load]);
   }
 
   function taskNode(t) {
@@ -384,14 +818,20 @@ export function setupImportDesigner(ctx) {
     const rows = cols.map((c) => {
       const required = tb && !c.nullable && !c.defaultValue && !c.identity && !c.generated && !c.serial;
       const port = h('span', { class: 'imp-port in', title: c.generated ? tr('Generated column: it cannot be inserted.') : tr('Drop an Excel column here') });
+      let keyPort = null;
+      if (tb && pk.has(c.name)) {
+        keyPort = h('span', { class: 'imp-port out pk', title: tr('Drag to a column of a later task to use the key this INSERT returns: inserted.{column}', { column: c.name }) });
+        keyPort.addEventListener('pointerdown', (e) => startConnect(e, { taskId: t.id, column: c.name }));
+      }
       return h('div', { class: `imp-col${mapped.has(c.name) ? ' mapped' : ''}${required && !mapped.has(c.name) ? ' required' : ''}${c.generated ? ' disabled' : ''}`, 'data-col': c.name }, [
         port,
         pk.has(c.name) ? iconElement('pk', 'tree-icon') : h('span', { class: 'tree-icon' }),
         h('span', { class: `imp-label${required ? ' nn' : ''}` }, c.name),
         h('span', { class: 'tree-type' }, c.databaseType),
+        keyPort,
       ]);
     });
-    const node = h('div', { class: `imp-node task${sel ? ' selected' : ''}`, 'data-id': t.id, style: `left:${t.x}px;top:${t.y}px` });
+    const node = h('div', { class: `imp-node task${sizedClass(t)}${sel ? ' selected' : ''}`, 'data-id': t.id, style: boxStyle(t) });
     node.addEventListener('pointerdown', () => !sel && selectLight({ type: 'task', id: t.id }));
     node.append(
       nodeHead(t, 'toggle-tables', `${t.schema}.${t.table}`, () => removeTask(t.id), h('span', { class: 'imp-order', title: tr('Position in the insertion order') }, String(index + 1))),
@@ -405,7 +845,7 @@ export function setupImportDesigner(ctx) {
         h('span', { class: 'muted small' }, trn(t.mappings.length, '{n} mapped', '{n} mapped')),
       ]),
     );
-    return node;
+    return withGrip(node, t);
   }
 
   // ------------------------------------------------------------ edges
@@ -444,28 +884,75 @@ export function setupImportDesigner(ctx) {
     for (const el of area.querySelectorAll('.imp-node.source .imp-col')) outs.set(`${el.closest('.imp-node').dataset.id}\0${el.dataset.key}`, el.querySelector('.imp-port'));
     const ins = new Map();
     for (const el of area.querySelectorAll('.imp-node.task .imp-col')) ins.set(`${el.closest('.imp-node').dataset.id}\0${el.dataset.col}`, el.querySelector('.imp-port'));
-    const out = [];
+    const keyOut = new Map();
+    for (const el of area.querySelectorAll('.imp-node.task .imp-col .imp-port.out')) keyOut.set(`${el.closest('.imp-node').dataset.id}\0${el.closest('.imp-col').dataset.col}`, el);
+    const procOut = new Map();
+    const procIn = new Map();
+    for (const el of area.querySelectorAll('.imp-node.proc')) {
+      procOut.set(el.dataset.id, el.querySelector('.proc-out .imp-port'));
+      procIn.set(el.dataset.id, el.querySelector('.proc-in .imp-port'));
+    }
+    // The arrow points the way the data goes; it stops short of the port it ends at.
+    const path = (a, b) => {
+      const p = portPoint(a);
+      const e = portPoint(b);
+      const q = { x: e.x - 8, y: e.y };
+      const k = Math.max(40, Math.abs(q.x - p.x) / 2);
+      // The middle of the curve, where the remove button of a selected line goes.
+      return { d: curve(p, q), mid: { x: (p.x + 3 * (p.x + k) + 3 * (q.x - k) + q.x) / 8, y: (p.y + q.y) / 2 } };
+    };
+    let selectedMid = null;
+    const out = [ARROW];
     for (const t of T.design.tasks) {
       const src = sourceOf(t.sourceId);
       for (const m of t.mappings) {
-        const a = src && outs.get(`${src.id}\0${src.header.mode === 'detect' ? m.label : m.letter}`);
+        const p = m.via ? procOf(T.design, m.via) : null;
+        const a = m.inserted ? keyOut.get(`${m.inserted.taskId}\0${m.inserted.column}`) : p ? procOut.get(p.id) : src && outs.get(`${src.id}\0${src.header.mode === 'detect' ? m.label : m.letter}`);
         const b = ins.get(`${t.id}\0${m.targetColumn}`);
         if (!a || !b) continue;
-        const d = curve(portPoint(a), portPoint(b));
+        const { d, mid } = path(a, b);
         const sel = T.sel?.type === 'map' && T.sel.id === m.id;
-        out.push(`<g data-task="${t.id}" data-map="${m.id}"><path class="imp-hit" d="${d}"/><path class="imp-edge${sel ? ' selected' : ''}" d="${d}"/></g>`);
+        if (sel) selectedMid = mid;
+        out.push(`<g data-task="${t.id}" data-map="${m.id}"><path class="imp-hit" d="${d}"/><path class="imp-edge${m.inserted ? ' ins' : ''}${sel ? ' selected' : ''}" d="${d}" marker-end="url(#imp-arrow)"/></g>`);
       }
     }
+    for (const p of T.design.processors ?? []) {
+      const src = hasInput(p) && p.input?.sourceId ? sourceOf(p.input.sourceId) : null;
+      const a = p.input?.procId ? procOut.get(p.input.procId) : src && outs.get(`${src.id}\0${src.header.mode === 'detect' ? p.input.label : p.input.letter}`);
+      const b = procIn.get(p.id);
+      if (!a || !b) continue;
+      const { d, mid } = path(a, b);
+      const sel = T.sel?.type === 'link' && T.sel.id === p.id;
+      if (sel) selectedMid = mid;
+      out.push(`<g data-proc-in="${p.id}"><path class="imp-hit" d="${d}"/><path class="imp-edge${sel ? ' selected' : ''}" d="${d}" marker-end="url(#imp-arrow)"/></g>`);
+    }
     lines.innerHTML = out.join('');
+    area.querySelector('.imp-edge-x')?.remove();
+    if (selectedMid) {
+      area.append(h('button', { type: 'button', class: 'imp-edge-x', title: tr('Remove the connection (Del)'), style: `left:${selectedMid.x}px;top:${selectedMid.y}px`, onpointerdown: (e) => e.stopPropagation(), onclick: removeSelectedEdge }, '×'));
+    }
+  }
+
+  function removeSelectedEdge() {
+    if (T.sel?.type === 'map') removeMapping(T.sel.task, T.sel.id);
+    else if (T.sel?.type === 'link') unlinkBlock(T.sel.id);
+  }
+  // The line from an Excel column into a split or lookup block.
+  function unlinkBlock(id) {
+    setBlock(id, (p) => (p.input = null));
+    T.sel = { type: 'proc', id };
+    render();
   }
 
   lines.addEventListener('click', (e) => {
-    const g = e.target.closest('[data-map]');
-    if (g) select({ type: 'map', task: g.dataset.task, id: g.dataset.map });
+    const g = e.target.closest('[data-map], [data-proc-in]');
+    if (g?.dataset.map) select({ type: 'map', task: g.dataset.task, id: g.dataset.map });
+    else if (g) select({ type: 'link', id: g.dataset.procIn });
   });
 
   // Drag from an Excel column's port to a table column to map it.
-  function startConnect(e, sourceId, key) {
+  // `origin` is an Excel column ({ sourceId, key }) or a block output ({ procId }).
+  function startConnect(e, origin) {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -474,9 +961,15 @@ export function setupImportDesigner(ctx) {
     const from = portPoint(port);
     const temp = document.createElementNS(SVG_NS, 'path');
     temp.setAttribute('class', 'imp-edge temp');
+    temp.setAttribute('marker-end', 'url(#imp-arrow)');
     lines.append(temp);
     area.classList.add('connecting');
-    const target = (ev) => document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.imp-node.task .imp-col:not(.disabled)');
+    const feeds = origin.procId && procOf(T.design, origin.procId)?.kind === 'case' && !procOf(T.design, origin.procId).list;
+    const accept = origin.procId || origin.taskId ? `.imp-node.task .imp-col:not(.disabled)${feeds ? ', .imp-node.proc.split .imp-col.proc-in' : ''}` : '.imp-node.task .imp-col:not(.disabled), .imp-node.hasin .imp-col.proc-in';
+    const target = (ev) => {
+      const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest(accept);
+      return origin.taskId && el?.closest('.imp-node').dataset.id === origin.taskId ? null : el;
+    };
     let hot = null;
     const move = (ev) => {
       temp.setAttribute('d', curve(from, toArea(ev.clientX, ev.clientY)));
@@ -495,7 +988,13 @@ export function setupImportDesigner(ctx) {
       hot?.classList.remove('drop');
       area.classList.remove('connecting');
       const t = ev.type === 'pointerup' ? target(ev) : null;
-      if (t) connect(sourceId, key, t.closest('.imp-node').dataset.id, t.dataset.col);
+      if (!t) return;
+      const node = t.closest('.imp-node');
+      if (origin.procId && node.classList.contains('proc')) connectBlockInput(origin.procId, node.dataset.id);
+      else if (node.classList.contains('hasin')) connectSplitInput(origin.sourceId, origin.key, node.dataset.id);
+      else if (origin.taskId) connectInserted(origin.taskId, origin.column, node.dataset.id, t.dataset.col);
+      else if (origin.procId) connectProc(origin.procId, node.dataset.id, t.dataset.col);
+      else connect(origin.sourceId, origin.key, node.dataset.id, t.dataset.col);
     };
     port.addEventListener('pointermove', move);
     port.addEventListener('pointerup', end);
@@ -537,7 +1036,9 @@ export function setupImportDesigner(ctx) {
     head.addEventListener('pointerup', up);
   }
 
+  canvas.tabIndex = -1;
   canvas.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest('input, select, textarea, button')) canvas.focus({ preventScroll: true });
     if (e.target === canvas || e.target === sizer || e.target === area) {
       if (T.sel) select(null);
     }
@@ -783,8 +1284,8 @@ export function setupImportDesigner(ctx) {
     const dataFrom = res?.firstDataRow ?? 0;
     const cols = new Map(res?.columns.map((c) => [c.index, c]) ?? []);
     const mappedIdx = new Set();
-    if (src) for (const m of T.design.tasks.filter((t) => t.sourceId === src.id).flatMap((t) => t.mappings)) {
-      const c = res?.columns.find((x) => (src.header.mode === 'detect' ? normHeader(x.label) === normHeader(m.label) : x.letter === m.letter));
+    if (src) for (const ref of columnRefs(T.design, src)) {
+      const c = res?.columns.find((x) => (src.header.mode === 'detect' ? normHeader(x.label) === normHeader(ref.label) : x.letter === ref.letter));
       if (c) mappedIdx.add(c.index);
     }
     const firstRow = Math.max(0, Math.floor(gridEl.scrollTop / ROW_H) - 4);
@@ -857,6 +1358,7 @@ export function setupImportDesigner(ctx) {
     ['order', tr('Insertion order')],
     ['problems', T.diag.length ? `${tr('Problems')} (${T.diag.filter((d) => d.level !== 'info').length})` : tr('Problems')],
     ['preview', tr('Preview')],
+    ...(T.run ? [['result', tr('Result')]] : []),
   ];
 
   function renderDock() {
@@ -870,7 +1372,7 @@ export function setupImportDesigner(ctx) {
       },
     }, label)));
     const body = $('#imp-dock-body');
-    const view = { inspector: dockInspector, order: dockOrder, problems: dockProblems, preview: dockPreview }[T.dock];
+    const view = { inspector: dockInspector, order: dockOrder, problems: dockProblems, preview: dockPreview, result: dockResult }[T.dock] ?? dockInspector;
     body.replaceChildren(...[].concat(view()).filter(Boolean));
   }
 
@@ -885,17 +1387,23 @@ export function setupImportDesigner(ctx) {
       const src = sourceOf(task.sourceId);
       const tb = dbTable(task);
       const col = tb?.columns.find((c) => c.name === m.targetColumn);
-      const run = T.wb ? extractRows(template(), T.wb.sheets, { limit: 8 }) : null;
+      const run = T.wb ? extractRows(template(), T.wb.sheets, { limit: 8, previewMissing: true }) : null;
       const samples = run?.tasks.find((x) => x.id === task.id)?.rows.map((r) => r.values[m.targetColumn]).filter((v) => v !== null && v !== undefined) ?? [];
-      const bad = col ? samples.map((v) => checkValue(col, v)).find(Boolean) : null;
+      const bad = col ? samples.map((v) => checkSample(col, v)).find(Boolean) : null;
+      const via = m.via ? procOf(T.design, m.via) : null;
+      const ref = mappingRef(T.design, m);
+      const parent = m.inserted ? taskOf(m.inserted.taskId) : null;
+      const from = m.inserted ? `inserted.${m.inserted.column}${parent ? ` (${taskName(parent)})` : ''}` : via?.kind === 'choice' ? tr('dropdown {name}', { name: via.name })
+        : !ref ? '?'
+          : `${src?.header.mode === 'detect' ? `"${ref.label}"` : `${ref.letter} ${ref.label}`.trim()}${via ? ` ${via.kind === 'lookup' ? tr('looked up') : via.kind === 'case' ? (via.mode === 'upper' ? tr('in uppercase') : tr('in lowercase')) : tr('split')}` : ''}`;
       const set = (fn) => edit((d) => fn(d.tasks.find((x) => x.id === task.id).mappings.find((y) => y.id === m.id)));
       return [
         h('div', { class: 'imp-detail' }, [
           h('div', { class: 'imp-detail-title' }, [
-            h('strong', {}, `${src?.header.mode === 'detect' ? `"${m.label}"` : `${m.letter} ${m.label}`.trim()} → ${taskName(task)}.${m.targetColumn}`),
+            h('strong', {}, `${from} → ${taskName(task)}.${m.targetColumn}`),
             h('button', { type: 'button', class: 'danger', icon: 'delete', onclick: () => removeMapping(task.id, m.id) }, tr('Remove mapping')),
           ]),
-          h('div', { class: 'imp-form wide' }, [
+          h('div', { class: 'imp-form wide' }, via?.kind === 'choice' || m.inserted ? [h('div', { class: 'imp-field' }, [h('span', {}, tr('Column type')), h('span', {}, col?.databaseType ?? tr('unknown'))])] : [
             h('label', { class: 'imp-field' }, [h('span', {}, tr('Blank cell')), h('select', { onchange: (e) => set((x) => (x.blank = e.target.value)) }, [
               h('option', { value: 'null', selected: m.blank === 'null' }, tr('Insert NULL')),
               h('option', { value: 'emptyString', selected: m.blank === 'emptyString' }, tr('Insert an empty string')),
@@ -904,10 +1412,11 @@ export function setupImportDesigner(ctx) {
             h('label', { class: 'imp-field' }, [h('span', {}, tr('Trim spaces')), h('input', { type: 'checkbox', checked: !!m.trim, onchange: (e) => set((x) => (x.trim = e.target.checked)) })]),
             h('div', { class: 'imp-field' }, [h('span', {}, tr('Column type')), h('span', {}, col?.databaseType ?? tr('unknown'))]),
           ]),
-          h('p', { class: `small ${bad ? 'warn-text' : 'muted'}` }, bad
+          m.inserted ? h('p', { class: 'small' }, tr('The value is the key that the INSERT of {table} returns (RETURNING {column}) for the same worksheet row, so this task runs after it.', { table: parent ? taskName(parent) : '?', column: m.inserted.column })) : null,
+          m.inserted ? null : h('p', { class: `small ${bad ? 'warn-text' : 'muted'}` }, bad
             ? tr('Check: {message}', { message: bad })
-            : samples.length ? tr('Examples: {values}', { values: samples.slice(0, 5).map((v) => `"${v}"`).join(', ') }) : tr('Open the example workbook to see sample values.')),
-          h('p', { class: 'muted small' }, tr('Cells are read as text: numbers keep their written form (a leading zero stays) and dates become ISO text. PostgreSQL converts the text to the column type.')),
+            : samples.length ? tr('Examples: {values}', { values: samples.slice(0, 5).map((v) => (Array.isArray(v) ? JSON.stringify(v) : `"${v}"`)).join(', ') }) : tr('Open the example workbook to see sample values.')),
+          m.inserted ? null : h('p', { class: 'muted small' }, tr('Cells are read as text: numbers keep their written form (a leading zero stays) and dates become ISO text. PostgreSQL converts the text to the column type.')),
         ]),
       ];
     }
@@ -924,6 +1433,34 @@ export function setupImportDesigner(ctx) {
         ]),
         h('p', { class: 'small' }, task.sourceId ? tr('Reads {sheet}. {n} columns mapped.', { sheet: sheetLabel(sourceOf(task.sourceId)), n: task.mappings.length }) : tr('Drag an Excel column onto a column of the table to map it.')),
         missing.length ? h('p', { class: 'small error' }, tr('Required and not mapped: {names}', { names: missing.map((c) => c.name).join(', ') })) : null,
+      ]);
+    }
+    if (sel?.type === 'link') {
+      const p = procOf(T.design, sel.id);
+      if (!p?.input) return [];
+      return h('div', { class: 'imp-detail' }, [
+        h('div', { class: 'imp-detail-title' }, [
+          h('strong', {}, `${p.input.procId ? tr('Change the case') : `${p.input.letter} ${p.input.label}`.trim()} → ${blockTitle(p)}`),
+          h('button', { type: 'button', class: 'danger', icon: 'delete', onclick: removeSelectedEdge }, tr('Remove connection')),
+        ]),
+        h('p', { class: 'small muted' }, tr('Press Del to remove the selected connection.')),
+      ]);
+    }
+    if (sel?.type === 'proc') {
+      const p = procOf(T.design, sel.id);
+      if (!p) return [];
+      return h('div', { class: 'imp-detail' }, [
+        h('div', { class: 'imp-detail-title' }, [
+          h('strong', {}, p.kind === 'choice' ? `${tr('Table dropdown')}${p.name ? ` ${p.name}` : ''}` : blockTitle(p)),
+          h('button', { type: 'button', class: 'danger', icon: 'delete', onclick: () => removeProcessor(p.id) }, tr('Remove')),
+        ]),
+        h('p', { class: 'small' }, p.kind === 'lookup'
+          ? tr('The Excel cell holds a primary key of the chosen table. The row with that key is found when the import runs, after the earlier tasks, so rows they inserted count, and the value of its return column (the key itself by default) is inserted. If no row has the key the import reports it. Put the task for that table first.')
+          : p.kind === 'case'
+          ? tr('Writes the text of an Excel cell in capitals or in small letters. With List on, the cell is cut at the separator first and each value is converted, giving an array for a column such as text[]. Drag an Excel column to its left dot, and from its right dot to a table column.')
+          : p.kind === 'split'
+          ? tr('Cuts the text of an Excel cell at the separator and gives an array of values, for an array column such as text[]. Drag an Excel column to its left dot, and from its right dot to a table column.')
+          : tr('The value of this column is not read from the worksheet: whoever runs the import picks it from the rows of the table, and it is the same for every row. The default chosen here is saved in the template.')),
       ]);
     }
     if (sel?.type === 'source') {
@@ -1013,7 +1550,7 @@ export function setupImportDesigner(ctx) {
   let previewTask = null;
   function dockPreview() {
     if (!T.wb) return h('p', { class: 'imp-help' }, tr('Open an example workbook to preview the rows each task would insert.'));
-    const run = extractRows(template(), T.wb.sheets, { limit: 20 });
+    const run = extractRows(template(), T.wb.sheets, { limit: 20, previewMissing: true });
     const tasks = run.tasks;
     if (!tasks.length) return [h('p', { class: 'imp-help' }, tr('Nothing to preview yet.')), ...run.errors.map((e) => h('p', { class: 'small error' }, e.message))];
     const pick = tasks.find((t) => t.id === (T.sel?.task ?? T.sel?.id)) ?? tasks.find((t) => t.id === previewTask) ?? tasks[0];
@@ -1033,10 +1570,78 @@ export function setupImportDesigner(ctx) {
       pick.rows.length
         ? h('div', { class: 'imp-preview' }, h('table', {}, [
           h('thead', {}, h('tr', {}, [h('th', {}, tr('Row')), ...pick.columns.map((c) => h('th', {}, c))])),
-          h('tbody', {}, pick.rows.map((r) => h('tr', {}, [h('td', { class: 'muted' }, String(r.row)), ...pick.columns.map((c) => h('td', { class: r.values[c] === null ? 'null' : '' }, r.values[c] === null ? 'NULL' : r.values[c]))]))),
+          h('tbody', {}, pick.rows.map((r) => h('tr', {}, [h('td', { class: 'muted' }, String(r.row)), ...pick.columns.map((c) => h('td', { class: r.values[c] === null ? 'null' : '' }, r.values[c] === null ? (pick.inserted?.[c] ? `inserted.${pick.inserted[c].split('.').slice(1).join('.')}` : 'NULL') : Array.isArray(r.values[c]) ? JSON.stringify(r.values[c]) : r.values[c]))]))),
         ]))
         : null,
     ];
+  }
+
+  // ------------------------------------------------------------ run
+
+  // What the last run did: rows inserted per task, or why it stopped.
+  function dockResult() {
+    const r = T.run;
+    if (!r) return h('p', { class: 'imp-help' }, tr('Nothing has been run yet.'));
+    if (!r.ok) return [h('p', { class: 'small error' }, tr('The import failed and was rolled back as the transaction allows.')), h('pre', { class: 'wb-error' }, r.error)];
+    return [
+      h('p', { class: 'small ok' }, tr('Inserted {rows} into {db}.', { rows: trn(r.total, '{n} row', '{n} rows'), db: r.db })),
+      h('table', {}, [h('tbody', {}, r.tasks.map((t) => h('tr', {}, [h('td', { class: 'muted' }, `#${t.order}`), h('td', {}, t.table), h('td', {}, trn(t.inserted, '{n} row', '{n} rows'))])))]),
+    ];
+  }
+
+  // Applies the design to the connected database with the rows of the example workbook.
+  async function runImport() {
+    const rec = T;
+    if (rec.running) return;
+    const policy = db.info()?.profile?.policy;
+    if (!rec.wb) return status(tr('Open the workbook to import first: the rows come from it.'));
+    if (!db.connected()) return db.openConnect();
+    if (!policy?.allowWrites) return status(tr('This connection is read-only (see its policy in Database → Connect).'));
+    rec.diag = designDiagnostics(rec.design, schema(), rec.wb.sheets);
+    renderDock();
+    markNodes();
+    const fail = (list) => {
+      rec.diag = [...rec.diag, ...list];
+      rec.dock = 'problems';
+      renderDock();
+      markNodes();
+      status(tr('Fix the errors in Problems before running.'));
+    };
+    if (hasErrors(rec.diag)) return fail([]);
+    const tpl = designToTemplate(rec.design, { editor: false });
+    const read = extractRows(tpl, rec.wb.sheets);
+    if (!read.ok) return fail(read.errors.map((e) => ({ level: 'error', code: e.code, message: e.message, taskId: e.taskId })));
+    const total = read.tasks.reduce((n, t) => n + t.total, 0);
+    if (!total) return status(tr('The workbook has no rows to insert.'));
+    const warnings = rec.diag.filter((d) => d.level === 'warning');
+    const info = db.info();
+    const choice = await host.confirm({
+      message: tr('Insert {rows} into {db}?', { rows: trn(total, '{n} row', '{n} rows'), db: info?.description ?? '' }),
+      detail: [
+        ...read.tasks.map((t) => `#${t.order} ${t.target.schema}.${t.target.table}: ${trn(t.total, '{n} row', '{n} rows')}`),
+        '',
+        info?.profile?.environment ? tr('Environment: {name}', { name: info.profile.environment }) : '',
+        tpl.execution.transaction === 'atomic' ? tr('All tasks run in one transaction.') : tr('Each task runs in its own transaction.'),
+        ...warnings.slice(0, 4).map((d) => `• ${d.message}`),
+      ].filter((x, i, a) => x || (i && a[i - 1])).join('\n'),
+      buttons: [tr('Run import'), tr('Cancel')],
+    });
+    if (choice !== 0) return;
+    rec.running = true;
+    $('#imp-run').disabled = true;
+    status(tr('Running the import…'));
+    try {
+      const res = await call(host.import.run, { template: tpl, tasks: read.tasks.map((t) => ({ id: t.id, order: t.order, rows: t.rows })) });
+      rec.run = { ok: true, total: res.total, tasks: res.tasks, db: info?.description ?? '' };
+      status(tr('Inserted {rows}.', { rows: trn(res.total, '{n} row', '{n} rows') }));
+    } catch (err) {
+      rec.run = { ok: false, error: err.message };
+      status(tr('The import failed: {message}', { message: err.message }));
+    }
+    rec.running = false;
+    rec.dock = 'result';
+    $('#imp-run').disabled = false;
+    if (rec === T) renderDock();
   }
 
   // ------------------------------------------------------------ toolbar
@@ -1057,15 +1662,18 @@ export function setupImportDesigner(ctx) {
   $('#imp-zoom-in').addEventListener('click', () => setZoom(T.zoom + 0.1));
   $('#imp-zoom').addEventListener('click', () => setZoom(1));
   $('#imp-wb-open').addEventListener('click', chooseWorkbook);
+  $('#imp-run').addEventListener('click', runImport);
+  $('#imp-add-split').addEventListener('click', () => addBlock('split'));
+  $('#imp-add-case').addEventListener('click', () => addBlock('case'));
+  $('#imp-add-choice').addEventListener('click', () => addBlock('choice'));
+  $('#imp-add-lookup').addEventListener('click', () => addBlock('lookup'));
   $('#imp-add-source').addEventListener('click', () => T.sheet && addSource(T.sheet));
-  $('#imp-open').addEventListener('click', openTemplate);
-  $('#imp-export').addEventListener('click', () => exportTemplate(tabId, false));
   for (const r of page.querySelectorAll('input[name="imp-pick"]')) {
     r.addEventListener('change', () => r.checked && (T.pick = r.value));
   }
 
   document.addEventListener('keydown', (e) => {
-    if (!isShown() || e.target.closest('input, textarea, select, [contenteditable]')) return;
+    if (!isShown() || e.target.closest?.('input, textarea, select, [contenteditable]')) return;
     const mod = e.ctrlKey || e.metaKey;
     if (mod && !e.shiftKey && e.key.toLowerCase() === 'z') {
       e.preventDefault();
@@ -1075,9 +1683,10 @@ export function setupImportDesigner(ctx) {
       redo();
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && T.sel) {
       e.preventDefault();
-      if (T.sel.type === 'map') removeMapping(T.sel.task, T.sel.id);
+      if (T.sel.type === 'map' || T.sel.type === 'link') removeSelectedEdge();
       else if (T.sel.type === 'task') removeTask(T.sel.id);
       else if (T.sel.type === 'source') removeSource(T.sel.id);
+      else if (T.sel.type === 'proc') removeProcessor(T.sel.id);
     } else if (e.key === 'Escape' && T.sel) {
       select(null);
     }

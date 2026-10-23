@@ -1303,8 +1303,11 @@ dialog.medium { width: min(760px, 94vw); }
   position: absolute; width: 240px; display: flex; flex-direction: column; background: var(--surface);
   border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); font-size: 12.5px;
 }
-.imp-node.source { border-left: 4px solid #1a7f37; }
-.imp-node.task { border-left: 4px solid var(--accent); }
+.imp-node { overflow: visible; padding-bottom: 16px; }
+.imp-node.source .imp-head { background: rgba(26, 127, 55, 0.14); }
+.imp-node.proc .imp-head { background: rgba(130, 80, 223, 0.14); }
+.imp-node.sized .imp-cols { flex: 1 1 auto; min-height: 0; max-height: none; }
+.imp-node.sized > :not(.imp-cols) { flex: none; }
 .imp-node.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
 .imp-node.has-warning { border-color: #bf8700; }
 .imp-node.has-error { border-color: var(--danger); }
@@ -1401,3 +1404,40 @@ dialog.medium { width: min(760px, 94vw); }
 .imp-cell.warn { background: rgba(191, 135, 0, 0.25); }
 .imp-grid-row.header .imp-cell:not(.num) { font-weight: 700; background: var(--accent-soft); }
 .imp-grid-row.data .imp-cell:not(.num):not(.mapped) { background: rgba(26, 127, 55, 0.07); }
+
+/* Import designer: processor blocks */
+.imp-node.proc { width: 220px; }
+.imp-label.right { text-align: right; }
+.imp-procform { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 4px 8px 6px; border-top: 1px solid var(--border); font-size: 12px; }
+.imp-procform > label:not(.check) { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.imp-procform.choice { display: grid; grid-template-columns: 1fr; }
+.imp-procform.choice select, .imp-procform.choice input:not(.imp-search) { flex: 1; min-width: 0; max-width: 130px; }
+.imp-procform.choice > label { justify-content: space-between; }
+.imp-pick-wrap { display: flex; flex-direction: column; gap: 3px; }
+.imp-pick-label { color: var(--muted); }
+.imp-picked { display: flex; align-items: center; gap: 4px; min-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imp-search-wrap { position: relative; }
+.imp-search { width: 100%; box-sizing: border-box; }
+.imp-pop { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; max-height: 190px; overflow: auto; background: var(--surface); border: 1px solid var(--accent); border-radius: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); }
+.imp-opt { display: flex; justify-content: space-between; gap: 8px; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
+.imp-opt:hover, .imp-opt.active { background: var(--accent-soft); }
+.imp-pop.combo { right: auto; min-width: 100%; }
+.imp-combo { min-width: 0; }
+.imp-area.connecting .imp-node.hasin .imp-col.proc-in .imp-port { background: var(--accent-soft); }
+.imp-load { align-self: flex-start; padding: 1px 8px; font-size: 11px; }
+
+.imp-procform.lookup { display: grid; grid-template-columns: 1fr; }
+.imp-procform.lookup > label { justify-content: space-between; }
+.imp-procform.lookup select, .imp-procform.lookup input { flex: 1; min-width: 0; max-width: 130px; }
+
+/* Import designer: keys returned by an INSERT */
+.imp-port.out.pk { background: var(--surface); border-color: #bf8700; cursor: crosshair; }
+.imp-port.out.pk:hover { background: #bf8700; }
+.imp-edge.ins { stroke: #bf8700; }
+
+/* Import designer: resize grip and removable connections */
+.imp-grip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; touch-action: none; background: linear-gradient(135deg, transparent 50%, var(--accent) 50%); border-radius: 0 0 5px 0; opacity: 0.55; }
+.imp-grip:hover { opacity: 1; }
+.imp-edge-x { position: absolute; transform: translate(-50%, -50%); z-index: 4; width: 20px; height: 20px; padding: 0; line-height: 16px; border-radius: 10px; border-color: var(--danger); color: var(--danger); background: var(--surface); font-size: 15px; }
+.imp-edge-x:hover { background: var(--danger); color: #fff; }
+.imp-canvas:focus { outline: none; }

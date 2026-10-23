@@ -413,11 +413,29 @@ lectura de un libro de ejemplo.
 - **Orden de inserción** lista las tareas: reordénalas arrastrando o con las flechas, o usa **Sugerir orden**
   para poner primero las tablas referenciadas (los ciclos se informan, nunca se rompen en silencio). La tarea 1
   inserta todas sus filas, luego la tarea 2.
+- Los **bloques de procesamiento** (barra de herramientas) van entre la hoja y una columna de tabla. El **Bloque
+  de división** corta una celda en un separador (una coma por omisión) para una columna tipo `text[]`. La **Lista
+  desplegable de tabla** da a una columna un valor elegido entre las filas de una tabla, con cuadro de búsqueda,
+  cuando se ejecuta la importación; el valor predeterminado elegido en el diseñador se guarda en la plantilla.
+  El **Bloque de búsqueda** encuentra una clave foránea a partir de un valor de la hoja: busca el texto en una
+  tabla (columna de comparación y columna a devolver) al ejecutar la importación, después de las tareas
+  anteriores, así que encuentra los ids recién generados. En los nodos de tabla, **las columnas de clave primaria tienen un punto a la derecha**: arrástralo a una
+  columna de una tarea posterior que lea la misma hoja para usar la clave que devuelve el INSERT
+  (`inserted.<clave primaria>`, `RETURNING` en PostgreSQL), de modo que las filas hijas reciban el id generado
+  para su fila padre. La tarea padre se mueve antes de la hija si hace falta. Las flechas de las conexiones
+  muestran la dirección de los datos.
 - **Problemas** revisa el diseño contra el libro de ejemplo y la base de datos; **Vista previa** muestra las filas
-  que insertaría cada tarea. Nunca se escribe nada en la base de datos.
-- **Exportar plantilla…** guarda un `.import.json` versionado, sin datos de ejemplo, credenciales ni rutas.
-  **Abrir plantilla…** la recupera con sus mapeos, orden y disposición. Deshacer/rehacer (Ctrl+Z / Ctrl+Y), zoom
-  (Ctrl + rueda) y Supr funcionan en el lienzo.
+  que insertaría cada tarea; ninguna de las dos escribe en la base de datos.
+- **Ejecutar** (barra de herramientas) aplica el diseño a la base de datos conectada con las filas del libro
+  abierto, tarea por tarea en el orden de inserción. Necesita una conexión cuya política permita escribir, muestra
+  cuántas filas insertará cada tarea y pregunta antes; la pestaña de resultado muestra las filas insertadas por
+  tarea o la tarea y la fila de la hoja que fallaron. Con "todas las tareas juntas" un fallo deshace todo, y con
+  "una por tarea" las tareas anteriores quedan confirmadas. Cada ejecución queda en el registro de auditoría.
+- **Guardar** / **Guardar como…** de la cinta escriben un `.import.json` versionado, sin datos de ejemplo,
+  credenciales ni rutas (tras revisar el diseño). **Abrir** la recupera con sus mapeos, orden y disposición. Deshacer/rehacer (Ctrl+Z / Ctrl+Y), zoom
+  (Ctrl + rueda) y Supr funcionan en el lienzo. Los nodos se comportan como las tablas del diagrama: se mueven por
+  la barra de título y se redimensionan desde la esquina inferior derecha (doble clic para ajustar al contenido).
+  Haz clic en una conexión para seleccionarla y pulsa Supr o su botón × para quitarla.
 
 La plantilla es el producto: un servidor o una CLI puede ejecutarla contra cualquier libro estructuralmente
 compatible con el mismo código (`src/shared/import-template.js`). Describe solo INSERT simples: los valores se

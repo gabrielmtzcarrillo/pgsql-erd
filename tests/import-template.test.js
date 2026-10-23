@@ -9,7 +9,7 @@ import { parsePgerd } from '../src/renderer/lib/pgerd.js';
 import { schemaFromErd } from '../src/shared/schema-model.js';
 import {
   IMPORT_TEMPLATE_SCHEMA, colLetter, colIndex, normHeader, validateTemplate, resolveSource, extractRows, checkValue,
-  inferHint, newDesign, newSource, newTask, designToTemplate, templateToDesign, suggestOrder, designDiagnostics, hasErrors,
+  inferHint, splitText, changeCase, blockSource, newSplit, newCase, newChoice, newLookup, newDesign, newSource, newTask, designToTemplate, templateToDesign, suggestOrder, designDiagnostics, hasErrors,
 } from '../src/shared/import-template.js';
 import { EXAMPLE_TEMPLATE as TEMPLATE } from './import-template.fixtures.js';
 
@@ -47,7 +47,8 @@ test('unknown major versions, bad structure and inconsistent tasks are refused',
   const v2 = clone(TEMPLATE);
   v2.specVersion = '2.0';
   assert.match(validateTemplate(v2)[0], /Unsupported specVersion/);
-  assert.deepEqual(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.7' }), []);
+  assert.deepEqual(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.1' }), []);
+  assert.match(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.7' })[0], /Unsupported specVersion/);
   assert.match(validateTemplate({ ...clone(TEMPLATE), format: 'x' })[0], /format/);
   const gap = clone(TEMPLATE);
   gap.execution.tasks[1].order = 3;
@@ -260,4 +261,282 @@ test('design diagnostics against the database and the example workbook', () => {
   wrongSheet.sources[0].sheet.value = 'Otra';
   assert.ok(codes(designDiagnostics(wrongSheet, schema, wb)).includes('SHEET_NOT_FOUND'));
   assert.ok(codes(designDiagnostics(newDesign(), null, null)).includes('NO_TASKS'));
+});
+
+test('split blocks: a cell becomes an array', () => {
+  assert.deepEqual(splitText('a, b ,,c'), ['a', 'b', 'c']);
+  assert.deepEqual(splitText('a; b', { delimiter: ';', trim: false }), ['a', ' b']);
+  assert.deepEqual(splitText('a,,b', { dropEmpty: false }), ['a', '', 'b']);
+  assert.deepEqual(splitText('a||b|c', { delimiter: '||' }), ['a', 'b|c']);
+  const t = clone(TEMPLATE);
+  t.specVersion = '1.1';
+  t.execution.tasks[1].mappings.push({ source: { mode: 'header', name: 'Extra' }, targetColumn: 'tags', processor: { type: 'split', delimiter: '|' } });
+  assert.deepEqual(validateTemplate(t), []);
+  const wb = [careers([]), students([['Ana', '1', '2', 'x | y|z'], ['Bo', '2', '3', ''], ['Cy', '3', '4', ' , ']])];
+  const rows = extractRows(t, wb).tasks[1].rows.map((r) => r.values.tags);
+  assert.deepEqual(rows, [['x', 'y', 'z'], null, [',']]);
+  t.execution.tasks[1].mappings.at(-1).blank = 'emptyString';
+  assert.deepEqual(extractRows(t, wb).tasks[1].rows.map((r) => r.values.tags)[1], []);
+});
+
+test('table dropdown parameters are chosen when the import runs', () => {
+  const t = clone(TEMPLATE);
+  t.specVersion = '1.1';
+  t.parameters = [{ name: 'carrera', label: 'Carrera', default: '7', source: { type: 'table', schema: 'public', table: 'catCarreras', valueColumn: 'idCarrera', labelColumn: 'nombre' } }];
+  t.execution.tasks[1].mappings.push({ source: { mode: 'parameter', name: 'carrera' }, targetColumn: 'carreraFija' });
+  assert.deepEqual(validateTemplate(t), []);
+  const wb = [careers([]), students([['Ana', '1', '2', ''], ['Bo', '2', '3', '']])];
+  assert.deepEqual(extractRows(t, wb).tasks[1].rows.map((r) => r.values.carreraFija), ['7', '7']);
+  assert.deepEqual(extractRows(t, wb, { parameters: { carrera: '9' } }).tasks[1].rows.map((r) => r.values.carreraFija), ['9', '9']);
+  delete t.parameters[0].default;
+  const missing = extractRows(t, wb);
+  assert.equal(missing.errors[0].code, 'PARAMETER_MISSING');
+  assert.deepEqual(extractRows(t, wb, { previewMissing: true }).tasks[1].rows[0].values.carreraFija, null);
+  const undeclared = clone(t);
+  undeclared.parameters = [];
+  assert.match(validateTemplate(undeclared).join(), /undeclared parameter/);
+  const only = clone(TEMPLATE);
+  only.specVersion = '1.1';
+  only.parameters = t.parameters;
+  only.execution.tasks[0].mappings = [{ source: { mode: 'parameter', name: 'carrera' }, targetColumn: 'x' }];
+  assert.match(validateTemplate(only).join(), /at least one column of the worksheet/);
+});
+
+test('blocks round trip through the template and bump the version only when used', () => {
+  assert.equal(designToTemplate(templateToDesign(TEMPLATE)).specVersion, '1.0');
+  const t = clone(TEMPLATE);
+  t.specVersion = '1.1';
+  t.parameters = [{ name: 'carrera', default: '7', source: { type: 'table', schema: 'public', table: 'catCarreras', valueColumn: 'idCarrera' } }];
+  t.execution.tasks[1].mappings.push(
+    { source: { mode: 'header', name: 'Extra' }, targetColumn: 'tags', processor: { type: 'split', delimiter: ',', trim: true, dropEmpty: true } },
+    { source: { mode: 'header', name: 'Extra' }, targetColumn: 'tags2', processor: { type: 'split', delimiter: ',', trim: true, dropEmpty: true } },
+    { source: { mode: 'parameter', name: 'carrera' }, targetColumn: 'carreraFija' },
+  );
+  t.editor.processors = [{ x: 300, y: 10 }, { x: 310, y: 20 }];
+  const d = templateToDesign(t);
+  assert.deepEqual(d.processors.map((p) => [p.kind, p.x, p.y]), [['split', 300, 10], ['choice', 310, 20]]);
+  assert.equal(d.tasks[1].mappings[5].via, d.processors[1].id);
+  assert.equal(d.tasks[1].mappings[3].via, d.tasks[1].mappings[4].via);
+  const back = designToTemplate(d);
+  assert.equal(back.specVersion, '1.1');
+  assert.deepEqual(back.editor.processors, t.editor.processors);
+  const { editor, ...exec } = back;
+  const { editor: original, ...origExec } = t;
+  assert.deepEqual(exec, origExec);
+});
+
+test('diagnostics for blocks', () => {
+  const schema = shop();
+  const d = newDesign();
+  d.templateId = 'blocks';
+  d.sources.push(newSource({ id: 's1', sheet: { mode: 'name', value: 'Hoja' }, columns: [{ letter: 'A', label: 'Name' }] }));
+  const split = newSplit({ id: 'p1', input: { sourceId: 's1', letter: 'A', label: 'Name' } });
+  const choice = newChoice({ id: 'p2', name: 'pick', table: 'ghost', valueColumn: 'id' });
+  d.processors.push(split, choice, newSplit({ id: 'p3' }));
+  const t = newTask('public', 'customer', { id: 't1', sourceId: 's1' });
+  t.mappings.push({ id: 'm1', letter: '', label: '', via: 'p1', targetColumn: 'full_name', blank: 'null', trim: false }, { id: 'm2', letter: '', label: '', via: 'p2', targetColumn: 'email', blank: 'null', trim: false });
+  d.tasks.push(t);
+  const codes = designDiagnostics(d, schema, [{ name: 'Hoja', rows: [['Name'], ['a,b']] }]).map((x) => x.code);
+  assert.ok(codes.includes('SPLIT_TARGET'));
+  assert.ok(codes.includes('PARAM_TABLE'));
+  assert.ok(codes.includes('SPLIT_NO_INPUT'));
+  assert.ok(codes.includes('PARAM_NO_DEFAULT'));
+  const arr = structuredClone(d);
+  arr.tasks[0].schema = 'shop';
+  arr.tasks[0].table = 'product';
+  arr.tasks[0].mappings = [{ id: 'm1', letter: '', label: '', via: 'p1', targetColumn: 'tags', blank: 'null', trim: false }];
+  assert.ok(!designDiagnostics(arr, schema, null).some((x) => x.code === 'SPLIT_TARGET' || x.code === 'COLUMN_MISSING'));
+  assert.deepEqual(designToTemplate(d, { editor: false }).execution.tasks[0].mappings[0].processor, { type: 'split', delimiter: ',', trim: true, dropEmpty: true });
+});
+
+test('lookup blocks: a foreign key found from a value, version 1.2', () => {
+  const t = clone(TEMPLATE);
+  t.specVersion = '1.2';
+  const lookup = { type: 'lookup', schema: 'public', table: 'catCarreras', matchColumn: 'nombre', valueColumn: 'idCarrera', onMissing: 'error' };
+  t.execution.tasks[1].mappings[2] = { source: { mode: 'header', name: 'ID Carrera' }, targetColumn: 'idCarrera', trim: true, processor: lookup };
+  assert.deepEqual(validateTemplate(t), []);
+  assert.match(validateTemplate({ ...clone(t), specVersion: '1.5' })[0], /Unsupported/);
+  const bad = clone(t);
+  bad.execution.tasks[1].mappings[2].processor = { type: 'lookup', table: 'x' };
+  assert.notEqual(validateTemplate(bad).length, 0);
+  // The reader keeps the key; the runner resolves it.
+  const wb = [careers([]), students([['Ana', '1', ' Derecho ', '']])];
+  assert.equal(extractRows(t, wb).tasks[1].rows[0].values.idCarrera, 'Derecho');
+  // Round trip: the design holds one block, the template the lookup again.
+  const d = templateToDesign(t);
+  assert.equal(d.processors[0].kind, 'lookup');
+  const back = designToTemplate(d, { editor: false });
+  assert.equal(back.specVersion, '1.2');
+  assert.deepEqual(back.execution.tasks[1].mappings[2], t.execution.tasks[1].mappings[2]);
+  // Order: the looked-up table must be filled first.
+  const d2 = templateToDesign(t);
+  d2.tasks.reverse();
+  const warn = designDiagnostics(d2, shop(), null).map((x) => x.code);
+  assert.ok(warn.includes('LOOKUP_ORDER'));
+  assert.ok(!designDiagnostics(d, shop(), null).some((x) => x.code === 'LOOKUP_ORDER'));
+  // The value to look for must be a primary key of its table.
+  const pk = structuredClone(d);
+  Object.assign(pk.processors[0], { schema: 'public', table: 'customer', matchColumn: 'email', valueColumn: 'id' });
+  assert.ok(designDiagnostics(pk, shop(), null).some((x) => x.code === 'LOOKUP_NOT_PK'));
+  pk.processors[0].matchColumn = 'id';
+  assert.ok(!designDiagnostics(pk, shop(), null).some((x) => x.code === 'LOOKUP_NOT_PK' || x.code === 'LOOKUP_TABLE'));
+  const empty = newDesign();
+  empty.processors.push(newLookup({ id: 'l1' }));
+  assert.ok(designDiagnostics(empty, null, null).some((x) => x.code === 'LOOKUP_NO_INPUT'));
+});
+
+test('inserted keys: a column fed by what an earlier task returned, version 1.3', () => {
+  const t = clone(TEMPLATE);
+  t.specVersion = '1.3';
+  // Both tasks read the Carreras sheet; the second takes the key the first inserted.
+  t.execution.tasks[1].sourceId = 'srcCarreras';
+  t.execution.tasks[1].mappings = [
+    { source: { mode: 'column', column: 'D' }, targetColumn: 'nombre' },
+    { source: { mode: 'inserted', taskId: 'insertCarreras', column: 'idCarrera' }, targetColumn: 'carreraId' },
+  ];
+  assert.deepEqual(validateTemplate(t), []);
+  const wb = [careers([['1', 'Derecho']]), students([])];
+  const run = extractRows(t, wb);
+  assert.deepEqual(run.tasks[1].rows[0].values, { nombre: 'Derecho', carreraId: null });
+  assert.deepEqual(run.tasks[1].inserted, { carreraId: 'insertCarreras.idCarrera' });
+  const back = designToTemplate(templateToDesign(t), { editor: false });
+  assert.equal(back.specVersion, '1.3');
+  assert.deepEqual(back.execution.tasks[1].mappings[1], t.execution.tasks[1].mappings[1]);
+  // Only earlier tasks, and the same source.
+  const later = clone(t);
+  later.execution.tasks[0].order = 2;
+  later.execution.tasks[1].order = 1;
+  assert.match(validateTemplate(later).join(), /runs after it/);
+  const other = clone(t);
+  other.execution.tasks[1].sourceId = 'srcAlumnos';
+  other.execution.tasks[1].mappings[0] = { source: { mode: 'header', name: 'Nombre' }, targetColumn: 'nombre' };
+  assert.match(validateTemplate(other).join(), /another source/);
+  // A task may have no worksheet column at all: it inserts one row per row of the task whose key it uses.
+  const only = clone(t);
+  only.execution.tasks[1].mappings = [t.execution.tasks[1].mappings[1], { source: { mode: 'parameter', name: 'estado' }, targetColumn: 'estado' }];
+  only.parameters = [{ name: 'estado', default: 'nuevo', source: { type: 'table', schema: 'public', table: 'estados', valueColumn: 'id' } }];
+  assert.deepEqual(validateTemplate(only), []);
+  const two = [careers([['1', 'Derecho'], [], ['3', 'Física']]), students([])];
+  const rows = extractRows(only, two).tasks[1].rows;
+  assert.deepEqual(rows.map((r) => [r.row, r.values.estado]), [[5, 'nuevo'], [7, 'nuevo']]);
+  const none = clone(only);
+  none.execution.tasks[1].mappings = [only.execution.tasks[1].mappings[1]];
+  none.execution.tasks[1].mappings[0] = { source: { mode: 'parameter', name: 'estado' }, targetColumn: 'estado' };
+  assert.match(validateTemplate(none).join(), /needs at least one column of the worksheet/);
+});
+
+test('inserted keys: diagnostics and insertion order', () => {
+  const schema = shop();
+  const d = newDesign();
+  d.templateId = 'master';
+  d.sources.push(newSource({ id: 's1', sheet: { mode: 'name', value: 'Hoja' }, columns: [{ letter: 'A', label: 'Email' }, { letter: 'B', label: 'Estado' }] }));
+  const parent = newTask('public', 'customer', { id: 'parent', sourceId: 's1' });
+  parent.mappings.push({ id: 'm1', letter: 'A', label: 'Email', targetColumn: 'email', blank: 'null', trim: false });
+  const child = newTask('shop', 'orders', { id: 'child', sourceId: 's1' });
+  child.mappings.push(
+    { id: 'm2', letter: 'B', label: 'Estado', targetColumn: 'status', blank: 'null', trim: false },
+    { id: 'm3', letter: '', label: '', inserted: { taskId: 'parent', column: 'id' }, targetColumn: 'customer_id', blank: 'null', trim: false },
+  );
+  d.tasks.push(child, parent);
+  const codes = (x) => designDiagnostics(x, schema, null).map((y) => y.code);
+  assert.ok(codes(d).includes('INSERTED_ORDER'));
+  assert.deepEqual(suggestOrder(d, schema).order, ['parent', 'child']);
+  d.tasks.reverse();
+  assert.ok(!codes(d).includes('INSERTED_ORDER'));
+  d.tasks[1].mappings[1].inserted.column = 'email';
+  assert.ok(codes(d).includes('INSERTED_NOT_PK'));
+  d.tasks[1].mappings[1].inserted.column = 'id';
+  d.tasks[0].sourceId = null;
+  assert.ok(codes(d).includes('INSERTED_SOURCE'));
+});
+
+test('node sizes are kept in the editor section only', () => {
+  const t = clone(TEMPLATE);
+  t.editor.nodes.srcCarreras = { x: 200, y: 100, w: 300, h: 180 };
+  const d = templateToDesign(t);
+  assert.deepEqual([d.sources[0].w, d.sources[0].h, d.tasks[0].w], [300, 180, undefined]);
+  const back = designToTemplate(d);
+  assert.deepEqual(back.editor.nodes.srcCarreras, { x: 200, y: 100, w: 300, h: 180 });
+  assert.deepEqual(back.editor.nodes.insertCarreras, { x: back.editor.nodes.insertCarreras.x, y: back.editor.nodes.insertCarreras.y });
+  assert.equal(JSON.stringify(designToTemplate(d, { editor: false })).includes('300'), false);
+});
+
+test('case blocks: upper or lower case for a string or for each element of a list, version 1.4', () => {
+  assert.equal(changeCase('Ana Pérez', 'upper'), 'ANA PÉREZ');
+  assert.deepEqual(changeCase(['A', 'b'], 'lower'), ['a', 'b']);
+  const t = clone(TEMPLATE);
+  t.specVersion = '1.4';
+  t.execution.tasks[1].mappings.push({ source: { mode: 'header', name: 'Extra' }, targetColumn: 'tags', processor: { type: 'case', mode: 'upper', split: { delimiter: '|' } } });
+  t.execution.tasks[1].mappings.push({ source: { mode: 'header', name: 'Extra' }, targetColumn: 'tag', processor: { type: 'case', mode: 'lower' } });
+  assert.deepEqual(validateTemplate(t), []);
+  const bad = clone(t);
+  bad.execution.tasks[1].mappings[bad.execution.tasks[1].mappings.length - 1].processor.mode = 'title';
+  assert.notEqual(validateTemplate(bad).length, 0);
+  assert.equal(designToTemplate(templateToDesign(t), { editor: false }).specVersion, '1.4');
+  const d = templateToDesign(t);
+  assert.deepEqual(d.processors.map((p) => [p.kind, p.mode, p.list]), [['case', 'upper', true], ['case', 'lower', false]]);
+  assert.deepEqual(designToTemplate(d, { editor: false }).execution.tasks[1].mappings.slice(-2), t.execution.tasks[1].mappings.slice(-2).map((m, i) => (i ? m : { ...m, processor: { type: 'case', mode: 'upper', split: { delimiter: '|', trim: true, dropEmpty: true } } })));
+  assert.equal(newCase().mode, 'upper');
+});
+
+test('table dropdown filter, version 1.4', () => {
+  const d = newDesign();
+  d.processors.push(newChoice({ id: 'c1', name: 'campus', schema: 'public', table: 'campus', valueColumn: 'id', filterColumn: 'active', filterValue: 'true' }));
+  d.processors.push(newChoice({ id: 'c2', name: 'x', table: 't', valueColumn: 'id', filterColumn: 'active', filterValue: '' }));
+  const s = newSource({ id: 's1', sheet: { mode: 'name', value: 'Hoja1', headers: null } });
+  const task = newTask('public', 'a', { id: 't1', sourceId: 's1' });
+  task.mappings.push({ id: 'm1', letter: 'A', label: 'A', targetColumn: 'c', blank: 'null', trim: false });
+  task.mappings.push({ id: 'm2', letter: '', label: '', via: 'c1', targetColumn: 'campus', blank: 'null', trim: false });
+  d.sources.push(s);
+  d.tasks.push(task);
+  const t = designToTemplate(d, { editor: false });
+  assert.deepEqual(t.parameters[0].source.filter, { column: 'active', value: 'true' });
+  assert.equal(t.specVersion, '1.4');
+  assert.deepEqual(validateTemplate(t), []);
+  const back = templateToDesign(t).processors.find((p) => p.kind === 'choice');
+  assert.deepEqual([back.filterColumn, back.filterValue], ['active', 'true']);
+  assert.ok(designDiagnostics(d, null, null).some((x) => x.code === 'PARAM_FILTER'));
+});
+
+test('table dropdown filter that follows another dropdown', () => {
+  const d = newDesign();
+  d.processors.push(newChoice({ id: 'c1', name: 'campus', table: 'campus', valueColumn: 'id', value: '7' }));
+  d.processors.push(newChoice({ id: 'c2', name: 'career', table: 'career', valueColumn: 'id', filterColumn: 'campusId', filterParam: 'campus' }));
+  d.sources.push(newSource({ id: 's1', sheet: { mode: 'name', value: 'Hoja1', headers: null } }));
+  const task = newTask('public', 'a', { id: 't1', sourceId: 's1' });
+  task.mappings.push({ id: 'm1', letter: 'A', label: 'A', targetColumn: 'c', blank: 'null', trim: false });
+  task.mappings.push({ id: 'm2', letter: '', label: '', via: 'c2', targetColumn: 'careerId', blank: 'null', trim: false });
+  d.tasks.push(task);
+  const t = designToTemplate(d, { editor: false });
+  assert.deepEqual(t.parameters.map((p) => p.name).sort(), ['campus', 'career']);
+  assert.deepEqual(t.parameters.find((p) => p.name === 'career').source.filter, { column: 'campusId', parameter: 'campus' });
+  assert.deepEqual(validateTemplate(t), []);
+  assert.equal(templateToDesign(t).processors.find((p) => p.name === 'career').filterParam, 'campus');
+  assert.equal(designDiagnostics(d, null, null).some((x) => x.code === 'PARAM_FILTER'), false);
+  const both = clone(t);
+  both.parameters.find((p) => p.name === 'career').source.filter.value = 'x';
+  assert.match(validateTemplate(both).join(), /exactly one/);
+  const loop = clone(t);
+  loop.parameters.find((p) => p.name === 'campus').source.filter = { column: 'x', parameter: 'career' };
+  assert.match(validateTemplate(loop).join(), /leads back/);
+  d.processors[0].filterColumn = 'x';
+  d.processors[0].filterParam = 'career';
+  assert.ok(designDiagnostics(d, null, null).some((x) => x.code === 'PARAM_FILTER'));
+});
+
+test('a split block can follow a case block', () => {
+  const t = clone(TEMPLATE);
+  t.specVersion = '1.4';
+  t.execution.tasks[1].mappings.push({ source: { mode: 'header', name: 'Extra' }, targetColumn: 'tags', processor: { type: 'split', delimiter: '|', case: 'upper' } });
+  assert.deepEqual(validateTemplate(t), []);
+  const d = templateToDesign(t);
+  assert.deepEqual(d.processors.map((p) => p.kind), ['case', 'split']);
+  assert.deepEqual(d.processors[1].input, { procId: d.processors[0].id });
+  assert.equal(blockSource(d, d.processors[1]).label, 'Extra');
+  assert.equal(designDiagnostics(d, null, null).some((x) => x.code.startsWith('SPLIT_')), false);
+  const back = designToTemplate(d, { editor: false });
+  assert.deepEqual(back.execution.tasks[1].mappings.at(-1).processor, { type: 'split', delimiter: '|', trim: true, dropEmpty: true, case: 'upper' });
+  assert.equal(back.specVersion, '1.4');
+  d.processors[0].list = true;
+  assert.ok(designDiagnostics(d, null, null).some((x) => x.code === 'SPLIT_CHAIN'));
 });

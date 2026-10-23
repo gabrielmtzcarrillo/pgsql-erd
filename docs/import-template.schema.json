@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "urn:pgsql-erd:excel-pg-insert-template:1.0",
+  "$id": "urn:pgsql-erd:excel-pg-insert-template:1.4",
   "title": "Excel to PostgreSQL INSERT template",
   "description": "Maps worksheets of any structurally compatible .xlsx workbook onto ordered INSERT tasks. Version 1.x; a runner must reject any other major version.",
   "type": "object",
@@ -246,6 +246,91 @@
         }
       }
     },
+    "parameters": {
+      "type": "array",
+      "description": "Values the person running the import picks (1.1), used by mappings with source.mode \"parameter\".",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "source"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+            "maxLength": 64
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "default": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "Value selected at first; the runner may override it."
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "type",
+              "schema",
+              "table",
+              "valueColumn"
+            ],
+            "description": "A dropdown of the rows of a table: the value of valueColumn is used, labelColumn is what the person reads and searches.",
+            "properties": {
+              "type": {
+                "const": "table"
+              },
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63
+              },
+              "table": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63
+              },
+              "valueColumn": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63
+              },
+              "labelColumn": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63
+              },
+              "filter": {
+                "type": "object",
+                "required": [
+                  "column"
+                ],
+                "description": "Only the rows whose `column`, as text, equals the value are offered (1.4). The value is either `value` (fixed) or `parameter` (the value picked in another dropdown); give exactly one.",
+                "properties": {
+                  "column": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 63
+                  },
+                  "value": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "parameter": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+                    "maxLength": 64
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "execution": {
       "type": "object",
       "required": [
@@ -353,31 +438,169 @@
                               "maxLength": 256
                             }
                           }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "mode",
+                            "name"
+                          ],
+                          "properties": {
+                            "mode": {
+                              "const": "parameter"
+                            },
+                            "name": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+                              "maxLength": 64
+                            }
+                          },
+                          "description": "A value chosen when the import runs (1.1)."
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "mode",
+                            "taskId",
+                            "column"
+                          ],
+                          "description": "The value of `column` that the INSERT of an earlier task returned (RETURNING) for the same worksheet row (1.3).",
+                          "properties": {
+                            "mode": {
+                              "const": "inserted"
+                            },
+                            "taskId": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+                              "maxLength": 64
+                            },
+                            "column": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 63
+                            }
+                          }
                         }
                       ]
                     },
-                    "targetColumn": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 63
-                    },
-                    "read": {
-                      "enum": [
-                        "text"
-                      ],
-                      "description": "How the cell is read; only text in 1.0."
-                    },
-                    "trim": {
-                      "type": "boolean",
-                      "description": "Trim the cell text. Default false."
-                    },
-                    "blank": {
-                      "enum": [
-                        "null",
-                        "emptyString",
-                        "error"
-                      ],
-                      "description": "Blank cell: null (default), emptyString or error."
+                    "processor": {
+                      "description": "What happens to the cell text before it is inserted (1.1). Not for parameters.",
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "type"
+                          ],
+                          "description": "split: the text as an array of strings.",
+                          "properties": {
+                            "type": {
+                              "const": "split"
+                            },
+                            "delimiter": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 8,
+                              "description": "Literal text, default \",\"."
+                            },
+                            "trim": {
+                              "type": "boolean",
+                              "description": "Trim each element. Default true."
+                            },
+                            "dropEmpty": {
+                              "type": "boolean",
+                              "description": "Drop empty elements. Default true."
+                            },
+                            "case": {
+                              "enum": [
+                                "upper",
+                                "lower"
+                              ],
+                              "description": "Convert the text to upper or lower case before cutting it (1.4); what a case block feeding the split does."
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "mode"
+                          ],
+                          "description": "case (1.4): the text in upper or lower case. With `split` the text is first cut like the split processor and every element is converted: the result is an array.",
+                          "properties": {
+                            "type": {
+                              "const": "case"
+                            },
+                            "mode": {
+                              "enum": [
+                                "upper",
+                                "lower"
+                              ]
+                            },
+                            "split": {
+                              "type": "object",
+                              "properties": {
+                                "delimiter": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 8,
+                                  "description": "Literal text, default \",\"."
+                                },
+                                "trim": {
+                                  "type": "boolean",
+                                  "description": "Trim each element. Default true."
+                                },
+                                "dropEmpty": {
+                                  "type": "boolean",
+                                  "description": "Drop empty elements. Default true."
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "schema",
+                            "table",
+                            "matchColumn",
+                            "valueColumn"
+                          ],
+                          "description": "lookup (1.2): the value of valueColumn in the row of the table whose matchColumn equals the cell text, found when the task runs.",
+                          "properties": {
+                            "type": {
+                              "const": "lookup"
+                            },
+                            "schema": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 63
+                            },
+                            "table": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 63
+                            },
+                            "matchColumn": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 63
+                            },
+                            "valueColumn": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 63
+                            },
+                            "onMissing": {
+                              "enum": [
+                                "error",
+                                "null"
+                              ],
+                              "description": "No row matches: error (default) or null."
+                            }
+                          }
+                        }
+                      ]
                     }
                   }
                 }

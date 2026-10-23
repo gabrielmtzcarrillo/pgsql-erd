@@ -2179,7 +2179,9 @@ function saveTab(as) {
 
 const commands = {
   new: () => newDiagram(),
+  // On an Import tab, Open picks an import template instead of a diagram.
   async open() {
+    if (tabs.kind(tabs.current()) === 'import') return importDesigner.commands['import-open']();
     await host.openDialog();
   },
   save: () => saveTab(false),

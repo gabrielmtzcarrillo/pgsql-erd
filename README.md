@@ -385,11 +385,27 @@ the database explorer, a mapping canvas and a read-only preview of an example wo
   from an Excel column's dot to a table column to map it; **Map by name** connects the matching names.
 - **Insertion order** lists the tasks: reorder them by dragging or with the arrows, or **Suggest order** to put
   referenced tables first (cycles are reported, never broken silently). Task 1 inserts all its rows, then task 2.
+- **Processor blocks** (toolbar) sit between the worksheet and a table column. **Split block** cuts a cell at a
+  separator (a comma by default) into an array for a `text[]`-style column. **Table dropdown** gives a column a
+  value picked from the rows of a table, with a search box, when the import runs; the default chosen in the
+  designer is saved in the template. **Lookup block** finds a foreign key from a value of the worksheet: it
+  looks the text up in a table (match column, return column) when the import runs, after the earlier tasks, so
+  it finds the ids that were just generated. On the table nodes, **primary key columns have a dot on their right**: drag it to a column of a later task
+  that reads the same worksheet to use the key the INSERT returns (`inserted.<primary key>`, `RETURNING` in
+  PostgreSQL), so child rows get the id generated for their parent row. The parent task is moved before the child
+  if needed. Arrows on the connections show the direction of the data.
 - **Problems** checks the design against the example workbook and the database; **Preview** shows the rows each
-  task would insert. Nothing is ever written to the database.
-- **Export template…** saves a versioned `.import.json` with no sample data, credentials or paths. **Open
-  template…** brings one back with its mappings, order and layout. Undo/redo (Ctrl+Z / Ctrl+Y), zoom
-  (Ctrl + wheel) and Delete work on the canvas.
+  task would insert; nothing is written to the database by either.
+- **Run** (toolbar) applies the design to the connected database with the rows of the open workbook, task by
+  task in the insertion order. It needs a connection whose policy allows writes, shows how many rows each task
+  will insert and asks first; the result tab shows the rows inserted per task or the failing task and worksheet
+  row. With "all tasks together" a failure rolls everything back, and with "one per task" the earlier tasks stay
+  committed. Every run is recorded in the audit log.
+- **Save** / **Save As…** in the ribbon write a versioned `.import.json` with no sample data, credentials or
+  paths (after checking the design). **Open** brings one back with its mappings, order and layout. Undo/redo (Ctrl+Z / Ctrl+Y), zoom
+  (Ctrl + wheel) and Delete work on the canvas. Nodes behave like diagram tables: move them by the title bar and
+  resize them from the grip in the bottom right corner (double-click it to fit the content). Click a connection to
+  select it, then press Del or its × button to remove it.
 
 The template is the product: a server or CLI can run it against any structurally compatible workbook using the
 same code (`src/shared/import-template.js`). It describes plain INSERTs only: values are copied as text, with no

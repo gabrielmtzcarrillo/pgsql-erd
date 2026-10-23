@@ -59,6 +59,9 @@ contextBridge.exposeInMainWorld('erdHost', {
     distinct: (req) => ipcRenderer.invoke('data-distinct', req),
     save: (req) => ipcRenderer.invoke('data-save', req),
   },
+  import: {
+    run: (req) => ipcRenderer.invoke('import-run', req),
+  },
   query: {
     run: (req) => ipcRenderer.invoke('query-run', req),
   },

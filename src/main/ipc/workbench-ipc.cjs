@@ -4,7 +4,8 @@
 // webContents id; the renderer never names another window's resources.
 
 const path = require('node:path');
-const { loadShared } = require('../shared.cjs');
+const { pathToFileURL } = require('node:url');
+const { loadShared, sharedDir } = require('../shared.cjs');
 const db = require('../db.cjs');
 const { ConnectionManager } = require('../database/connection-manager.cjs');
 const { SavedInstances } = require('../database/saved-instances.cjs');
@@ -14,6 +15,7 @@ const { ProviderManager } = require('../ai/provider-manager.cjs');
 const { Assistant } = require('../ai/assistant.cjs');
 const { AuditLog } = require('../audit.cjs');
 const dataBrowser = require('../database/data-browser.cjs');
+const { runImport } = require('../database/import-runner.cjs');
 const { runQuery } = require('../database/query-runner.cjs');
 const { AgeService } = require('../database/age.cjs');
 
@@ -202,6 +204,34 @@ function registerWorkbench({ ipcMain, app, safeStorage, shell }) {
       deleted: r.deleted,
     });
     return r;
+  });
+  // Import designer: applies an import template's INSERTs to the connected database, only on
+  // connections whose policy allows writes. The rows were read from the workbook by the page.
+  handle('import-run', async (s, id, _sender, req) => {
+    const session = s.connections.require(id);
+    if (!session.profile.policy.allowWrites) throw new Error('This connection is read-only (see its policy in Database → Connect).');
+    const { validateTemplate } = await import(pathToFileURL(path.join(sharedDir, 'import-template.js')).href);
+    const problems = validateTemplate(req?.template);
+    if (problems.length) throw new Error(`The template is not valid: ${problems[0]}`);
+    const tasks = Array.isArray(req.tasks) ? req.tasks : [];
+    const details = {
+      windowId: id,
+      target: s.connections.describe(session.conn),
+      environment: session.profile.environment,
+      template: req.template.templateId,
+      tasks: tasks.map((t) => `${t.id}:${t.rows?.length ?? 0}`).join(','),
+    };
+    const client = await s.connections.client(id);
+    try {
+      const r = await runImport(client, req.template, tasks);
+      audit.log('import-run', { ...details, inserted: r.total });
+      return r;
+    } catch (err) {
+      audit.log('import-run-failed', { ...details, error: err.message });
+      throw err;
+    } finally {
+      await client.end().catch(() => {});
+    }
   });
   handle('data-tables', async ({ connections, shared }, id) => shared.allTables(await connections.schema(id)).map((t) => t.id));
 
