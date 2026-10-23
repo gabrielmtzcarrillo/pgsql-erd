@@ -35,8 +35,7 @@ async function runImport(client, template, tasks, { timeoutMs = 600000 } = {}) {
   const returned = new Map(); // task id -> Map(worksheet row -> { column: value })
   const found = new Map(); // lookups already made
 
-  const lookup = async (task, m, key) => {
-    const p = m.processor;
+  const lookup = async (task, p, key) => {
     const cacheKey = JSON.stringify([p.schema, p.table, p.matchColumn, p.valueColumn, key]);
     if (found.has(cacheKey)) return found.get(cacheKey);
     const res = await client.query(
@@ -61,7 +60,8 @@ async function runImport(client, template, tasks, { timeoutMs = 600000 } = {}) {
     }
     const v = row.values[m.targetColumn];
     if (v === undefined) return null;
-    if (m.processor?.type === 'lookup' && v !== null) return lookup(task, m, String(v));
+    const last = (m.processors ?? [m.processor]).at(-1);
+    if (last?.type === 'lookup' && v !== null) return lookup(task, last, String(v));
     return v;
   };
 

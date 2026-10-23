@@ -1,4 +1,4 @@
-# Excel → PostgreSQL INSERT template, specification 1.5
+# Excel → PostgreSQL INSERT template, specification 1.7
 
 The Import Designer exports a **template**: a JSON document that tells a runner which worksheets of an Excel
 workbook to read and which `INSERT`s to perform, in which order. The designer is only one way to author it;
@@ -21,9 +21,9 @@ exactly one worksheet, one header row and its mapped columns.
 - `format` must be `"excel-pg-insert-template"`.
 - `specVersion` is `"<major>.<minor>"`. A reader **must reject a version above the one it implements** (another
   major, or a newer minor) and must not guess: new fields can change what a template does, so ignoring them is
-  unsafe. This document is 1.5. A template is written with the lowest version that covers what it uses, so older
+  unsafe. This document is 1.7. A template is written with the lowest version that covers what it uses, so older
   readers still run it. 1.1 adds *processor blocks* (`processor` on mappings, `parameters`, the `parameter`
-  source); 1.2 adds the `lookup` processor; 1.3 adds `inserted` keys; 1.4 adds the `case` processor and the optional `filter` of a table dropdown; 1.5 adds the `map` and `convert` processors.
+  source); 1.2 adds the `lookup` processor; 1.3 adds `inserted` keys; 1.4 adds the `case` processor and the optional `filter` of a table dropdown; 1.5 adds the `map` and `convert` processors; 1.6 adds `processors` (chains); 1.7 adds the `join` and `constant` sources and the `clean`, `extract` and `default` processors.
 - `editor` is presentation only (node positions). Runners **must ignore** it; it never changes behaviour.
 
 ## Document
@@ -112,6 +112,38 @@ separators `/`, `.` or `-`; a two-digit year is 1970-2069) with an optional `HH:
 `YYYY-MM-DD HH:MM:SS`; impossible dates fail. `number` removes spaces, currency symbols and thousands separators
 (`decimal` is `"."` by default or `","`; `(5)` is `-5`). `boolean` reads true/yes/y/1/on/sí as `true` and
 false/no/n/0/off as `false`. Anything else fails with `CONVERT_FAILED`.
+
+**Join (1.7): several columns as one text.** `source: { "mode": "join", "parts": [{ "column": "B" }, { "column": "C" }],
+"separator": " ", "skipBlank": true, "prefix": "", "suffix": "" }` writes the cells of the parts, in order, with
+`separator` between them (default one space). Parts are column letters with a fixed header and `{ "header": "Name" }`
+with a detected one (the same rule as `column` and `header`). With `skipBlank` (default true) blank cells and their
+separator are left out; if every cell is blank the value is blank and follows the mapping's `blank` policy, otherwise
+`prefix` and `suffix` surround the text. The mapping's `trim` applies to each cell. Processors may follow.
+
+**Constant (1.7).** `source: { "mode": "constant", "value": "ALTA" }` inserts the same text in every row. It reads
+nothing from the worksheet, so a task needs another mapping that does, and it cannot have a processor.
+
+**Clean (1.7).** `processor: { "type": "clean", "collapseSpaces": true, "removeControl": true, "removeAccents": false }`:
+`removeControl` (default true) deletes control and zero-width characters and turns a non-breaking space into a space;
+`collapseSpaces` (default true) turns runs of white space into one space and trims the ends; `removeAccents`
+(default false) removes the accents of letters.
+
+**Extract (1.7).** `processor: { "type": "extract", "mode": "substring", "start": 1, "length": 3 }` keeps `length`
+characters from character `start` (counting from 1; no `length` keeps the rest). `{ "type": "extract", "mode":
+"regex", "pattern": "(\d+)-(\d+)", "group": 2, "ignoreCase": false }` keeps capture group `group` (0, the default,
+is the whole match) of the first match of a JavaScript regular expression (at most 500 characters). When there is
+nothing to extract, `otherwise` is `"null"` (default), `"keep"` the text or `"error"` (`EXTRACT_NO_MATCH`). An invalid
+pattern makes the template invalid.
+
+**Default (1.7).** `processor: { "type": "default", "value": "unknown" }`, as the first processor, replaces a blank cell
+by `value` before the `blank` policy is looked at; other cells are untouched.
+
+**Chains (1.6): `processors`.** A mapping may carry `processors`, an array of two or more processors applied in order,
+each to the text the one before gave, instead of a single `processor` (never both). Every processor but the last must
+give text: `case` without `split`, `map` or `convert`. The last may be any processor, including `split` (an array) and
+`lookup`. If a step turns the value into NULL (a `map` with `otherwise` `"null"`) or fails, the rest of the chain is
+skipped for that cell. The designer draws a chain as blocks wired one after the other; a text block's output can feed
+any block that reads an Excel column. A case block followed by a split is still written in the 1.4 form below.
 
 **Split after a case (1.4).** A split processor may carry `"case": "upper"` or `"lower"`: the text is converted first, then cut. The designer draws it as a case block feeding the split block.
 

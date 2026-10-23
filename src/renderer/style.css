@@ -1290,7 +1290,8 @@ dialog.medium { width: min(760px, 94vw); }
 .imp-id-input { width: 120px; }
 .imp-canvas { flex: 1; min-height: 80px; position: relative; overflow: auto; background: var(--canvas); }
 .imp-canvas.grid {
-  background-image: linear-gradient(to right, var(--border) 1px, transparent 1px), linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+  --imp-grid-line: color-mix(in srgb, var(--border) 40%, transparent);
+  background-image: linear-gradient(to right, var(--imp-grid-line) 1px, transparent 1px), linear-gradient(to bottom, var(--imp-grid-line) 1px, transparent 1px);
   background-size: var(--imp-grid, 20px) var(--imp-grid, 20px); background-attachment: local; background-origin: padding-box;
 }
 .imp-canvas.drop-target { outline: 2px dashed var(--accent); outline-offset: -6px; background: var(--accent-soft); }

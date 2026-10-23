@@ -9,7 +9,7 @@ import { parsePgerd } from '../src/renderer/lib/pgerd.js';
 import { schemaFromErd } from '../src/shared/schema-model.js';
 import {
   IMPORT_TEMPLATE_SCHEMA, colLetter, colIndex, normHeader, validateTemplate, resolveSource, extractRows, checkValue,
-  inferHint, splitText, changeCase, mapText, convertText, blockSource, newSplit, newCase, newChoice, newLookup, newDesign, newSource, newTask, designToTemplate, templateToDesign, suggestOrder, designDiagnostics, hasErrors,
+  inferHint, splitText, changeCase, cleanText, extractText, columnRefs, chainOf, mapText, convertText, blockSource, newSplit, newCase, newChoice, newLookup, newDesign, newSource, newTask, designToTemplate, templateToDesign, suggestOrder, designDiagnostics, hasErrors,
 } from '../src/shared/import-template.js';
 import { EXAMPLE_TEMPLATE as TEMPLATE } from './import-template.fixtures.js';
 
@@ -48,7 +48,7 @@ test('unknown major versions, bad structure and inconsistent tasks are refused',
   v2.specVersion = '2.0';
   assert.match(validateTemplate(v2)[0], /Unsupported specVersion/);
   assert.deepEqual(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.1' }), []);
-  assert.match(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.7' })[0], /Unsupported specVersion/);
+  assert.match(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.8' })[0], /Unsupported specVersion/);
   assert.match(validateTemplate({ ...clone(TEMPLATE), format: 'x' })[0], /format/);
   const gap = clone(TEMPLATE);
   gap.execution.tasks[1].order = 3;
@@ -355,7 +355,7 @@ test('lookup blocks: a foreign key found from a value, version 1.2', () => {
   const lookup = { type: 'lookup', schema: 'public', table: 'catCarreras', matchColumn: 'nombre', valueColumn: 'idCarrera', onMissing: 'error' };
   t.execution.tasks[1].mappings[2] = { source: { mode: 'header', name: 'ID Carrera' }, targetColumn: 'idCarrera', trim: true, processor: lookup };
   assert.deepEqual(validateTemplate(t), []);
-  assert.match(validateTemplate({ ...clone(t), specVersion: '1.6' })[0], /Unsupported/);
+  assert.match(validateTemplate({ ...clone(t), specVersion: '1.8' })[0], /Unsupported/);
   const bad = clone(t);
   bad.execution.tasks[1].mappings[2].processor = { type: 'lookup', table: 'x' };
   assert.notEqual(validateTemplate(bad).length, 0);
@@ -538,7 +538,7 @@ test('a split block can follow a case block', () => {
   assert.deepEqual(back.execution.tasks[1].mappings.at(-1).processor, { type: 'split', delimiter: '|', trim: true, dropEmpty: true, case: 'upper' });
   assert.equal(back.specVersion, '1.4');
   d.processors[0].list = true;
-  assert.ok(designDiagnostics(d, null, null).some((x) => x.code === 'SPLIT_CHAIN'));
+  assert.ok(designDiagnostics(d, null, null).some((x) => x.code === 'CHAIN_INPUT'));
 });
 
 test('replace and convert blocks, version 1.5', () => {
@@ -576,4 +576,90 @@ test('replace and convert blocks, version 1.5', () => {
   assert.notEqual(validateTemplate(bad).length, 0);
   d.processors[0].pairs = [{ from: '', to: '' }];
   assert.ok(designDiagnostics(d, null, null).some((x) => x.code === 'MAP_EMPTY'));
+});
+
+test('string blocks can be chained, version 1.6', () => {
+  const t = clone(TEMPLATE);
+  t.specVersion = '1.6';
+  const chain = [
+    { type: 'map', pairs: [{ from: 'x', to: 'a b' }], otherwise: 'keep' },
+    { type: 'case', mode: 'upper' },
+    { type: 'split', delimiter: ' ' },
+  ];
+  t.execution.tasks[1].mappings.push({ source: { mode: 'header', name: 'Extra' }, targetColumn: 'tags', processors: chain });
+  assert.deepEqual(validateTemplate(t), []);
+  const wb = [careers([]), students([['Ana', '1', '2', 'x'], ['Bo', '2', '3', 'c d']])];
+  assert.deepEqual(extractRows(t, wb).tasks[1].rows.map((r) => r.values.tags), [['A', 'B'], ['C', 'D']]);
+
+  // The designer holds one block per step, each reading the one before.
+  const d = templateToDesign(t);
+  assert.deepEqual(d.processors.map((p) => p.kind), ['map', 'case', 'split']);
+  assert.ok(d.processors[0].input.sourceId && d.processors[1].input.procId === d.processors[0].id && d.processors[2].input.procId === d.processors[1].id);
+  assert.equal(blockSource(d, d.processors[2]).label, 'Extra');
+  assert.deepEqual(chainOf(d, d.processors[2]).map((p) => p.kind), ['map', 'case', 'split']);
+  const back = designToTemplate(d, { editor: false });
+  assert.equal(back.specVersion, '1.6');
+  assert.deepEqual(back.execution.tasks[1].mappings.at(-1).processors.map((x) => x.type), ['map', 'case', 'split']);
+  assert.equal(designDiagnostics(d, null, null).some((x) => x.code === 'CHAIN_INPUT'), false);
+
+  // A step that makes an array or a key must be last, and both spellings are not allowed together.
+  const bad = clone(t);
+  bad.execution.tasks[1].mappings.at(-1).processors = [chain[2], chain[1]];
+  assert.match(validateTemplate(bad).join(), /no other processor can follow/);
+  const both = clone(t);
+  both.execution.tasks[1].mappings.at(-1).processor = chain[1];
+  assert.match(validateTemplate(both).join(), /both processor and processors/);
+  // A failing step stops the chain for that cell.
+  const strict = clone(t);
+  strict.execution.tasks[1].mappings.at(-1).processors[0].otherwise = 'error';
+  const run = extractRows(strict, wb);
+  assert.equal(run.errors[0].code, 'MAP_NO_MATCH');
+});
+
+test('join, constant, clean, extract and default, version 1.7', () => {
+  assert.equal(cleanText('  Ana   Pérez​ ', { removeAccents: true }), 'Ana Perez');
+  assert.equal(extractText('ABCDE', { mode: 'substring', start: 2, length: 3 }).value, 'BCD');
+  assert.equal(extractText('AB', { mode: 'substring', start: 5 }).value, null);
+  assert.equal(extractText('Tel: 555-1234', { mode: 'regex', pattern: '(\\d+)-(\\d+)', group: 2 }).value, '1234');
+  assert.equal(extractText('none', { mode: 'regex', pattern: '\\d+', otherwise: 'keep' }).value, 'none');
+  assert.equal(extractText('none', { mode: 'regex', pattern: '\\d+', otherwise: 'error' }).ok, false);
+
+  const t = clone(TEMPLATE);
+  t.specVersion = '1.7';
+  const ms = t.execution.tasks[1].mappings;
+  const added = [
+    { source: { mode: 'join', parts: [{ header: 'Nombre' }, { header: 'Matrícula' }], separator: ' - ', prefix: '[', suffix: ']' }, targetColumn: 'etiqueta', processor: { type: 'case', mode: 'upper' } },
+    { source: { mode: 'constant', value: 'ALTA' }, targetColumn: 'estado' },
+    { source: { mode: 'header', name: 'Extra' }, targetColumn: 'nota', processors: [{ type: 'default', value: 'sin nota' }, { type: 'clean', collapseSpaces: true, removeControl: true, removeAccents: false }] },
+    { source: { mode: 'header', name: 'Extra' }, targetColumn: 'num', processor: { type: 'extract', mode: 'regex', pattern: '\\d+', group: 0, ignoreCase: false, otherwise: 'null' } },
+  ];
+  ms.push(...added);
+  assert.deepEqual(validateTemplate(t), []);
+  const wb = [careers([]), students([['Ana', 'A1', '1', ' hola   mundo 42'], ['Bo', '', '2', '']])];
+  const rows = extractRows(t, wb).tasks[1].rows.map((r) => r.values);
+  assert.equal(rows[0].etiqueta, '[ANA - A1]');
+  assert.equal(rows[1].etiqueta, '[BO]');
+  assert.equal(rows[0].estado, 'ALTA');
+  assert.deepEqual([rows[0].nota, rows[1].nota], ['hola mundo 42', 'sin nota']);
+  assert.deepEqual([rows[0].num, rows[1].num], ['42', null]);
+
+  // The designer holds a join block with its inputs, a constant block and the chains.
+  const d = templateToDesign(t);
+  assert.deepEqual(d.processors.map((p) => p.kind), ['join', 'case', 'constant', 'default', 'clean', 'extract']);
+  assert.equal(d.processors[0].inputs.length, 2);
+  assert.equal(designDiagnostics(d, null, null).some((x) => x.level === 'error' && /BLOCK_NO_INPUT|JOIN|CHAIN|DEFAULT|EXTRACT/.test(x.code)), false);
+  const back = designToTemplate(d, { editor: false });
+  assert.equal(back.specVersion, '1.7');
+  assert.deepEqual(back.execution.tasks[1].mappings.slice(-4), added.map((m, i) => (i === 0 ? { ...m, source: { ...m.source } } : m)));
+  assert.deepEqual(columnRefs(d, d.sources.find((x) => x.id === 'srcAlumnos')).map((c) => c.label).filter((l) => l === 'Nombre' || l === 'Matrícula').length, 4);
+
+  const bad = clone(t);
+  bad.execution.tasks[1].mappings.at(-1).processor.pattern = '(';
+  assert.match(validateTemplate(bad).join(), /not a valid regular expression/);
+  const late = clone(t);
+  late.execution.tasks[1].mappings.at(-2).processors = [{ type: 'clean' }, { type: 'default', value: 'x' }];
+  assert.match(validateTemplate(late).join(), /must be the first/);
+  const fixed = clone(t);
+  fixed.execution.tasks[1].mappings.at(-3).processor = { type: 'clean' };
+  assert.match(validateTemplate(fixed).join(), /constant cannot have a processor/);
 });

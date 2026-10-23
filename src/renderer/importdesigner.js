@@ -17,7 +17,7 @@ import { schemaFromErd, findTable, allTables } from '../shared/schema-model.js';
 import {
   colLetter, colIndex, normHeader, newDesign, newSource, newTask, newId, designToTemplate, templateToDesign,
   designDiagnostics, hasErrors, suggestOrder, resolveSource, extractRows, checkSample, inferHint, validateTemplate,
-  newSplit, newCase, newMap, newConvert, blockSource, newChoice, newLookup, hasInput, procOf, mappingRef, columnRefs,
+  newSplit, newCase, newMap, newConvert, newJoin, newConstant, newClean, newExtract, newDefault, blockSource, isTextBlock, isFixedBlock, chainOf, newChoice, newLookup, hasInput, procOf, mappingRef, columnRefs,
 } from '../shared/import-template.js';
 import { iconElement, decorateButtons } from './icons.js';
 import { tr, trn } from '../shared/i18n.js';
@@ -161,7 +161,10 @@ export function setupImportDesigner(ctx) {
       for (const task of T.design.tasks) {
         if (task.sourceId === src.id) for (const m of task.mappings) if (!m.via && !m.inserted) refresh(m);
       }
-      for (const p of T.design.processors ?? []) if (hasInput(p) && p.input?.sourceId === src.id) refresh(p.input);
+      for (const p of T.design.processors ?? []) {
+        if (hasInput(p) && p.input?.sourceId === src.id) refresh(p.input);
+        for (const i of p.inputs ?? []) if (i.sourceId === src.id) refresh(i);
+      }
     }
   }
 
@@ -222,7 +225,10 @@ export function setupImportDesigner(ctx) {
         t.sourceId = null;
         t.mappings = [];
       }
-      for (const p of d.processors ?? []) if (hasInput(p) && p.input?.sourceId === id) p.input = null;
+      for (const p of d.processors ?? []) {
+        if (hasInput(p) && p.input?.sourceId === id) p.input = null;
+        if (p.inputs) p.inputs = p.inputs.filter((i) => i.sourceId !== id);
+      }
     });
     if (T.sel?.id === id) T.sel = null;
   }
@@ -239,6 +245,11 @@ export function setupImportDesigner(ctx) {
     if (kind === 'split') p = newSplit(pos);
     else if (kind === 'case') p = newCase(pos);
     else if (kind === 'map') p = newMap(pos);
+    else if (kind === 'join') p = newJoin(pos);
+    else if (kind === 'constant') p = newConstant(pos);
+    else if (kind === 'clean') p = newClean(pos);
+    else if (kind === 'extract') p = newExtract(pos);
+    else if (kind === 'default') p = newDefault(pos);
     else if (kind === 'convert') p = newConvert(pos);
     else if (kind === 'lookup') p = newLookup(pos);
     else {
@@ -299,16 +310,25 @@ export function setupImportDesigner(ctx) {
     if (src.header.mode === 'detect' && (!col.label || src.columns.filter((c) => normHeader(c.label) === normHeader(col.label)).length > 1)) {
       return status(tr('That header is blank or repeated, so it cannot be found by name.'));
     }
+    const target = procOf(T.design, procId);
+    if (target?.kind === 'join') {
+      if (target.inputs.length && target.inputs[0].sourceId !== sourceId) return status(tr('A join block reads the columns of one worksheet.'));
+      if (target.inputs.some((i) => i.letter === col.letter && i.label === col.label)) return;
+      setBlock(procId, (p) => p.inputs.push({ sourceId, letter: col.letter, label: col.label }));
+      select({ type: 'proc', id: procId });
+      return;
+    }
     setBlock(procId, (p) => (p.input = { sourceId, letter: col.letter, label: col.label }));
     select({ type: 'proc', id: procId });
   }
 
-  // The text a case block gives feeds a split block.
+  // The text a block gives feeds another block.
   function connectBlockInput(fromId, procId) {
     const from = procOf(T.design, fromId);
     const to = procOf(T.design, procId);
-    if (!from || !to || to.kind !== 'split') return status(tr('Only a split block can take its text from a case block.'));
-    if (from.kind !== 'case' || from.list) return status(tr('Only a case block that gives text (List off) can feed a split block.'));
+    if (!from || !to || !hasInput(to) || to.kind === 'join') return status(tr('Only a block that reads an Excel column can take its text from another block.'));
+    if (!isTextBlock(from)) return status(tr('Only a block that gives text (a case block with List off, a replace or a convert block) can feed another block.'));
+    if (chainOf(T.design, from).includes(to)) return status(tr('A block cannot take its text from itself or from a block that already depends on it.'));
     setBlock(procId, (p) => (p.input = { procId: fromId }));
     select({ type: 'proc', id: procId });
   }
@@ -551,8 +571,20 @@ export function setupImportDesigner(ctx) {
 
   // Processor blocks: a split (text -> array) and a table dropdown.
   // What a block reads: an Excel column, or the text of the case block before it.
-  const inLabel = (p, none) => (p.input?.procId ? tr('Text from the case block') : p.input?.sourceId ? `${p.input.letter} ${p.input.label}`.trim() : none);
-  const blockTitle = (p) => (p.kind === 'lookup' ? tr('Look up a foreign key') : p.kind === 'case' ? tr('Change the case') : p.kind === 'map' ? tr('Replace values') : p.kind === 'convert' ? tr('Convert the type') : tr('Split into an array'));
+  const inLabel = (p, none) => (p.input?.procId ? tr('Text from the previous block') : p.input?.sourceId ? `${p.input.letter} ${p.input.label}`.trim() : none);
+  const blockTitle = (p) => ({
+    lookup: tr('Look up a foreign key'),
+    case: tr('Change the case'),
+    map: tr('Replace values'),
+    convert: tr('Convert the type'),
+    join: tr('Join columns'),
+    constant: tr('Fixed value'),
+    clean: tr('Clean the text'),
+    extract: tr('Extract part of the text'),
+    default: tr('Fill blanks'),
+  }[p.kind] ?? tr('Split into an array'));
+  const BLOCK_ICON = { split: 'block-split', case: 'block-case', map: 'block-map', convert: 'block-convert', join: 'block-join', constant: 'block-constant', clean: 'block-clean', extract: 'block-extract', default: 'block-default' };
+  const OUT_LABEL = () => ({ map: tr('Replaced text'), convert: tr('Converted value'), clean: tr('Clean text'), extract: tr('Extracted text'), default: tr('Text with the default') });
 
   function procNode(p) {
     const sel = T.sel?.type === 'proc' && T.sel.id === p.id;
@@ -564,7 +596,7 @@ export function setupImportDesigner(ctx) {
     const check = (label, value, on, title) => h('label', { class: 'check', title }, [h('input', { type: 'checkbox', checked: !!value, onchange: (e) => on(e.target.checked) }), label]);
     if (p.kind === 'split') {
       node.append(
-        nodeHead(p, 'toggle-sql', tr('Split into an array'), () => removeProcessor(p.id)),
+        nodeHead(p, 'block-split', tr('Split into an array'), () => removeProcessor(p.id)),
         h('div', { class: 'imp-cols' }, [
           h('div', { class: 'imp-col proc-in', title: inLabel(p, tr('Drop an Excel column here')) }, [
             h('span', { class: 'imp-port in' }),
@@ -580,10 +612,62 @@ export function setupImportDesigner(ctx) {
       );
       return withGrip(node, p);
     }
-    if (p.kind === 'map' || p.kind === 'convert') {
+    if (p.kind === 'join') {
+      const rows = p.inputs.map((i, n) => h('div', { class: 'imp-col proc-in', 'data-i': n, title: `${i.letter} ${i.label}`.trim() }, [
+        h('span', { class: 'imp-port in' }),
+        h('span', { class: 'imp-label' }, `${i.letter} ${i.label}`.trim()),
+        h('button', { type: 'button', class: 'imp-remove', icon: 'close', title: tr('Remove'), onclick: () => setBlock(p.id, (x) => x.inputs.splice(n, 1)) }),
+      ]));
+      rows.push(h('div', { class: 'imp-col proc-in', title: tr('Drop an Excel column here') }, [h('span', { class: 'imp-port in' }), h('span', { class: 'imp-label muted' }, p.inputs.length ? tr('Drop another Excel column') : tr('Drop an Excel column here'))]));
+      node.append(
+        nodeHead(p, 'block-join', blockTitle(p), () => removeProcessor(p.id)),
+        h('div', { class: 'imp-cols' }, [...rows, h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, tr('Joined text')), out])]),
+        h('div', { class: 'imp-procform choice' }, [
+          h('label', { title: tr('Written between the columns.') }, [tr('Separator'), input(p.separator, (v) => setBlock(p.id, (x) => (x.separator = v)), 64)]),
+          h('label', { title: tr('Written before the joined text.') }, [tr('Before'), input(p.prefix, (v) => setBlock(p.id, (x) => (x.prefix = v)), 64)]),
+          h('label', { title: tr('Written after the joined text.') }, [tr('After'), input(p.suffix, (v) => setBlock(p.id, (x) => (x.suffix = v)), 64)]),
+          check(tr('Skip blank'), p.skipBlank, (v) => setBlock(p.id, (x) => (x.skipBlank = v)), tr('Leave out the columns whose cell is blank, with their separator')),
+        ]),
+      );
+      return withGrip(node, p);
+    }
+    if (p.kind === 'constant') {
+      node.append(
+        nodeHead(p, 'block-constant', blockTitle(p), () => removeProcessor(p.id)),
+        h('div', { class: 'imp-cols' }, [h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, tr('Fixed value')), out])]),
+        h('div', { class: 'imp-procform choice' }, [h('label', { title: tr('The same text is inserted in every row.') }, [tr('Value'), input(p.value, (v) => setBlock(p.id, (x) => (x.value = v)), 110)])]),
+      );
+      return withGrip(node, p);
+    }
+    if (['map', 'convert', 'clean', 'extract', 'default'].includes(p.kind)) {
       const sel = (value, options, on) => h('select', { onchange: (e) => on(e.target.value) }, options.map(([v, text]) => h('option', { value: v, selected: v === value }, text)));
-      const head = nodeHead(p, p.kind === 'map' ? 'refresh' : 'code', blockTitle(p), () => removeProcessor(p.id));
-      const form = p.kind === 'map'
+      const head = nodeHead(p, BLOCK_ICON[p.kind], blockTitle(p), () => removeProcessor(p.id));
+      const whole = (v) => Math.max(0, parseInt(v, 10) || 0);
+      const otherwise = h('label', { title: tr('What to do when there is nothing to extract.') }, [tr('If nothing found'), sel(p.otherwise, [['null', tr('Insert NULL')], ['keep', tr('Keep the text')], ['error', tr('Report an error')]], (v) => setBlock(p.id, (x) => (x.otherwise = v)))]);
+      const form = p.kind === 'clean'
+        ? [
+          check(tr('Collapse spaces'), p.collapseSpaces, (v) => setBlock(p.id, (x) => (x.collapseSpaces = v)), tr('Runs of spaces become one and the ends are trimmed')),
+          check(tr('Remove hidden characters'), p.removeControl, (v) => setBlock(p.id, (x) => (x.removeControl = v)), tr('Control and zero-width characters go; a non-breaking space becomes a space')),
+          check(tr('Remove accents'), p.removeAccents, (v) => setBlock(p.id, (x) => (x.removeAccents = v)), tr('é becomes e, ñ becomes n')),
+        ]
+        : p.kind === 'extract'
+          ? [
+            h('label', {}, [tr('By'), sel(p.mode, [['substring', tr('Position')], ['regex', tr('Regular expression')]], (v) => setBlock(p.id, (x) => (x.mode = v)))]),
+            ...(p.mode === 'regex'
+              ? [
+                h('label', { title: tr('A JavaScript regular expression, for example [0-9]+-[0-9]+') }, [tr('Pattern'), input(p.pattern, (v) => setBlock(p.id, (x) => (x.pattern = v)), 110)]),
+                h('label', { title: tr('Which parenthesised group to keep; 0 is the whole match.') }, [tr('Group'), input(String(p.group ?? 0), (v) => setBlock(p.id, (x) => (x.group = whole(v))), 44)]),
+                check(tr('Ignore case'), p.ignoreCase, (v) => setBlock(p.id, (x) => (x.ignoreCase = v))),
+              ]
+              : [
+                h('label', { title: tr('The first character to keep, counting from 1.') }, [tr('From character'), input(String(p.start ?? 1), (v) => setBlock(p.id, (x) => (x.start = Math.max(1, whole(v)))), 44)]),
+                h('label', { title: tr('How many characters to keep; empty keeps the rest.') }, [tr('How many'), input(p.length ? String(p.length) : '', (v) => setBlock(p.id, (x) => (x.length = whole(v) || null)), 44)]),
+              ]),
+            otherwise,
+          ]
+          : p.kind === 'default'
+            ? [h('label', { title: tr('Used when the cell is blank.') }, [tr('Value when blank'), input(p.value, (v) => setBlock(p.id, (x) => (x.value = v)), 110)])]
+            : p.kind === 'map'
         ? [
           h('div', { class: 'imp-pairs' }, [
             ...p.pairs.map((pr, i) => h('div', { class: 'imp-pair' }, [
@@ -609,7 +693,7 @@ export function setupImportDesigner(ctx) {
             h('span', { class: 'imp-port in' }),
             h('span', { class: 'imp-label' }, inLabel(p, tr('Text from an Excel column'))),
           ]),
-          h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, p.kind === 'map' ? tr('Replaced text') : tr('Converted value')), out]),
+          h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, OUT_LABEL()[p.kind]), out]),
         ]),
         h('div', { class: 'imp-procform choice' }, form),
       );
@@ -617,11 +701,11 @@ export function setupImportDesigner(ctx) {
     }
     if (p.kind === 'case') {
       node.append(
-        nodeHead(p, 'code', tr('Change the case'), () => removeProcessor(p.id)),
+        nodeHead(p, 'block-case', tr('Change the case'), () => removeProcessor(p.id)),
         h('div', { class: 'imp-cols' }, [
-          h('div', { class: 'imp-col proc-in', title: p.input ? `${p.input.letter} ${p.input.label}`.trim() : tr('Drop an Excel column here') }, [
+          h('div', { class: 'imp-col proc-in', title: inLabel(p, tr('Drop an Excel column here')) }, [
             h('span', { class: 'imp-port in' }),
-            h('span', { class: 'imp-label' }, p.input ? `${p.input.letter} ${p.input.label}`.trim() : tr('Text from an Excel column')),
+            h('span', { class: 'imp-label' }, inLabel(p, tr('Text from an Excel column'))),
           ]),
           h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, tr('Text with the new case')), out]),
         ]),
@@ -642,11 +726,11 @@ export function setupImportDesigner(ctx) {
     }
     if (p.kind === 'lookup') {
       node.append(
-        nodeHead(p, 'add-link', tr('Look up a foreign key'), () => removeProcessor(p.id)),
+        nodeHead(p, 'block-lookup', tr('Look up a foreign key'), () => removeProcessor(p.id)),
         h('div', { class: 'imp-cols' }, [
-          h('div', { class: 'imp-col proc-in', title: p.input ? `${p.input.letter} ${p.input.label}`.trim() : tr('Drop an Excel column here') }, [
+          h('div', { class: 'imp-col proc-in', title: inLabel(p, tr('Drop an Excel column here')) }, [
             h('span', { class: 'imp-port in' }),
-            h('span', { class: 'imp-label' }, p.input ? `${p.input.letter} ${p.input.label}`.trim() : tr('Value to look for')),
+            h('span', { class: 'imp-label' }, inLabel(p, tr('Value to look for'))),
           ]),
           h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, tr('Value found')), out]),
         ]),
@@ -660,7 +744,7 @@ export function setupImportDesigner(ctx) {
       return withGrip(node, p);
     }
     node.append(
-      nodeHead(p, 'toggle-tables', p.name || tr('Table dropdown'), () => removeProcessor(p.id)),
+      nodeHead(p, 'block-choice', p.name || tr('Table dropdown'), () => removeProcessor(p.id)),
       h('div', { class: 'imp-cols' }, [h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, tr('Chosen value')), out])]),
       choiceForm(p, input),
     );
@@ -932,6 +1016,8 @@ export function setupImportDesigner(ctx) {
     for (const el of area.querySelectorAll('.imp-node.task .imp-col .imp-port.out')) keyOut.set(`${el.closest('.imp-node').dataset.id}\0${el.closest('.imp-col').dataset.col}`, el);
     const procOut = new Map();
     const procIn = new Map();
+    const joinIn = new Map();
+    for (const el of area.querySelectorAll('.imp-node.join .imp-col.proc-in[data-i]')) joinIn.set(`${el.closest('.imp-node').dataset.id}\0${el.dataset.i}`, el.querySelector('.imp-port'));
     for (const el of area.querySelectorAll('.imp-node.proc')) {
       procOut.set(el.dataset.id, el.querySelector('.proc-out .imp-port'));
       procIn.set(el.dataset.id, el.querySelector('.proc-in .imp-port'));
@@ -970,6 +1056,15 @@ export function setupImportDesigner(ctx) {
       if (sel) selectedMid = mid;
       out.push(`<g data-proc-in="${p.id}"><path class="imp-hit" d="${d}"/><path class="imp-edge${sel ? ' selected' : ''}" d="${d}" marker-end="url(#imp-arrow)"/></g>`);
     }
+    for (const p of T.design.processors ?? []) {
+      if (p.kind !== 'join') continue;
+      p.inputs.forEach((inp, n) => {
+        const src = sourceOf(inp.sourceId);
+        const a = src && outs.get(`${src.id}\0${src.header.mode === 'detect' ? inp.label : inp.letter}`);
+        const b = joinIn.get(`${p.id}\0${n}`);
+        if (a && b) out.push(`<g><path class="imp-edge" d="${path(a, b).d}" marker-end="url(#imp-arrow)"/></g>`);
+      });
+    }
     lines.innerHTML = out.join('');
     area.querySelector('.imp-edge-x')?.remove();
     if (selectedMid) {
@@ -981,7 +1076,7 @@ export function setupImportDesigner(ctx) {
   function drawGrid2() {
     canvas.classList.toggle('grid', showGrid);
     canvas.style.setProperty('--imp-grid', `${GRID * T.zoom}px`);
-    $('#imp-grid').classList.toggle('active', showGrid);
+    $('#imp-grid-toggle').classList.toggle('active', showGrid);
   }
 
   function removeSelectedEdge() {
@@ -1015,8 +1110,8 @@ export function setupImportDesigner(ctx) {
     temp.setAttribute('marker-end', 'url(#imp-arrow)');
     lines.append(temp);
     area.classList.add('connecting');
-    const feeds = origin.procId && procOf(T.design, origin.procId)?.kind === 'case' && !procOf(T.design, origin.procId).list;
-    const accept = origin.procId || origin.taskId ? `.imp-node.task .imp-col:not(.disabled)${feeds ? ', .imp-node.proc.split .imp-col.proc-in' : ''}` : '.imp-node.task .imp-col:not(.disabled), .imp-node.hasin .imp-col.proc-in';
+    const feeds = origin.procId && isTextBlock(procOf(T.design, origin.procId));
+    const accept = origin.procId || origin.taskId ? `.imp-node.task .imp-col:not(.disabled)${feeds ? ', .imp-node.hasin .imp-col.proc-in' : ''}` : '.imp-node.task .imp-col:not(.disabled), .imp-node.hasin .imp-col.proc-in';
     const target = (ev) => {
       const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest(accept);
       return origin.taskId && el?.closest('.imp-node').dataset.id === origin.taskId ? null : el;
@@ -1444,9 +1539,9 @@ export function setupImportDesigner(ctx) {
       const via = m.via ? procOf(T.design, m.via) : null;
       const ref = mappingRef(T.design, m);
       const parent = m.inserted ? taskOf(m.inserted.taskId) : null;
-      const from = m.inserted ? `inserted.${m.inserted.column}${parent ? ` (${taskName(parent)})` : ''}` : via?.kind === 'choice' ? tr('dropdown {name}', { name: via.name })
+      const from = m.inserted ? `inserted.${m.inserted.column}${parent ? ` (${taskName(parent)})` : ''}` : via?.kind === 'choice' ? tr('dropdown {name}', { name: via.name }) : via?.kind === 'constant' ? tr('fixed value')
         : !ref ? '?'
-          : `${src?.header.mode === 'detect' ? `"${ref.label}"` : `${ref.letter} ${ref.label}`.trim()}${via ? ` ${via.kind === 'lookup' ? tr('looked up') : via.kind === 'case' ? (via.mode === 'upper' ? tr('in uppercase') : tr('in lowercase')) : via.kind === 'map' ? tr('replaced') : via.kind === 'convert' ? tr('converted') : tr('split')}` : ''}`;
+          : `${src?.header.mode === 'detect' ? `"${ref.label}"` : `${ref.letter} ${ref.label}`.trim()}${via ? ` ${via.kind === 'lookup' ? tr('looked up') : via.kind === 'case' ? (via.mode === 'upper' ? tr('in uppercase') : tr('in lowercase')) : via.kind === 'map' ? tr('replaced') : via.kind === 'convert' ? tr('converted') : via.kind === 'join' ? tr('joined') : via.kind === 'clean' ? tr('cleaned') : via.kind === 'extract' ? tr('extracted') : via.kind === 'default' ? tr('with a default') : tr('split')}` : ''}`;
       const set = (fn) => edit((d) => fn(d.tasks.find((x) => x.id === task.id).mappings.find((y) => y.id === m.id)));
       return [
         h('div', { class: 'imp-detail' }, [
@@ -1454,7 +1549,7 @@ export function setupImportDesigner(ctx) {
             h('strong', {}, `${from} → ${taskName(task)}.${m.targetColumn}`),
             h('button', { type: 'button', class: 'danger', icon: 'delete', onclick: () => removeMapping(task.id, m.id) }, tr('Remove mapping')),
           ]),
-          h('div', { class: 'imp-form wide' }, via?.kind === 'choice' || m.inserted ? [h('div', { class: 'imp-field' }, [h('span', {}, tr('Column type')), h('span', {}, col?.databaseType ?? tr('unknown'))])] : [
+          h('div', { class: 'imp-form wide' }, isFixedBlock(via) || m.inserted ? [h('div', { class: 'imp-field' }, [h('span', {}, tr('Column type')), h('span', {}, col?.databaseType ?? tr('unknown'))])] : [
             h('label', { class: 'imp-field' }, [h('span', {}, tr('Blank cell')), h('select', { onchange: (e) => set((x) => (x.blank = e.target.value)) }, [
               h('option', { value: 'null', selected: m.blank === 'null' }, tr('Insert NULL')),
               h('option', { value: 'emptyString', selected: m.blank === 'emptyString' }, tr('Insert an empty string')),
@@ -1491,7 +1586,7 @@ export function setupImportDesigner(ctx) {
       if (!p?.input) return [];
       return h('div', { class: 'imp-detail' }, [
         h('div', { class: 'imp-detail-title' }, [
-          h('strong', {}, `${p.input.procId ? tr('Change the case') : `${p.input.letter} ${p.input.label}`.trim()} → ${blockTitle(p)}`),
+          h('strong', {}, `${p.input.procId ? blockTitle(procOf(T.design, p.input.procId) ?? p) : `${p.input.letter} ${p.input.label}`.trim()} → ${blockTitle(p)}`),
           h('button', { type: 'button', class: 'danger', icon: 'delete', onclick: removeSelectedEdge }, tr('Remove connection')),
         ]),
         h('p', { class: 'small muted' }, tr('Press Del to remove the selected connection.')),
@@ -1507,6 +1602,16 @@ export function setupImportDesigner(ctx) {
         ]),
         h('p', { class: 'small' }, p.kind === 'lookup'
           ? tr('The Excel cell holds a primary key of the chosen table. The row with that key is found when the import runs, after the earlier tasks, so rows they inserted count, and the value of its return column (the key itself by default) is inserted. If no row has the key the import reports it. Put the task for that table first.')
+          : p.kind === 'join'
+          ? tr('Writes several Excel columns as one text, for example first name and last name, with a separator. Drag each Excel column to the left dots; blank columns are left out. Then drag its right dot to a table column, or to another block to keep processing the text.')
+          : p.kind === 'constant'
+          ? tr('The same text is inserted in every row; nothing is read from the worksheet. Drag its right dot to a table column.')
+          : p.kind === 'clean'
+          ? tr('Tidies the text of an Excel cell: extra spaces, hidden characters and, if you want, accents. Drag an Excel column to its left dot, and from its right dot to a table column.')
+          : p.kind === 'extract'
+          ? tr('Keeps a part of the text, by position or with a regular expression, for example an area code or an id. Drag an Excel column to its left dot, and from its right dot to a table column.')
+          : p.kind === 'default'
+          ? tr('Gives a value to blank cells and leaves the others as they are. It has to read the Excel column directly, before any other block.')
           : p.kind === 'map'
           ? tr('Replaces the text of an Excel cell by another one, for example M → Male. The first line that matches is used; spaces around the cell are ignored. Drag an Excel column to its left dot, and from its right dot to a table column.')
           : p.kind === 'convert'
@@ -1716,7 +1821,7 @@ export function setupImportDesigner(ctx) {
   $('#imp-zoom-out').addEventListener('click', () => setZoom(T.zoom - 0.1));
   $('#imp-zoom-in').addEventListener('click', () => setZoom(T.zoom + 0.1));
   $('#imp-zoom').addEventListener('click', () => setZoom(1));
-  $('#imp-grid').addEventListener('click', () => {
+  $('#imp-grid-toggle').addEventListener('click', () => {
     showGrid = !showGrid;
     try {
       localStorage.setItem(GRID_KEY, showGrid ? '1' : '0');
@@ -1728,6 +1833,7 @@ export function setupImportDesigner(ctx) {
   $('#imp-add-split').addEventListener('click', () => addBlock('split'));
   $('#imp-add-case').addEventListener('click', () => addBlock('case'));
   $('#imp-add-map').addEventListener('click', () => addBlock('map'));
+  for (const kind of ['join', 'constant', 'clean', 'extract', 'default']) $(`#imp-add-${kind}`).addEventListener('click', () => addBlock(kind));
   $('#imp-add-convert').addEventListener('click', () => addBlock('convert'));
   $('#imp-add-choice').addEventListener('click', () => addBlock('choice'));
   $('#imp-add-lookup').addEventListener('click', () => addBlock('lookup'));

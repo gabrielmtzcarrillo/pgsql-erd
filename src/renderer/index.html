@@ -232,14 +232,19 @@
         <button type="button" id="imp-zoom-out" data-icon="zoom-out" title="Zoom out (Ctrl + mouse wheel)"></button>
         <button type="button" id="imp-zoom" title="Back to 100%">100%</button>
         <button type="button" id="imp-zoom-in" data-icon="zoom-in" title="Zoom in (Ctrl + mouse wheel)"></button>
-        <button type="button" id="imp-grid" data-icon="toggle-grid" title="Show or hide the grid"></button>
+        <button type="button" id="imp-grid-toggle" data-icon="toggle-grid" title="Show or hide the grid"></button>
         <button type="button" id="imp-run" class="primary" data-icon="script-run" title="Insert the rows of the open workbook into the connected database, following this design">Run</button>
-        <button type="button" id="imp-add-split" data-icon="plus" title="Add a block that cuts a cell at a separator (a comma by default) into an array">Split block</button>
-        <button type="button" id="imp-add-case" data-icon="plus" title="Add a block that writes a cell in capitals or in small letters">Case block</button>
-        <button type="button" id="imp-add-map" data-icon="plus" title="Add a block that replaces some values of a cell by others (M becomes Male)">Replace block</button>
-        <button type="button" id="imp-add-convert" data-icon="plus" title="Add a block that reads a cell as a date, a number or a yes/no value">Convert block</button>
-        <button type="button" id="imp-add-choice" data-icon="plus" title="Add a block whose value is picked from the rows of a table when the import runs">Table dropdown</button>
-        <button type="button" id="imp-add-lookup" data-icon="plus" title="Add a block that finds the key of a row (such as a generated id) from a value of the worksheet">Lookup block</button>
+        <button type="button" id="imp-add-split" data-icon="block-split" title="Add a block that cuts a cell at a separator (a comma by default) into an array">Split block</button>
+        <button type="button" id="imp-add-case" data-icon="block-case" title="Add a block that writes a cell in capitals or in small letters">Case block</button>
+        <button type="button" id="imp-add-map" data-icon="block-map" title="Add a block that replaces some values of a cell by others (M becomes Male)">Replace block</button>
+        <button type="button" id="imp-add-convert" data-icon="block-convert" title="Add a block that reads a cell as a date, a number or a yes/no value">Convert block</button>
+        <button type="button" id="imp-add-join" data-icon="block-join" title="Add a block that writes several Excel columns as one text (first name + last name)">Join block</button>
+        <button type="button" id="imp-add-constant" data-icon="block-constant" title="Add a block that inserts the same text in every row">Fixed value</button>
+        <button type="button" id="imp-add-clean" data-icon="block-clean" title="Add a block that tidies a cell: extra spaces, hidden characters, accents">Clean block</button>
+        <button type="button" id="imp-add-extract" data-icon="block-extract" title="Add a block that keeps a part of a cell, by position or with a regular expression">Extract block</button>
+        <button type="button" id="imp-add-default" data-icon="block-default" title="Add a block that gives a value to blank cells">Default block</button>
+        <button type="button" id="imp-add-choice" data-icon="block-choice" title="Add a block whose value is picked from the rows of a table when the import runs">Table dropdown</button>
+        <button type="button" id="imp-add-lookup" data-icon="block-lookup" title="Add a block that finds the key of a row (such as a generated id) from a value of the worksheet">Lookup block</button>
         <span class="grow"></span>
       </div>
       <div id="imp-canvas" class="imp-canvas">

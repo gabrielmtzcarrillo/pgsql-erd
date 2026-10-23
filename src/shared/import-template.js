@@ -22,17 +22,21 @@ export const FORMAT = 'excel-pg-insert-template';
 // 1.1 adds processor blocks: split a cell into an array, and table dropdown
 // parameters. 1.2 adds the lookup processor (a foreign key found from a value).
 // 1.3 adds `inserted`: a column fed by the key an earlier task's INSERT returned.
+// 1.7 adds the join (several columns in one value) and constant sources, and the clean, extract and default processors.
+// 1.6 adds `processors`: several processors in a row, each taking the text the one before gave.
 // 1.5 adds the map (replace values) and convert (date, number, boolean) processors.
 // 1.4 adds the case processor: the text in upper or lower case.
 // A template is written with the lowest version that covers what it uses.
-export const SPEC_VERSION = '1.5';
+export const SPEC_VERSION = '1.7';
+export const MORE_BLOCKS_VERSION = '1.7';
+export const CHAIN_VERSION = '1.6';
 export const MAP_VERSION = '1.5';
 export const INSERTED_VERSION = '1.3';
 export const CASE_VERSION = '1.4';
 export const LOOKUP_VERSION = '1.2';
 export const BASE_VERSION = '1.0';
 export const BLOCKS_VERSION = '1.1';
-export const SCHEMA_ID = 'urn:pgsql-erd:excel-pg-insert-template:1.5';
+export const SCHEMA_ID = 'urn:pgsql-erd:excel-pg-insert-template:1.7';
 export const LOOKUP_MISSING = ['error', 'null'];
 
 // Limits a runner applies when the template doesn't set its own.
@@ -45,6 +49,8 @@ export const CASE_MODES = ['upper', 'lower'];
 export const CONVERT_TYPES = ['date', 'timestamp', 'number', 'boolean'];
 export const DATE_ORDERS = ['dmy', 'mdy', 'ymd'];
 export const MAP_OTHERWISE = ['keep', 'null', 'error'];
+// Processors that give text, so that another one can follow.
+const isTextProcessor = (pr) => ['map', 'convert', 'clean', 'extract', 'default'].includes(pr.type) || (pr.type === 'case' && !pr.split);
 export const DEFAULT_SPLIT = { delimiter: ',', trim: true, dropEmpty: true };
 
 // ---------------------------------------------------------------- columns and headers
@@ -232,6 +238,34 @@ export const IMPORT_TEMPLATE_SCHEMA = {
                           description: 'The value of `column` that the INSERT of an earlier task returned (RETURNING) for the same worksheet row (1.3).',
                           properties: { mode: { const: 'inserted' }, taskId: id, column: { type: 'string', minLength: 1, maxLength: 63 } },
                         },
+                        {
+                          type: 'object',
+                          required: ['mode', 'value'],
+                          description: 'The same text for every row (1.7). Not for processors.',
+                          properties: { mode: { const: 'constant' }, value: { type: 'string', maxLength: 1000 } },
+                        },
+                        {
+                          type: 'object',
+                          required: ['mode', 'parts'],
+                          description: 'Several columns of the worksheet written as one text (1.7); processors may follow. Use column letters with a fixed header and header names with a detected one.',
+                          properties: {
+                            mode: { const: 'join' },
+                            parts: {
+                              type: 'array',
+                              minItems: 1,
+                              items: {
+                                anyOf: [
+                                  { type: 'object', required: ['column'], properties: { column } },
+                                  { type: 'object', required: ['header'], properties: { header: text } },
+                                ],
+                              },
+                            },
+                            separator: { type: 'string', maxLength: 16, description: 'Written between the parts. Default a space.' },
+                            skipBlank: { type: 'boolean', description: 'Leave out the parts that are blank. Default true.' },
+                            prefix: { type: 'string', maxLength: 64 },
+                            suffix: { type: 'string', maxLength: 64 },
+                          },
+                        },
                       ],
                     },
                     processor: {
@@ -290,6 +324,38 @@ export const IMPORT_TEMPLATE_SCHEMA = {
                         },
                         {
                           type: 'object',
+                          required: ['type'],
+                          description: 'clean (1.7): tidies the text.',
+                          properties: {
+                            type: { const: 'clean' },
+                            collapseSpaces: { type: 'boolean', description: 'Runs of white space become one space and the ends are trimmed. Default true.' },
+                            removeControl: { type: 'boolean', description: 'Remove control and zero-width characters; a non-breaking space becomes a space. Default true.' },
+                            removeAccents: { type: 'boolean', description: 'Remove the accents of letters. Default false.' },
+                          },
+                        },
+                        {
+                          type: 'object',
+                          required: ['type', 'mode'],
+                          description: 'extract (1.7): a part of the text, by position (substring) or by a regular expression (regex).',
+                          properties: {
+                            type: { const: 'extract' },
+                            mode: { enum: ['substring', 'regex'] },
+                            start: { type: 'integer', minimum: 1, description: 'substring: first character, counting from 1. Default 1.' },
+                            length: { type: 'integer', minimum: 1, description: 'substring: how many characters. Default: up to the end.' },
+                            pattern: { type: 'string', minLength: 1, maxLength: 500, description: 'regex: a JavaScript regular expression.' },
+                            group: { type: 'integer', minimum: 0, maximum: 99, description: 'regex: the capture group to keep. Default 0, the whole match.' },
+                            ignoreCase: { type: 'boolean', description: 'regex: ignore case. Default false.' },
+                            otherwise: { enum: MAP_OTHERWISE, description: 'Nothing to extract: insert NULL (default), keep the text, or report an error.' },
+                          },
+                        },
+                        {
+                          type: 'object',
+                          required: ['type', 'value'],
+                          description: 'default (1.7): the text to use when the cell is blank. It must be the first processor.',
+                          properties: { type: { const: 'default' }, value: { type: 'string', minLength: 1, maxLength: 1000 } },
+                        },
+                        {
+                          type: 'object',
                           required: ['type', 'schema', 'table', 'matchColumn', 'valueColumn'],
                           description: 'lookup (1.2): the value of valueColumn in the row of the table whose matchColumn equals the cell text, found when the task runs.',
                           properties: {
@@ -314,6 +380,17 @@ export const IMPORT_TEMPLATE_SCHEMA = {
     editor: { type: 'object', description: 'Presentation only (node positions). Runners must ignore it.' },
   },
 };
+
+// 1.6: the same processors, one after the other.
+{
+  const mapping = IMPORT_TEMPLATE_SCHEMA.properties.execution.properties.tasks.items.properties.mappings.items.properties;
+  mapping.processors = {
+    description: 'Processors applied in order (1.6), each to the text the one before gave. Only the last may make an array (split) or look a key up (lookup); the others are case without split, map or convert. Use `processor` for a single one; never both.',
+    type: 'array',
+    minItems: 2,
+    items: { anyOf: mapping.processor.anyOf },
+  };
+}
 
 // ---------------------------------------------------------------- template validation
 
@@ -379,21 +456,51 @@ export function validateTemplate(t) {
       continue;
     }
     const seen = new Set();
-    if (k.mappings.every((m) => m.source.mode === 'parameter')) errors.push(`Task ${k.id}: it needs at least one column of the worksheet, or the inserted key of an earlier task, to know its rows.`);
+    if (k.mappings.every((m) => m.source.mode === 'parameter' || m.source.mode === 'constant')) errors.push(`Task ${k.id}: it needs at least one column of the worksheet, or the inserted key of an earlier task, to know its rows.`);
     for (const m of k.mappings) {
       if (seen.has(m.targetColumn)) errors.push(`Task ${k.id}: ${m.targetColumn} is mapped more than once.`);
       seen.add(m.targetColumn);
+      const chain = m.processors ?? (m.processor ? [m.processor] : []);
+      if (m.processor && m.processors) errors.push(`Task ${k.id}: ${m.targetColumn} has both processor and processors.`);
+      chain.forEach((pr, at) => {
+        if (pr.type === 'default' && at > 0) errors.push(`Task ${k.id}: ${m.targetColumn}: a default processor must be the first one.`);
+        if (pr.type === 'extract' && pr.mode === 'regex') {
+          try {
+            new RegExp(pr.pattern ?? '');
+          } catch {
+            errors.push(`Task ${k.id}: ${m.targetColumn}: the pattern ${pr.pattern} is not a valid regular expression.`);
+          }
+        }
+        if (pr.type === 'extract' && pr.mode === 'regex' && !pr.pattern) errors.push(`Task ${k.id}: ${m.targetColumn}: a regex extract needs a pattern.`);
+      });
+      chain.slice(0, -1).forEach((pr) => {
+        if (!isTextProcessor(pr)) {
+          errors.push(`Task ${k.id}: ${m.targetColumn}: a ${pr.type} processor gives ${pr.type === 'lookup' ? 'a key' : 'an array'}, so no other processor can follow it.`);
+        }
+      });
       if (m.source.mode === 'inserted') {
         const from = tasks.find((x) => x.id === m.source.taskId);
-        if (m.processor) errors.push(`Task ${k.id}: ${m.targetColumn}: an inserted value cannot have a processor.`);
+        if (m.processor || m.processors) errors.push(`Task ${k.id}: ${m.targetColumn}: an inserted value cannot have a processor.`);
         if (!from) errors.push(`Task ${k.id}: ${m.targetColumn} uses the inserted values of the unknown task ${m.source.taskId}.`);
         else if (from.order >= k.order) errors.push(`Task ${k.id}: ${m.targetColumn} uses ${from.id}, which runs after it (order ${from.order}); a task can only use the keys of earlier tasks.`);
         else if (from.sourceId !== k.sourceId) errors.push(`Task ${k.id}: ${m.targetColumn} uses ${from.id}, which reads another source: rows are matched by worksheet row, so both must read the same source.`);
         continue;
       }
+      if (m.source.mode === 'constant') {
+        if (m.processor || m.processors) errors.push(`Task ${k.id}: ${m.targetColumn}: a constant cannot have a processor.`);
+        continue;
+      }
+      if (m.source.mode === 'join') {
+        for (const part of m.source.parts) {
+          if (part.column === undefined) continue;
+          if (src.header.mode === 'detect') errors.push(`Task ${k.id}: ${m.targetColumn} joins a column letter but source ${src.id} detects its header; use header names.`);
+          else if (colIndex(part.column) < colIndex(src.header.startColumn)) errors.push(`Task ${k.id}: column ${part.column} is left of the header start ${src.header.startColumn}.`);
+        }
+        continue;
+      }
       if (m.source.mode === 'parameter') {
         if (!params.has(m.source.name)) errors.push(`Task ${k.id}: ${m.targetColumn} uses the undeclared parameter ${m.source.name}.`);
-        if (m.processor) errors.push(`Task ${k.id}: ${m.targetColumn}: a parameter cannot have a processor.`);
+        if (m.processor || m.processors) errors.push(`Task ${k.id}: ${m.targetColumn}: a parameter cannot have a processor.`);
         continue;
       }
       if (m.source.mode === 'column' && src.header.mode === 'detect') errors.push(`Task ${k.id}: ${m.targetColumn} uses a column letter but source ${src.id} detects its header; use a header name.`);
@@ -416,7 +523,10 @@ export function requiredHeaders(template, source) {
   const out = [...(source.sheet.mode === 'requiredHeaders' ? source.sheet.headers : [])];
   for (const task of template.execution?.tasks ?? []) {
     if (task.sourceId !== source.id) continue;
-    for (const m of task.mappings) if (m.source.mode === 'header') out.push(m.source.name);
+    for (const m of task.mappings) {
+      if (m.source.mode === 'header') out.push(m.source.name);
+      if (m.source.mode === 'join') for (const part of m.source.parts) if (part.header !== undefined) out.push(part.header);
+    }
   }
   const match = matchOf(source);
   const seen = new Set();
@@ -585,6 +695,64 @@ export function convertText(value, cfg) {
   return { ok: true, value: `${date} ${pad(hh)}:${pad(mm)}:${pad(ss)}` };
 }
 
+// The clean processor: tidier text.
+export function cleanText(value, cfg = {}) {
+  let v = String(value);
+  if (cfg.removeControl ?? true) v = v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u200B-\u200D\uFEFF]/g, '').replace(/\u00A0/g, ' ');
+  if (cfg.collapseSpaces ?? true) v = v.replace(/\s+/g, ' ').trim();
+  if (cfg.removeAccents) v = v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').normalize('NFC');
+  return v;
+}
+
+// The extract processor: a part of the text. -> { ok, value } | { ok: false }
+export function extractText(value, cfg) {
+  const v = String(value);
+  let got;
+  if (cfg.mode === 'regex') {
+    let re;
+    try {
+      re = new RegExp(cfg.pattern ?? '', cfg.ignoreCase ? 'i' : '');
+    } catch {
+      return { ok: false, invalid: true };
+    }
+    got = re.exec(v)?.[cfg.group ?? 0];
+  } else {
+    const chars = Array.from(v);
+    const start = (cfg.start ?? 1) - 1;
+    if (start < chars.length) got = chars.slice(start, cfg.length ? start + cfg.length : undefined).join('');
+  }
+  if (got !== undefined && got !== '') return { ok: true, value: got };
+  const otherwise = cfg.otherwise ?? 'null';
+  return otherwise === 'error' ? { ok: false } : { ok: true, value: otherwise === 'keep' ? v : null };
+}
+
+// One processor applied to text. -> { ok, value } | { ok: false, code, what }
+export function applyProcessor(v, proc) {
+  switch (proc?.type) {
+    case 'split':
+      return { ok: true, value: splitText(proc.case ? changeCase(v, proc.case) : v, proc) };
+    case 'case':
+      return { ok: true, value: changeCase(proc.split ? splitText(v, proc.split) : v, proc.mode) };
+    case 'map': {
+      const r = mapText(v, proc);
+      return r.ok ? r : { ok: false, code: 'MAP_NO_MATCH', what: 'is not one of the values to replace' };
+    }
+    case 'convert': {
+      const r = convertText(v, proc);
+      return r.ok ? r : { ok: false, code: 'CONVERT_FAILED', what: `cannot be read as ${proc.to}` };
+    }
+    case 'clean':
+      return { ok: true, value: cleanText(v, proc) };
+    case 'extract': {
+      const r = extractText(v, proc);
+      return r.ok ? r : { ok: false, code: 'EXTRACT_NO_MATCH', what: r.invalid ? 'cannot be checked: the pattern is not valid' : 'has nothing to extract' };
+    }
+    default: // default, lookup: nothing to do here
+      return { ok: true, value: v };
+  }
+}
+const procsOf = (m) => m.processors ?? (m.processor ? [m.processor] : []);
+
 // The split processor: the text cut at a literal delimiter into an array of strings.
 export function splitText(value, processor = {}) {
   const { delimiter, trim, dropEmpty } = { ...DEFAULT_SPLIT, ...processor };
@@ -658,43 +826,56 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
         } else picks.push({ m, param: String(value) });
         continue;
       }
+      if (m.source.mode === 'constant') {
+        picks.push({ m, param: m.source.value });
+        continue;
+      }
+      // The index of the column a header names, or -1 after reporting why not.
+      const byHeader = (name) => {
+        const hits = res.columns.filter((c) => normHeader(c.label, match) === normHeader(name, match));
+        if (hits.length === 1) return hits[0].index;
+        push({
+          code: hits.length ? 'DUPLICATE_HEADER' : 'HEADER_MISSING',
+          taskId: task.id,
+          column: m.targetColumn,
+          message: hits.length
+            ? `Worksheet "${res.sheetName}": the header "${name}" appears in columns ${hits.map((c) => c.letter).join(', ')}; it must be unique to be mapped.`
+            : `Worksheet "${res.sheetName}": there is no header "${name}".`,
+        });
+        bad = true;
+        return -1;
+      };
+      if (m.source.mode === 'join') {
+        const cols = m.source.parts.map((part) => (part.column !== undefined ? colIndex(part.column) : byHeader(part.header)));
+        if (!cols.includes(-1)) picks.push({ m, cols });
+        continue;
+      }
       if (m.source.mode === 'column') {
         col = colIndex(m.source.column);
       } else {
-        const hits = res.columns.filter((c) => normHeader(c.label, match) === normHeader(m.source.name, match));
-        if (hits.length !== 1) {
-          push({
-            code: hits.length ? 'DUPLICATE_HEADER' : 'HEADER_MISSING',
-            taskId: task.id,
-            column: m.targetColumn,
-            message: hits.length
-              ? `Worksheet "${res.sheetName}": the header "${m.source.name}" appears in columns ${hits.map((c) => c.letter).join(', ')}; it must be unique to be mapped.`
-              : `Worksheet "${res.sheetName}": there is no header "${m.source.name}".`,
-          });
-          bad = true;
-          continue;
-        }
-        col = hits[0].index;
+        col = byHeader(m.source.name);
+        if (col === -1) continue;
       }
       picks.push({ m, col });
     }
     if (bad) continue;
 
     const rows = res.sheet.rows;
-    const reads = picks.filter((p) => p.col !== undefined);
+    const reads = picks.filter((p) => p.col !== undefined || p.cols);
+    const blankAt = (p, r) => (p.cols ? p.cols.every((c) => isBlank(rows[r - 1]?.[c])) : isBlank(rows[r - 1]?.[p.col]));
     // The worksheet rows this task inserts. A task that reads no column of its own (only
     // inserted keys and dropdowns) inserts one row for each row of the task whose key it uses.
     let rowList = [];
     if (reads.length) {
       let last = rows.length;
-      while (last >= res.firstDataRow && reads.every((p) => isBlank(rows[last - 1]?.[p.col]))) last--;
+      while (last >= res.firstDataRow && reads.every((p) => blankAt(p, last))) last--;
       if (last - res.firstDataRow + 1 > lim.maxRows) {
         push({ code: 'ROW_LIMIT', taskId: task.id, message: `Worksheet "${res.sheetName}" has more than ${lim.maxRows} data rows.` });
         continue;
       }
       const skipEmpty = source.data.skipEmptyRows ?? true;
       for (let r = res.firstDataRow; r <= last; r++) {
-        if (skipEmpty && reads.every((p) => isBlank(rows[r - 1]?.[p.col]))) continue;
+        if (skipEmpty && reads.every((p) => blankAt(p, r))) continue;
         rowList.push(r);
       }
     } else {
@@ -706,31 +887,38 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
       const r0 = r;
       const line = rows[r - 1] ?? [];
       const values = {};
-      for (const { m, col, param } of picks) {
-        if (col === undefined) {
+      for (const { m, col, cols, param } of picks) {
+        if (col === undefined && !cols) {
           values[m.targetColumn] = param;
           continue;
         }
-        let v = String(line[col] ?? '');
-        if (m.trim) v = v.trim();
+        let v;
+        if (cols) {
+          const parts = cols.map((c) => (m.trim ? String(line[c] ?? '').trim() : String(line[c] ?? '')));
+          const shown = (m.source.skipBlank ?? true) ? parts.filter((x) => !isBlank(x)) : parts;
+          v = shown.some((x) => !isBlank(x)) ? `${m.source.prefix ?? ''}${shown.join(m.source.separator ?? ' ')}${m.source.suffix ?? ''}` : '';
+        } else {
+          v = String(line[col] ?? '');
+          if (m.trim) v = v.trim();
+        }
+        // A default processor fills in a blank cell before the blank policy is looked at.
+        const fill = procsOf(m)[0];
+        if (isBlank(v) && fill?.type === 'default' && !isBlank(fill.value)) v = fill.value;
         if (isBlank(v)) {
           const policy = m.blank ?? 'null';
           if (policy === 'error') push({ code: 'BLANK_NOT_ALLOWED', taskId: task.id, row: r, column: m.targetColumn, message: `Worksheet "${res.sheetName}", row ${r}: ${m.targetColumn} cannot be blank.` });
-          v = policy === 'emptyString' ? (makesArray(m.processor) ? [] : '') : null;
-        } else if (m.processor?.type === 'split') v = splitText(m.processor.case ? changeCase(v, m.processor.case) : v, m.processor);
-        else if (m.processor?.type === 'case') v = changeCase(m.processor.split ? splitText(v, m.processor.split) : v, m.processor.mode);
-        else if (m.processor?.type === 'map' || m.processor?.type === 'convert') {
-          const r = m.processor.type === 'map' ? mapText(v, m.processor) : convertText(v, m.processor);
-          if (!r.ok) {
-            push({
-              code: m.processor.type === 'map' ? 'MAP_NO_MATCH' : 'CONVERT_FAILED',
-              taskId: task.id,
-              row: r0,
-              column: m.targetColumn,
-              message: `Worksheet "${res.sheetName}", row ${r0}: ${m.targetColumn}: "${v}" ${m.processor.type === 'map' ? 'is not one of the values to replace' : `cannot be read as ${m.processor.to}`}.`,
-            });
+          v = policy === 'emptyString' ? (makesArray(procsOf(m).at(-1)) ? [] : '') : null;
+        } else {
+          for (const proc of procsOf(m)) {
+            if (v === null) break;
+            const r = applyProcessor(v, proc);
+            if (!r.ok) {
+              push({ code: r.code, taskId: task.id, row: r0, column: m.targetColumn, message: `Worksheet "${res.sheetName}", row ${r0}: ${m.targetColumn}: "${v}" ${r.what}.` });
+              v = null;
+              break;
+            }
+            v = r.value;
           }
-          v = r.ok ? r.value : null;
         }
         values[m.targetColumn] = v;
       }
@@ -855,6 +1043,21 @@ export function newMap(over = {}) {
 export function newConvert(over = {}) {
   return { id: newId('proc'), kind: 'convert', to: 'date', order: 'dmy', decimal: '.', input: null, x: 300, y: 40, ...over };
 }
+export function newJoin(over = {}) {
+  return { id: newId('proc'), kind: 'join', inputs: [], separator: ' ', skipBlank: true, prefix: '', suffix: '', x: 300, y: 40, ...over };
+}
+export function newConstant(over = {}) {
+  return { id: newId('proc'), kind: 'constant', value: '', x: 300, y: 40, ...over };
+}
+export function newClean(over = {}) {
+  return { id: newId('proc'), kind: 'clean', collapseSpaces: true, removeControl: true, removeAccents: false, input: null, x: 300, y: 40, ...over };
+}
+export function newExtract(over = {}) {
+  return { id: newId('proc'), kind: 'extract', mode: 'substring', start: 1, length: null, pattern: '', group: 0, ignoreCase: false, otherwise: 'null', input: null, x: 300, y: 40, ...over };
+}
+export function newDefault(over = {}) {
+  return { id: newId('proc'), kind: 'default', value: '', input: null, x: 300, y: 40, ...over };
+}
 export function newLookup(over = {}) {
   return { id: newId('proc'), kind: 'lookup', schema: 'public', table: '', matchColumn: '', valueColumn: '', onMissing: 'error', input: null, x: 300, y: 40, ...over };
 }
@@ -878,11 +1081,37 @@ export function blockSource(design, p) {
   const seen = new Set();
   for (let q = p; q && !seen.has(q.id); q = q.input?.procId ? procOf(design, q.input.procId) : null) {
     seen.add(q.id);
+    if (q.kind === 'join') return q.inputs?.[0] ?? null;
     if (q.input?.sourceId) return q.input;
   }
   return null;
 }
-export const hasInput = (p) => p?.kind === 'split' || p?.kind === 'lookup' || p?.kind === 'case' || p?.kind === 'map' || p?.kind === 'convert';
+// Blocks that give text, which another block may take as its input.
+export const isTextBlock = (p) => ['map', 'convert', 'clean', 'extract', 'default', 'join'].includes(p?.kind) || (p?.kind === 'case' && !p.list);
+// Blocks whose value does not come from the worksheet: a table dropdown and a constant.
+export const isFixedBlock = (p) => p?.kind === 'choice' || p?.kind === 'constant';
+// The blocks from the one that reads the Excel column up to `p`.
+export function chainOf(design, p) {
+  const out = [];
+  for (let q = p; q && !out.includes(q); q = q.input?.procId ? procOf(design, q.input.procId) : null) out.unshift(q);
+  return out;
+}
+const processorOf = (p) => (p.kind === 'split'
+  ? { type: 'split', delimiter: p.delimiter, trim: !!p.trim, dropEmpty: !!p.dropEmpty }
+  : p.kind === 'map'
+  ? { type: 'map', pairs: p.pairs.filter((x) => x.from !== '').map((x) => ({ from: x.from, to: x.to })), caseSensitive: !!p.caseSensitive, otherwise: p.otherwise }
+  : p.kind === 'convert'
+  ? { type: 'convert', to: p.to, ...(p.to === 'date' || p.to === 'timestamp' ? { order: p.order } : {}), ...(p.to === 'number' ? { decimal: p.decimal } : {}) }
+  : p.kind === 'case'
+  ? { type: 'case', mode: p.mode, ...(p.list ? { split: { delimiter: p.delimiter, trim: !!p.trim, dropEmpty: !!p.dropEmpty } } : {}) }
+  : p.kind === 'clean'
+  ? { type: 'clean', collapseSpaces: !!p.collapseSpaces, removeControl: !!p.removeControl, removeAccents: !!p.removeAccents }
+  : p.kind === 'extract'
+  ? { type: 'extract', mode: p.mode, ...(p.mode === 'regex' ? { pattern: p.pattern, group: Number(p.group) || 0, ignoreCase: !!p.ignoreCase } : { start: Number(p.start) || 1, ...(Number(p.length) > 0 ? { length: Number(p.length) } : {}) }), otherwise: p.otherwise }
+  : p.kind === 'default'
+  ? { type: 'default', value: p.value }
+  : { type: 'lookup', schema: p.schema, table: p.table, matchColumn: p.matchColumn, valueColumn: p.valueColumn, onMissing: p.onMissing });
+export const hasInput = (p) => p?.kind === 'split' || p?.kind === 'lookup' || p?.kind === 'case' || p?.kind === 'map' || p?.kind === 'convert' || p?.kind === 'clean' || p?.kind === 'extract' || p?.kind === 'default' || p?.kind === 'join';
 export const procOf = (design, id) => (design.processors ?? []).find((p) => p.id === id) ?? null;
 
 // The Excel column a mapping reads ({ letter, label }), directly or through a
@@ -902,6 +1131,11 @@ export function columnRefs(design, source) {
     if (t.sourceId !== source.id) continue;
     for (const m of t.mappings) {
       const p = m.via ? procOf(design, m.via) : null;
+      const root = p ? chainOf(design, p)[0] : null;
+      if (root?.kind === 'join') {
+        out.push(...root.inputs.filter((i) => i.sourceId === source.id));
+        continue;
+      }
       if (p && hasInput(p) && blockSource(design, p)?.sourceId !== source.id) continue;
       const ref = mappingRef(design, m);
       if (ref) out.push(ref);
@@ -952,6 +1186,7 @@ export function designToTemplate(design, { editor = true } = {}) {
   });
   const byId = new Map(design.sources.map((s) => [s.id, s]));
   let usesInserted = false;
+  let usesChain = false;
   const used = []; // processors in order of first use
   const use = (p) => {
     if (!used.includes(p)) used.push(p);
@@ -972,27 +1207,39 @@ export function designToTemplate(design, { editor = true } = {}) {
         out.source = { mode: 'parameter', name: p.name };
         return [{ source: out.source, targetColumn: m.targetColumn }];
       }
+      if (p?.kind === 'constant') {
+        use(p);
+        return [{ source: { mode: 'constant', value: p.value }, targetColumn: m.targetColumn }];
+      }
       const ref = mappingRef(design, m);
       if (!ref) return [];
-      out.source = src?.header.mode === 'detect' ? { mode: 'header', name: ref.label } : { mode: 'column', column: ref.letter };
-      if (p) {
+      let chain = p ? chainOf(design, p) : [];
+      for (const b of chain) use(b);
+      if (chain[0]?.kind === 'join') {
+        const j = chain[0];
+        const detect = src?.header.mode === 'detect';
+        out.source = {
+          mode: 'join',
+          parts: j.inputs.map((i) => (detect ? { header: i.label } : { column: i.letter })),
+          separator: j.separator,
+          ...(j.skipBlank ? {} : { skipBlank: false }),
+          ...(j.prefix ? { prefix: j.prefix } : {}),
+          ...(j.suffix ? { suffix: j.suffix } : {}),
+        };
+        chain = chain.slice(1);
+      } else {
+        out.source = src?.header.mode === 'detect' ? { mode: 'header', name: ref.label } : { mode: 'column', column: ref.letter };
+      }
+      let procs = [];
+      if (chain.length) {
         // A case block feeding a split is written as the split's `case`.
-        const pre = p.kind === 'split' && p.input?.procId ? procOf(design, p.input.procId) : null;
-        if (pre) use(pre);
-        use(p);
-        out.processor = p.kind === 'split'
-          ? { type: 'split', delimiter: p.delimiter, trim: !!p.trim, dropEmpty: !!p.dropEmpty, ...(pre?.kind === 'case' ? { case: pre.mode } : {}) }
-          : p.kind === 'map'
-          ? { type: 'map', pairs: p.pairs.filter((x) => x.from !== '').map((x) => ({ from: x.from, to: x.to })), caseSensitive: !!p.caseSensitive, otherwise: p.otherwise }
-          : p.kind === 'convert'
-          ? { type: 'convert', to: p.to, ...(p.to === 'date' || p.to === 'timestamp' ? { order: p.order } : {}), ...(p.to === 'number' ? { decimal: p.decimal } : {}) }
-          : p.kind === 'case'
-          ? { type: 'case', mode: p.mode, ...(p.list ? { split: { delimiter: p.delimiter, trim: !!p.trim, dropEmpty: !!p.dropEmpty } } : {}) }
-          : { type: 'lookup', schema: p.schema, table: p.table, matchColumn: p.matchColumn, valueColumn: p.valueColumn, onMissing: p.onMissing };
+        const legacy = chain.length === 2 && chain[0].kind === 'case' && !chain[0].list && chain[1].kind === 'split';
+        procs = legacy ? [{ ...processorOf(chain[1]), case: chain[0].mode }] : chain.map(processorOf);
+        if (procs.length > 1) usesChain = true;
       }
       if (m.trim) out.trim = true;
       if (m.blank && m.blank !== 'null') out.blank = m.blank;
-      return [{ source: out.source, targetColumn: out.targetColumn, ...(out.processor ? { processor: out.processor } : {}), ...(out.trim ? { trim: true } : {}), ...(out.blank ? { blank: out.blank } : {}) }];
+      return [{ source: out.source, targetColumn: out.targetColumn, ...(procs.length === 1 ? { processor: procs[0] } : procs.length > 1 ? { processors: procs } : {}), ...(out.trim ? { trim: true } : {}), ...(out.blank ? { blank: out.blank } : {}) }];
     });
     return { id: t.id, order: i + 1, sourceId: t.sourceId, target: { schema: t.schema, table: t.table }, mappings };
   });
@@ -1011,7 +1258,7 @@ export function designToTemplate(design, { editor = true } = {}) {
   }
   const out = {
     format: FORMAT,
-    specVersion: used.some((p) => p.kind === 'map' || p.kind === 'convert') ? MAP_VERSION : used.some((p) => p.kind === 'case' || (p.kind === 'choice' && hasFilter(p))) ? CASE_VERSION : usesInserted ? INSERTED_VERSION : used.some((p) => p.kind === 'lookup') ? LOOKUP_VERSION : used.length ? BLOCKS_VERSION : BASE_VERSION,
+    specVersion: used.some((p) => ['join', 'constant', 'clean', 'extract', 'default'].includes(p.kind)) ? MORE_BLOCKS_VERSION : usesChain ? CHAIN_VERSION : used.some((p) => p.kind === 'map' || p.kind === 'convert') ? MAP_VERSION : used.some((p) => p.kind === 'case' || (p.kind === 'choice' && hasFilter(p))) ? CASE_VERSION : usesInserted ? INSERTED_VERSION : used.some((p) => p.kind === 'lookup') ? LOOKUP_VERSION : used.length ? BLOCKS_VERSION : BASE_VERSION,
     templateId: design.templateId,
     name: design.name,
     ...(design.description ? { description: design.description } : {}),
@@ -1095,6 +1342,12 @@ export function templateToDesign(t) {
     return choices.get(name);
   };
 
+  const constants = new Map();
+  const constantOf = (value) => {
+    if (!constants.has(value)) constants.set(value, place(newConstant({ value })));
+    return constants.get(value);
+  };
+
   t.execution.tasks.slice().sort((a, b) => a.order - b.order).forEach((k, i) => {
     const src = design.sources.find((s) => s.id === k.sourceId);
     const task = newTask(k.target.schema, k.target.table, { id: k.id, sourceId: k.sourceId, x: nodes[k.id]?.x ?? 520, y: nodes[k.id]?.y ?? 40 + i * 320, ...size(nodes[k.id]) });
@@ -1107,47 +1360,85 @@ export function templateToDesign(t) {
         task.mappings.push({ id: newId('map'), letter: '', label: '', via: choiceOf(m.source.name).id, targetColumn: m.targetColumn, blank: 'null', trim: false });
         continue;
       }
-      const fixed = m.source.mode === 'column';
-      const letter = fixed ? m.source.column.toUpperCase() : '';
-      const label = fixed ? src.columns.find((c) => c.letter === letter)?.label ?? '' : m.source.name;
-      if (fixed ? !src.columns.some((c) => c.letter === letter) : !src.columns.some((c) => c.label === label)) {
-        src.columns.push({ letter, label });
+      if (m.source.mode === 'constant') {
+        task.mappings.push({ id: newId('map'), letter: '', label: '', via: constantOf(m.source.value).id, targetColumn: m.targetColumn, blank: 'null', trim: false });
+        continue;
       }
-      const mapping = { id: newId('map'), letter, label, targetColumn: m.targetColumn, blank: m.blank ?? 'null', trim: !!m.trim };
-      if (m.processor) {
-        const input = { sourceId: k.sourceId, letter, label };
-        let key;
-        let make;
-        if (m.processor.type === 'split') {
-          const cfg = { ...DEFAULT_SPLIT, ...m.processor };
-          let pre = null;
-          if (cfg.case) {
-            const ck = JSON.stringify([k.sourceId, fixed ? letter : label, 'case', cfg.case, null]);
-            if (!splits.has(ck)) splits.set(ck, place(newCase({ mode: cfg.case, input })));
-            pre = splits.get(ck);
-          }
-          key = JSON.stringify([k.sourceId, fixed ? letter : label, 'split', cfg.delimiter, cfg.trim, cfg.dropEmpty, cfg.case ?? null]);
-          make = () => newSplit({ delimiter: cfg.delimiter, trim: cfg.trim, dropEmpty: cfg.dropEmpty, input: pre ? { procId: pre.id } : input });
-        } else if (m.processor.type === 'map') {
-          const c = m.processor;
-          const pairs = c.pairs.map((x) => ({ from: x.from, to: x.to }));
-          key = JSON.stringify([k.sourceId, fixed ? letter : label, 'map', pairs, !!c.caseSensitive, c.otherwise ?? 'keep']);
-          make = () => newMap({ pairs, caseSensitive: !!c.caseSensitive, otherwise: c.otherwise ?? 'keep', input });
-        } else if (m.processor.type === 'convert') {
-          const c = m.processor;
-          key = JSON.stringify([k.sourceId, fixed ? letter : label, 'convert', c.to, c.order ?? 'dmy', c.decimal ?? '.']);
-          make = () => newConvert({ to: c.to, order: c.order ?? 'dmy', decimal: c.decimal ?? '.', input });
-        } else if (m.processor.type === 'case') {
-          const sp = m.processor.split ? { ...DEFAULT_SPLIT, ...m.processor.split } : null;
-          key = JSON.stringify([k.sourceId, fixed ? letter : label, 'case', m.processor.mode, sp]);
-          make = () => newCase({ mode: m.processor.mode, input, ...(sp ? { list: true, delimiter: sp.delimiter, trim: sp.trim, dropEmpty: sp.dropEmpty } : {}) });
-        } else {
-          const l = m.processor;
-          key = JSON.stringify([k.sourceId, fixed ? letter : label, 'lookup', l.schema, l.table, l.matchColumn, l.valueColumn, l.onMissing ?? 'error']);
-          make = () => newLookup({ schema: l.schema, table: l.table, matchColumn: l.matchColumn, valueColumn: l.valueColumn, onMissing: l.onMissing ?? 'error', input });
+      const list = m.processors ?? (m.processor ? [m.processor] : []);
+      let mapping;
+      let root = null;
+      let fixed = false;
+      let letter = '';
+      let label = '';
+      if (m.source.mode === 'join') {
+        const j = m.source;
+        const inputs = j.parts.map((part) => {
+          const byLetter = part.column !== undefined;
+          const l = byLetter ? part.column.toUpperCase() : '';
+          const lab = byLetter ? src.columns.find((c) => c.letter === l)?.label ?? '' : part.header;
+          if (byLetter ? !src.columns.some((c) => c.letter === l) : !src.columns.some((c) => c.label === lab)) src.columns.push({ letter: l, label: lab });
+          return { sourceId: k.sourceId, letter: l, label: lab };
+        });
+        const jkey = JSON.stringify([k.sourceId, 'join', inputs.map((x) => [x.letter, x.label]), j.separator ?? ' ', j.skipBlank ?? true, j.prefix ?? '', j.suffix ?? '']);
+        if (!splits.has(jkey)) splits.set(jkey, place(newJoin({ inputs, separator: j.separator ?? ' ', skipBlank: j.skipBlank ?? true, prefix: j.prefix ?? '', suffix: j.suffix ?? '' })));
+        root = splits.get(jkey);
+        mapping = { id: newId('map'), letter: '', label: '', targetColumn: m.targetColumn, blank: m.blank ?? 'null', trim: !!m.trim };
+      } else {
+        fixed = m.source.mode === 'column';
+        letter = fixed ? m.source.column.toUpperCase() : '';
+        label = fixed ? src.columns.find((c) => c.letter === letter)?.label ?? '' : m.source.name;
+        if (fixed ? !src.columns.some((c) => c.letter === letter) : !src.columns.some((c) => c.label === label)) {
+          src.columns.push({ letter, label });
         }
-        if (!splits.has(key)) splits.set(key, place(make()));
-        Object.assign(mapping, { letter: '', label: '', via: splits.get(key).id });
+        mapping = { id: newId('map'), letter, label, targetColumn: m.targetColumn, blank: m.blank ?? 'null', trim: !!m.trim };
+      }
+      if (list.length || root) {
+        // One block per processor, each reading the one before (the first reads the Excel column).
+        const build = (proc, from) => {
+          if (proc.type === 'split' && proc.case) {
+            const { case: mode, ...rest } = proc;
+            return build(rest, build({ type: 'case', mode }, from));
+          }
+          const input = from ? { procId: from.id } : { sourceId: k.sourceId, letter, label };
+          const base = from ? from.id : [k.sourceId, fixed ? letter : label];
+          let desc;
+          let make;
+          if (proc.type === 'split') {
+            const cfg = { ...DEFAULT_SPLIT, ...proc };
+            desc = ['split', cfg.delimiter, cfg.trim, cfg.dropEmpty];
+            make = () => newSplit({ delimiter: cfg.delimiter, trim: cfg.trim, dropEmpty: cfg.dropEmpty, input });
+          } else if (proc.type === 'map') {
+            const pairs = proc.pairs.map((x) => ({ from: x.from, to: x.to }));
+            desc = ['map', pairs, !!proc.caseSensitive, proc.otherwise ?? 'keep'];
+            make = () => newMap({ pairs, caseSensitive: !!proc.caseSensitive, otherwise: proc.otherwise ?? 'keep', input });
+          } else if (proc.type === 'convert') {
+            desc = ['convert', proc.to, proc.order ?? 'dmy', proc.decimal ?? '.'];
+            make = () => newConvert({ to: proc.to, order: proc.order ?? 'dmy', decimal: proc.decimal ?? '.', input });
+          } else if (proc.type === 'case') {
+            const sp = proc.split ? { ...DEFAULT_SPLIT, ...proc.split } : null;
+            desc = ['case', proc.mode, sp];
+            make = () => newCase({ mode: proc.mode, input, ...(sp ? { list: true, delimiter: sp.delimiter, trim: sp.trim, dropEmpty: sp.dropEmpty } : {}) });
+          } else if (proc.type === 'clean') {
+            desc = ['clean', proc.collapseSpaces ?? true, proc.removeControl ?? true, !!proc.removeAccents];
+            make = () => newClean({ collapseSpaces: proc.collapseSpaces ?? true, removeControl: proc.removeControl ?? true, removeAccents: !!proc.removeAccents, input });
+          } else if (proc.type === 'extract') {
+            const cfg = { mode: proc.mode, start: proc.start ?? 1, length: proc.length ?? null, pattern: proc.pattern ?? '', group: proc.group ?? 0, ignoreCase: !!proc.ignoreCase, otherwise: proc.otherwise ?? 'null' };
+            desc = ['extract', cfg];
+            make = () => newExtract({ ...cfg, input });
+          } else if (proc.type === 'default') {
+            desc = ['default', proc.value];
+            make = () => newDefault({ value: proc.value, input });
+          } else {
+            desc = ['lookup', proc.schema, proc.table, proc.matchColumn, proc.valueColumn, proc.onMissing ?? 'error'];
+            make = () => newLookup({ schema: proc.schema, table: proc.table, matchColumn: proc.matchColumn, valueColumn: proc.valueColumn, onMissing: proc.onMissing ?? 'error', input });
+          }
+          const key = JSON.stringify([base, ...desc]);
+          if (!splits.has(key)) splits.set(key, place(make()));
+          return splits.get(key);
+        };
+        let last = root;
+        for (const proc of list) last = build(proc, last);
+        Object.assign(mapping, { letter: '', label: '', via: last.id });
       }
       task.mappings.push(mapping);
     }
@@ -1252,7 +1543,7 @@ export function designDiagnostics(design, schema, workbook, { sampleRows = 200 }
     const src = sources.get(t.sourceId);
     if (!src) add('error', 'NO_SOURCE', `${label}: connect at least one Excel column to it.`, { taskId: t.id });
     if (!t.mappings.length) add('error', 'NO_MAPPINGS', `${label}: no column is mapped.`, { taskId: t.id });
-    else if (src && t.mappings.every((m) => procOf(design, m.via)?.kind === 'choice')) add('error', 'NO_SOURCE_COLUMN', `${label}: it needs at least one column of the worksheet, or the inserted key of an earlier task, not only table dropdowns.`, { taskId: t.id });
+    else if (src && t.mappings.every((m) => isFixedBlock(procOf(design, m.via)))) add('error', 'NO_SOURCE_COLUMN', `${label}: it needs at least one column of the worksheet, or the inserted key of an earlier task, not only table dropdowns.`, { taskId: t.id });
     const seen = new Set();
     for (const m of t.mappings) {
       if (seen.has(m.targetColumn)) add('error', 'DUPLICATE_TARGET', `${label}: ${m.targetColumn} is fed by more than one Excel column.`, { taskId: t.id });
@@ -1293,15 +1584,35 @@ export function designDiagnostics(design, schema, workbook, { sampleRows = 200 }
   // Processor blocks.
   const names = new Set();
   for (const p of design.processors ?? []) {
+    if (hasInput(p) && p.input?.procId && !isTextBlock(procOf(design, p.input.procId))) {
+      add('error', 'CHAIN_INPUT', 'A block can only take its text from a case block that gives text (List off), a replace block or a convert block.', { processorId: p.id });
+    }
     if (p.kind === 'split') {
       if (!p.delimiter) add('error', 'SPLIT_DELIMITER', 'A split block needs a delimiter.', { processorId: p.id });
-      const feeder = p.input?.procId ? procOf(design, p.input.procId) : null;
-      if (p.input?.procId && (feeder?.kind !== 'case' || feeder.list)) add('error', 'SPLIT_CHAIN', 'A split block can only follow a case block that gives text (its List option off).', { processorId: p.id });
-      else if (!sources.has(blockSource(design, p)?.sourceId)) add('error', 'SPLIT_NO_INPUT', 'A split block has no Excel column connected to it.', { processorId: p.id });
+      if (!sources.has(blockSource(design, p)?.sourceId)) add('error', 'SPLIT_NO_INPUT', 'A split block has no Excel column connected to it.', { processorId: p.id });
       continue;
     }
-    if (p.kind === 'map' || p.kind === 'convert') {
-      if (!sources.has(blockSource(design, p)?.sourceId)) add('error', 'BLOCK_NO_INPUT', `A ${p.kind === 'map' ? 'replace' : 'convert'} block has no Excel column connected to it.`, { processorId: p.id });
+    if (p.kind === 'constant') continue;
+    if (p.kind === 'join') {
+      const ids = new Set(p.inputs.map((i) => i.sourceId));
+      if (!p.inputs.length || [...ids].some((x) => !sources.has(x))) add('error', 'JOIN_NO_INPUT', 'A join block needs at least one Excel column connected to it.', { processorId: p.id });
+      else if (ids.size > 1) add('error', 'JOIN_SOURCE', 'A join block reads columns of different worksheets.', { processorId: p.id });
+      continue;
+    }
+    if (['map', 'convert', 'clean', 'extract', 'default'].includes(p.kind)) {
+      const name = { map: 'replace', convert: 'convert', clean: 'clean', extract: 'extract', default: 'fill-blanks' }[p.kind];
+      if (!sources.has(blockSource(design, p)?.sourceId)) add('error', 'BLOCK_NO_INPUT', `A ${name} block has no Excel column connected to it.`, { processorId: p.id });
+      if (p.kind === 'default' && p.input?.procId) add('warning', 'DEFAULT_POSITION', 'A fill-blanks block only works when it reads the Excel column directly.', { processorId: p.id });
+      if (p.kind === 'default' && p.value === '') add('error', 'DEFAULT_EMPTY', 'A fill-blanks block needs a value.', { processorId: p.id });
+      if (p.kind === 'extract' && p.mode === 'regex') {
+        let ok = !!p.pattern;
+        try {
+          new RegExp(p.pattern);
+        } catch {
+          ok = false;
+        }
+        if (!ok) add('error', 'EXTRACT_PATTERN', 'An extract block needs a valid regular expression.', { processorId: p.id });
+      }
       if (p.kind === 'map') {
         const froms = p.pairs.filter((x) => x.from !== '').map((x) => (p.caseSensitive ? x.from.trim() : x.from.trim().toLowerCase()));
         if (!froms.length) add('error', 'MAP_EMPTY', 'A replace block needs at least one value to replace.', { processorId: p.id });
@@ -1310,13 +1621,13 @@ export function designDiagnostics(design, schema, workbook, { sampleRows = 200 }
       continue;
     }
     if (p.kind === 'case') {
-      if (!p.input || !sources.has(p.input.sourceId)) add('error', 'CASE_NO_INPUT', 'A case block has no Excel column connected to it.', { processorId: p.id });
+      if (!sources.has(blockSource(design, p)?.sourceId)) add('error', 'CASE_NO_INPUT', 'A case block has no Excel column connected to it.', { processorId: p.id });
       if (p.list && !p.delimiter) add('error', 'SPLIT_DELIMITER', 'A case block that converts a list needs a separator.', { processorId: p.id });
       continue;
     }
     if (p.kind === 'lookup') {
       const what = `${p.schema}.${p.table || '?'}`;
-      if (!p.input || !sources.has(p.input.sourceId)) add('error', 'LOOKUP_NO_INPUT', `The lookup in ${what} has no Excel column connected to it.`, { processorId: p.id });
+      if (!sources.has(blockSource(design, p)?.sourceId)) add('error', 'LOOKUP_NO_INPUT', `The lookup in ${what} has no Excel column connected to it.`, { processorId: p.id });
       if (!p.table || !p.matchColumn || !p.valueColumn) add('error', 'LOOKUP_TABLE', 'A lookup needs a table, the column to match and the column to return.', { processorId: p.id });
       else if (schema) {
         const tb = findTable(schema, tableId(p.schema, p.table));
