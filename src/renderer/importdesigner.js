@@ -17,7 +17,7 @@ import { schemaFromErd, findTable, allTables } from '../shared/schema-model.js';
 import {
   colLetter, colIndex, normHeader, newDesign, newSource, newTask, newId, designToTemplate, templateToDesign,
   designDiagnostics, hasErrors, suggestOrder, resolveSource, extractRows, checkSample, inferHint, validateTemplate,
-  newSplit, newCase, blockSource, newChoice, newLookup, hasInput, procOf, mappingRef, columnRefs,
+  newSplit, newCase, newMap, newConvert, blockSource, newChoice, newLookup, hasInput, procOf, mappingRef, columnRefs,
 } from '../shared/import-template.js';
 import { iconElement, decorateButtons } from './icons.js';
 import { tr, trn } from '../shared/i18n.js';
@@ -38,6 +38,12 @@ const ARROW = '<defs><marker id="imp-arrow" viewBox="0 0 10 10" refX="9" refY="5
 export function setupImportDesigner(ctx) {
   const { host, h, status, db, tabs, events, dbTree } = ctx;
   const page = $('#import-page');
+  const GRID_KEY = 'pgsql-erd.import-grid';
+  const GRID = 20;
+  let showGrid = true;
+  try {
+    showGrid = localStorage.getItem(GRID_KEY) !== '0';
+  } catch { /* default */ }
   const canvas = $('#imp-canvas');
   const sizer = $('#imp-sizer');
   const area = $('#imp-area');
@@ -232,6 +238,8 @@ export function setupImportDesigner(ctx) {
     let p;
     if (kind === 'split') p = newSplit(pos);
     else if (kind === 'case') p = newCase(pos);
+    else if (kind === 'map') p = newMap(pos);
+    else if (kind === 'convert') p = newConvert(pos);
     else if (kind === 'lookup') p = newLookup(pos);
     else {
       const names = new Set((T.design.processors ?? []).map((x) => x.name));
@@ -431,6 +439,7 @@ export function setupImportDesigner(ctx) {
     $('#imp-redo').disabled = !T.redo.length;
     $('#imp-zoom').textContent = `${Math.round(T.zoom * 100)}%`;
     area.style.transform = `scale(${T.zoom})`;
+    drawGrid2();
     drawEdges();
     markNodes();
     renderRight();
@@ -543,7 +552,7 @@ export function setupImportDesigner(ctx) {
   // Processor blocks: a split (text -> array) and a table dropdown.
   // What a block reads: an Excel column, or the text of the case block before it.
   const inLabel = (p, none) => (p.input?.procId ? tr('Text from the case block') : p.input?.sourceId ? `${p.input.letter} ${p.input.label}`.trim() : none);
-  const blockTitle = (p) => (p.kind === 'lookup' ? tr('Look up a foreign key') : p.kind === 'case' ? tr('Change the case') : tr('Split into an array'));
+  const blockTitle = (p) => (p.kind === 'lookup' ? tr('Look up a foreign key') : p.kind === 'case' ? tr('Change the case') : p.kind === 'map' ? tr('Replace values') : p.kind === 'convert' ? tr('Convert the type') : tr('Split into an array'));
 
   function procNode(p) {
     const sel = T.sel?.type === 'proc' && T.sel.id === p.id;
@@ -568,6 +577,41 @@ export function setupImportDesigner(ctx) {
           check(tr('Trim'), p.trim, (v) => setBlock(p.id, (x) => (x.trim = v)), tr('Remove the spaces around each value')),
           check(tr('Skip empty'), p.dropEmpty, (v) => setBlock(p.id, (x) => (x.dropEmpty = v)), tr('Leave out values that are empty')),
         ]),
+      );
+      return withGrip(node, p);
+    }
+    if (p.kind === 'map' || p.kind === 'convert') {
+      const sel = (value, options, on) => h('select', { onchange: (e) => on(e.target.value) }, options.map(([v, text]) => h('option', { value: v, selected: v === value }, text)));
+      const head = nodeHead(p, p.kind === 'map' ? 'refresh' : 'code', blockTitle(p), () => removeProcessor(p.id));
+      const form = p.kind === 'map'
+        ? [
+          h('div', { class: 'imp-pairs' }, [
+            ...p.pairs.map((pr, i) => h('div', { class: 'imp-pair' }, [
+              input(pr.from, (v) => setBlock(p.id, (x) => (x.pairs[i].from = v)), 64, tr('Value to replace')),
+              h('span', {}, '→'),
+              input(pr.to, (v) => setBlock(p.id, (x) => (x.pairs[i].to = v)), 64, tr('New value')),
+              h('button', { type: 'button', class: 'imp-remove', icon: 'close', title: tr('Remove'), onclick: () => setBlock(p.id, (x) => x.pairs.splice(i, 1)) }),
+            ])),
+            h('button', { type: 'button', icon: 'plus', onclick: () => setBlock(p.id, (x) => x.pairs.push({ from: '', to: '' })) }, tr('Add a value')),
+          ]),
+          check(tr('Match case'), p.caseSensitive, (v) => setBlock(p.id, (x) => (x.caseSensitive = v)), tr('Treat A and a as different values')),
+          h('label', { title: tr('What to do with a text that is not in the list.') }, [tr('If not listed'), sel(p.otherwise, [['keep', tr('Keep the text')], ['null', tr('Insert NULL')], ['error', tr('Report an error')]], (v) => setBlock(p.id, (x) => (x.otherwise = v)))]),
+        ]
+        : [
+          h('label', {}, [tr('Convert to'), sel(p.to, [['date', tr('Date')], ['timestamp', tr('Date and time')], ['number', tr('Number')], ['boolean', tr('Yes / No')]], (v) => setBlock(p.id, (x) => (x.to = v)))]),
+          ...(p.to === 'date' || p.to === 'timestamp' ? [h('label', { title: tr('How a date such as 03/04/2025 is read.') }, [tr('Order'), sel(p.order, [['dmy', tr('Day / month / year')], ['mdy', tr('Month / day / year')], ['ymd', tr('Year / month / day')]], (v) => setBlock(p.id, (x) => (x.order = v)))])] : []),
+          ...(p.to === 'number' ? [h('label', {}, [tr('Decimal mark'), sel(p.decimal, [['.', tr('Point (1,234.5)')], [',', tr('Comma (1.234,5)')]], (v) => setBlock(p.id, (x) => (x.decimal = v)))])] : []),
+        ];
+      node.append(
+        head,
+        h('div', { class: 'imp-cols' }, [
+          h('div', { class: 'imp-col proc-in', title: inLabel(p, tr('Drop an Excel column here')) }, [
+            h('span', { class: 'imp-port in' }),
+            h('span', { class: 'imp-label' }, inLabel(p, tr('Text from an Excel column'))),
+          ]),
+          h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, p.kind === 'map' ? tr('Replaced text') : tr('Converted value')), out]),
+        ]),
+        h('div', { class: 'imp-procform choice' }, form),
       );
       return withGrip(node, p);
     }
@@ -931,6 +975,13 @@ export function setupImportDesigner(ctx) {
     if (selectedMid) {
       area.append(h('button', { type: 'button', class: 'imp-edge-x', title: tr('Remove the connection (Del)'), style: `left:${selectedMid.x}px;top:${selectedMid.y}px`, onpointerdown: (e) => e.stopPropagation(), onclick: removeSelectedEdge }, '×'));
     }
+  }
+
+  // The canvas grid follows the zoom and scrolls with the diagram.
+  function drawGrid2() {
+    canvas.classList.toggle('grid', showGrid);
+    canvas.style.setProperty('--imp-grid', `${GRID * T.zoom}px`);
+    $('#imp-grid').classList.toggle('active', showGrid);
   }
 
   function removeSelectedEdge() {
@@ -1395,7 +1446,7 @@ export function setupImportDesigner(ctx) {
       const parent = m.inserted ? taskOf(m.inserted.taskId) : null;
       const from = m.inserted ? `inserted.${m.inserted.column}${parent ? ` (${taskName(parent)})` : ''}` : via?.kind === 'choice' ? tr('dropdown {name}', { name: via.name })
         : !ref ? '?'
-          : `${src?.header.mode === 'detect' ? `"${ref.label}"` : `${ref.letter} ${ref.label}`.trim()}${via ? ` ${via.kind === 'lookup' ? tr('looked up') : via.kind === 'case' ? (via.mode === 'upper' ? tr('in uppercase') : tr('in lowercase')) : tr('split')}` : ''}`;
+          : `${src?.header.mode === 'detect' ? `"${ref.label}"` : `${ref.letter} ${ref.label}`.trim()}${via ? ` ${via.kind === 'lookup' ? tr('looked up') : via.kind === 'case' ? (via.mode === 'upper' ? tr('in uppercase') : tr('in lowercase')) : via.kind === 'map' ? tr('replaced') : via.kind === 'convert' ? tr('converted') : tr('split')}` : ''}`;
       const set = (fn) => edit((d) => fn(d.tasks.find((x) => x.id === task.id).mappings.find((y) => y.id === m.id)));
       return [
         h('div', { class: 'imp-detail' }, [
@@ -1456,6 +1507,10 @@ export function setupImportDesigner(ctx) {
         ]),
         h('p', { class: 'small' }, p.kind === 'lookup'
           ? tr('The Excel cell holds a primary key of the chosen table. The row with that key is found when the import runs, after the earlier tasks, so rows they inserted count, and the value of its return column (the key itself by default) is inserted. If no row has the key the import reports it. Put the task for that table first.')
+          : p.kind === 'map'
+          ? tr('Replaces the text of an Excel cell by another one, for example M → Male. The first line that matches is used; spaces around the cell are ignored. Drag an Excel column to its left dot, and from its right dot to a table column.')
+          : p.kind === 'convert'
+          ? tr('Reads the text of an Excel cell as a date, a date and time, a number or a yes/no value and writes it the way PostgreSQL expects. A cell that cannot be read is reported as an error. Drag an Excel column to its left dot, and from its right dot to a table column.')
           : p.kind === 'case'
           ? tr('Writes the text of an Excel cell in capitals or in small letters. With List on, the cell is cut at the separator first and each value is converted, giving an array for a column such as text[]. Drag an Excel column to its left dot, and from its right dot to a table column.')
           : p.kind === 'split'
@@ -1661,10 +1716,19 @@ export function setupImportDesigner(ctx) {
   $('#imp-zoom-out').addEventListener('click', () => setZoom(T.zoom - 0.1));
   $('#imp-zoom-in').addEventListener('click', () => setZoom(T.zoom + 0.1));
   $('#imp-zoom').addEventListener('click', () => setZoom(1));
+  $('#imp-grid').addEventListener('click', () => {
+    showGrid = !showGrid;
+    try {
+      localStorage.setItem(GRID_KEY, showGrid ? '1' : '0');
+    } catch { /* the choice just is not remembered */ }
+    drawGrid2();
+  });
   $('#imp-wb-open').addEventListener('click', chooseWorkbook);
   $('#imp-run').addEventListener('click', runImport);
   $('#imp-add-split').addEventListener('click', () => addBlock('split'));
   $('#imp-add-case').addEventListener('click', () => addBlock('case'));
+  $('#imp-add-map').addEventListener('click', () => addBlock('map'));
+  $('#imp-add-convert').addEventListener('click', () => addBlock('convert'));
   $('#imp-add-choice').addEventListener('click', () => addBlock('choice'));
   $('#imp-add-lookup').addEventListener('click', () => addBlock('lookup'));
   $('#imp-add-source').addEventListener('click', () => T.sheet && addSource(T.sheet));

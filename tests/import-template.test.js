@@ -9,7 +9,7 @@ import { parsePgerd } from '../src/renderer/lib/pgerd.js';
 import { schemaFromErd } from '../src/shared/schema-model.js';
 import {
   IMPORT_TEMPLATE_SCHEMA, colLetter, colIndex, normHeader, validateTemplate, resolveSource, extractRows, checkValue,
-  inferHint, splitText, changeCase, blockSource, newSplit, newCase, newChoice, newLookup, newDesign, newSource, newTask, designToTemplate, templateToDesign, suggestOrder, designDiagnostics, hasErrors,
+  inferHint, splitText, changeCase, mapText, convertText, blockSource, newSplit, newCase, newChoice, newLookup, newDesign, newSource, newTask, designToTemplate, templateToDesign, suggestOrder, designDiagnostics, hasErrors,
 } from '../src/shared/import-template.js';
 import { EXAMPLE_TEMPLATE as TEMPLATE } from './import-template.fixtures.js';
 
@@ -355,7 +355,7 @@ test('lookup blocks: a foreign key found from a value, version 1.2', () => {
   const lookup = { type: 'lookup', schema: 'public', table: 'catCarreras', matchColumn: 'nombre', valueColumn: 'idCarrera', onMissing: 'error' };
   t.execution.tasks[1].mappings[2] = { source: { mode: 'header', name: 'ID Carrera' }, targetColumn: 'idCarrera', trim: true, processor: lookup };
   assert.deepEqual(validateTemplate(t), []);
-  assert.match(validateTemplate({ ...clone(t), specVersion: '1.5' })[0], /Unsupported/);
+  assert.match(validateTemplate({ ...clone(t), specVersion: '1.6' })[0], /Unsupported/);
   const bad = clone(t);
   bad.execution.tasks[1].mappings[2].processor = { type: 'lookup', table: 'x' };
   assert.notEqual(validateTemplate(bad).length, 0);
@@ -539,4 +539,41 @@ test('a split block can follow a case block', () => {
   assert.equal(back.specVersion, '1.4');
   d.processors[0].list = true;
   assert.ok(designDiagnostics(d, null, null).some((x) => x.code === 'SPLIT_CHAIN'));
+});
+
+test('replace and convert blocks, version 1.5', () => {
+  const cfg = { pairs: [{ from: 'M', to: 'Male' }, { from: 'F', to: 'Female' }] };
+  assert.deepEqual(mapText(' m ', cfg), { ok: true, value: 'Male' });
+  assert.deepEqual(mapText('x', cfg), { ok: true, value: 'x' });
+  assert.deepEqual(mapText('x', { ...cfg, otherwise: 'null' }), { ok: true, value: null });
+  assert.equal(mapText('x', { ...cfg, otherwise: 'error' }).ok, false);
+  assert.equal(mapText('m', { ...cfg, caseSensitive: true, otherwise: 'error' }).ok, false);
+  assert.equal(convertText('31/12/2025', { to: 'date' }).value, '2025-12-31');
+  assert.equal(convertText('12/31/25', { to: 'date', order: 'mdy' }).value, '2025-12-31');
+  assert.equal(convertText('2025-03-04 5:07', { to: 'timestamp', order: 'ymd' }).value, '2025-03-04 05:07:00');
+  assert.equal(convertText('31/02/2025', { to: 'date' }).ok, false);
+  assert.equal(convertText('1.234,50', { to: 'number', decimal: ',' }).value, '1234.50');
+  assert.equal(convertText('$1,234.50', { to: 'number' }).value, '1234.50');
+  assert.equal(convertText('(5)', { to: 'number' }).value, '-5');
+  assert.equal(convertText('abc', { to: 'number' }).ok, false);
+  assert.equal(convertText('Sí', { to: 'boolean' }).value, 'true');
+  assert.equal(convertText('maybe', { to: 'boolean' }).ok, false);
+
+  const t = clone(TEMPLATE);
+  t.specVersion = '1.5';
+  const ms = t.execution.tasks[1].mappings;
+  ms.push({ source: { mode: 'header', name: 'Extra' }, targetColumn: 'sex', processor: { type: 'map', pairs: [{ from: 'x', to: 'Y' }], otherwise: 'error' } });
+  ms.push({ source: { mode: 'header', name: 'Extra' }, targetColumn: 'born', processor: { type: 'convert', to: 'date', order: 'dmy' } });
+  assert.deepEqual(validateTemplate(t), []);
+  const d = templateToDesign(t);
+  assert.deepEqual(d.processors.map((p) => p.kind), ['map', 'convert']);
+  const back = designToTemplate(d, { editor: false });
+  assert.equal(back.specVersion, '1.5');
+  assert.deepEqual(back.execution.tasks[1].mappings.at(-2).processor, { type: 'map', pairs: [{ from: 'x', to: 'Y' }], caseSensitive: false, otherwise: 'error' });
+  assert.deepEqual(back.execution.tasks[1].mappings.at(-1).processor, { type: 'convert', to: 'date', order: 'dmy' });
+  const bad = clone(t);
+  bad.execution.tasks[1].mappings.at(-1).processor.to = 'color';
+  assert.notEqual(validateTemplate(bad).length, 0);
+  d.processors[0].pairs = [{ from: '', to: '' }];
+  assert.ok(designDiagnostics(d, null, null).some((x) => x.code === 'MAP_EMPTY'));
 });

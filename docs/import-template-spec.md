@@ -1,4 +1,4 @@
-# Excel → PostgreSQL INSERT template, specification 1.4
+# Excel → PostgreSQL INSERT template, specification 1.5
 
 The Import Designer exports a **template**: a JSON document that tells a runner which worksheets of an Excel
 workbook to read and which `INSERT`s to perform, in which order. The designer is only one way to author it;
@@ -21,9 +21,9 @@ exactly one worksheet, one header row and its mapped columns.
 - `format` must be `"excel-pg-insert-template"`.
 - `specVersion` is `"<major>.<minor>"`. A reader **must reject a version above the one it implements** (another
   major, or a newer minor) and must not guess: new fields can change what a template does, so ignoring them is
-  unsafe. This document is 1.4. A template is written with the lowest version that covers what it uses, so older
+  unsafe. This document is 1.5. A template is written with the lowest version that covers what it uses, so older
   readers still run it. 1.1 adds *processor blocks* (`processor` on mappings, `parameters`, the `parameter`
-  source); 1.2 adds the `lookup` processor; 1.3 adds `inserted` keys; 1.4 adds the `case` processor and the optional `filter` of a table dropdown.
+  source); 1.2 adds the `lookup` processor; 1.3 adds `inserted` keys; 1.4 adds the `case` processor and the optional `filter` of a table dropdown; 1.5 adds the `map` and `convert` processors.
 - `editor` is presentation only (node positions). Runners **must ignore** it; it never changes behaviour.
 
 ## Document
@@ -100,6 +100,18 @@ each element is trimmed (`trim`, default `true`) and empty elements are dropped 
 The cell's own `trim` is applied first. A blank cell follows the mapping's `blank` policy: `null`, an error, or,
 for `emptyString`, the empty array `[]`. The runner sends the array as one parameter for an array column such as
 `text[]` or `integer[]`; PostgreSQL converts each element from text.
+
+**Map (1.5): replace values.** `processor: { "type": "map", "pairs": [{ "from": "M", "to": "Male" }], "caseSensitive": false,
+"otherwise": "keep" }` replaces the text by the `to` of the first pair whose `from` equals it (both trimmed; case is
+ignored unless `caseSensitive`). `otherwise` says what happens to a text in no pair: `"keep"` it (default), insert
+`"null"`, or fail with `"error"` (code `MAP_NO_MATCH`, naming sheet, row and column).
+
+**Convert (1.5).** `processor: { "type": "convert", "to": "date", "order": "dmy" }` reads the text and gives the form
+PostgreSQL expects. `date` and `timestamp` accept `D/M/Y`, `M/D/Y` or `Y/M/D` (`order` `dmy` default, `mdy`, `ymd`;
+separators `/`, `.` or `-`; a two-digit year is 1970-2069) with an optional `HH:MM[:SS]`, and give `YYYY-MM-DD` or
+`YYYY-MM-DD HH:MM:SS`; impossible dates fail. `number` removes spaces, currency symbols and thousands separators
+(`decimal` is `"."` by default or `","`; `(5)` is `-5`). `boolean` reads true/yes/y/1/on/sí as `true` and
+false/no/n/0/off as `false`. Anything else fails with `CONVERT_FAILED`.
 
 **Split after a case (1.4).** A split processor may carry `"case": "upper"` or `"lower"`: the text is converted first, then cut. The designer draws it as a case block feeding the split block.
 

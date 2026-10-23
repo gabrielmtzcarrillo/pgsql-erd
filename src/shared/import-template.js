@@ -22,15 +22,17 @@ export const FORMAT = 'excel-pg-insert-template';
 // 1.1 adds processor blocks: split a cell into an array, and table dropdown
 // parameters. 1.2 adds the lookup processor (a foreign key found from a value).
 // 1.3 adds `inserted`: a column fed by the key an earlier task's INSERT returned.
+// 1.5 adds the map (replace values) and convert (date, number, boolean) processors.
 // 1.4 adds the case processor: the text in upper or lower case.
 // A template is written with the lowest version that covers what it uses.
-export const SPEC_VERSION = '1.4';
+export const SPEC_VERSION = '1.5';
+export const MAP_VERSION = '1.5';
 export const INSERTED_VERSION = '1.3';
 export const CASE_VERSION = '1.4';
 export const LOOKUP_VERSION = '1.2';
 export const BASE_VERSION = '1.0';
 export const BLOCKS_VERSION = '1.1';
-export const SCHEMA_ID = 'urn:pgsql-erd:excel-pg-insert-template:1.4';
+export const SCHEMA_ID = 'urn:pgsql-erd:excel-pg-insert-template:1.5';
 export const LOOKUP_MISSING = ['error', 'null'];
 
 // Limits a runner applies when the template doesn't set its own.
@@ -40,6 +42,9 @@ export const DEFAULT_MATCH = { trim: true, caseSensitive: false };
 export const BLANK_POLICIES = ['null', 'emptyString', 'error'];
 export const TRANSACTIONS = ['atomic', 'perTask'];
 export const CASE_MODES = ['upper', 'lower'];
+export const CONVERT_TYPES = ['date', 'timestamp', 'number', 'boolean'];
+export const DATE_ORDERS = ['dmy', 'mdy', 'ymd'];
+export const MAP_OTHERWISE = ['keep', 'null', 'error'];
 export const DEFAULT_SPLIT = { delimiter: ',', trim: true, dropEmpty: true };
 
 // ---------------------------------------------------------------- columns and headers
@@ -259,6 +264,28 @@ export const IMPORT_TEMPLATE_SCHEMA = {
                                 dropEmpty: { type: 'boolean', description: 'Drop empty elements. Default true.' },
                               },
                             },
+                          },
+                        },
+                        {
+                          type: 'object',
+                          required: ['type', 'pairs'],
+                          description: 'map (1.5): replaces the text by the `to` of the first pair whose `from` equals it (trimmed, ignoring case unless caseSensitive).',
+                          properties: {
+                            type: { const: 'map' },
+                            pairs: { type: 'array', minItems: 1, items: { type: 'object', required: ['from', 'to'], properties: { from: { type: 'string', maxLength: 1000 }, to: { type: 'string', maxLength: 1000 } } } },
+                            caseSensitive: { type: 'boolean', description: 'Default false.' },
+                            otherwise: { enum: MAP_OTHERWISE, description: 'A text that is in no pair: keep it (default), insert NULL or report an error.' },
+                          },
+                        },
+                        {
+                          type: 'object',
+                          required: ['type', 'to'],
+                          description: 'convert (1.5): the text as a date (YYYY-MM-DD), timestamp (YYYY-MM-DD HH:MM:SS), number or boolean (true/false). A text that cannot be converted is an error.',
+                          properties: {
+                            type: { const: 'convert' },
+                            to: { enum: CONVERT_TYPES },
+                            order: { enum: DATE_ORDERS, description: 'Order of day, month and year for dates written with / . or -. Default dmy.' },
+                            decimal: { enum: ['.', ','], description: 'Decimal mark of numbers. Default ".".' },
                           },
                         },
                         {
@@ -511,6 +538,53 @@ export const changeCase = (value, mode) => (Array.isArray(value)
 // Processors whose result is an array: split, and case over a list.
 const makesArray = (p) => p?.type === 'split' || (p?.type === 'case' && !!p.split);
 
+// The map processor: the text replaced by the `to` of its pair. -> { ok, value }
+export function mapText(value, cfg) {
+  const key = (s) => {
+    const t = String(s ?? '').trim();
+    return cfg.caseSensitive ? t : t.toLowerCase();
+  };
+  const hit = (cfg.pairs ?? []).find((p) => key(p.from) === key(value));
+  if (hit) return { ok: true, value: hit.to };
+  const otherwise = cfg.otherwise ?? 'keep';
+  return otherwise === 'error' ? { ok: false } : { ok: true, value: otherwise === 'null' ? null : value };
+}
+
+const TRUE_WORDS = new Set(['true', 't', 'yes', 'y', '1', 'on', 'si', 'sí', 'verdadero', 'v', 's']);
+const FALSE_WORDS = new Set(['false', 'f', 'no', 'n', '0', 'off', 'falso']);
+const pad = (n, w = 2) => String(n).padStart(w, '0');
+
+// The convert processor: date, timestamp, number or boolean from text. -> { ok, value }
+export function convertText(value, cfg) {
+  const v = String(value).trim();
+  if (cfg.to === 'boolean') {
+    const k = v.toLowerCase();
+    return TRUE_WORDS.has(k) ? { ok: true, value: 'true' } : FALSE_WORDS.has(k) ? { ok: true, value: 'false' } : { ok: false };
+  }
+  if (cfg.to === 'number') {
+    const decimal = cfg.decimal === ',' ? ',' : '.';
+    let n = v.replace(/[\s$€£¥%]/g, '');
+    const neg = /^\(.*\)$/.test(n);
+    if (neg) n = n.slice(1, -1);
+    n = decimal === ',' ? n.replace(/\./g, '').replace(',', '.') : n.replace(/,/g, '');
+    return NUM.test(n) ? { ok: true, value: neg ? `-${n.replace(/^[+-]/, '')}` : n } : { ok: false };
+  }
+  const m = /^(\d{1,4})[/.\-](\d{1,2})[/.\-](\d{1,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?)?$/.exec(v);
+  if (!m) return { ok: false };
+  let [a, b, c] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const order = cfg.order ?? 'dmy';
+  let [d, mo, y] = order === 'ymd' ? [c, b, a] : order === 'mdy' ? [b, a, c] : [a, b, c];
+  const yearText = order === 'ymd' ? m[1] : m[3];
+  if (yearText.length <= 2) y += y < 70 ? 2000 : 1900;
+  const day = new Date(Date.UTC(y, mo - 1, d));
+  if (day.getUTCFullYear() !== y || day.getUTCMonth() !== mo - 1 || day.getUTCDate() !== d) return { ok: false };
+  const date = `${pad(y, 4)}-${pad(mo)}-${pad(d)}`;
+  if (cfg.to === 'date') return { ok: true, value: date };
+  const [hh, mm, ss] = [Number(m[4] ?? 0), Number(m[5] ?? 0), Number(m[6] ?? 0)];
+  if (hh > 23 || mm > 59 || ss > 59) return { ok: false };
+  return { ok: true, value: `${date} ${pad(hh)}:${pad(mm)}:${pad(ss)}` };
+}
+
 // The split processor: the text cut at a literal delimiter into an array of strings.
 export function splitText(value, processor = {}) {
   const { delimiter, trim, dropEmpty } = { ...DEFAULT_SPLIT, ...processor };
@@ -629,6 +703,7 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
     }
     rowNumbers.set(task.id, rowList);
     for (const r of rowList) {
+      const r0 = r;
       const line = rows[r - 1] ?? [];
       const values = {};
       for (const { m, col, param } of picks) {
@@ -644,6 +719,19 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
           v = policy === 'emptyString' ? (makesArray(m.processor) ? [] : '') : null;
         } else if (m.processor?.type === 'split') v = splitText(m.processor.case ? changeCase(v, m.processor.case) : v, m.processor);
         else if (m.processor?.type === 'case') v = changeCase(m.processor.split ? splitText(v, m.processor.split) : v, m.processor.mode);
+        else if (m.processor?.type === 'map' || m.processor?.type === 'convert') {
+          const r = m.processor.type === 'map' ? mapText(v, m.processor) : convertText(v, m.processor);
+          if (!r.ok) {
+            push({
+              code: m.processor.type === 'map' ? 'MAP_NO_MATCH' : 'CONVERT_FAILED',
+              taskId: task.id,
+              row: r0,
+              column: m.targetColumn,
+              message: `Worksheet "${res.sheetName}", row ${r0}: ${m.targetColumn}: "${v}" ${m.processor.type === 'map' ? 'is not one of the values to replace' : `cannot be read as ${m.processor.to}`}.`,
+            });
+          }
+          v = r.ok ? r.value : null;
+        }
         values[m.targetColumn] = v;
       }
       out.total++;
@@ -761,6 +849,12 @@ export function newChoice(over = {}) {
 export function newCase(over = {}) {
   return { id: newId('proc'), kind: 'case', mode: 'upper', list: false, ...DEFAULT_SPLIT, input: null, x: 300, y: 40, ...over };
 }
+export function newMap(over = {}) {
+  return { id: newId('proc'), kind: 'map', pairs: [{ from: '', to: '' }], caseSensitive: false, otherwise: 'keep', input: null, x: 300, y: 40, ...over };
+}
+export function newConvert(over = {}) {
+  return { id: newId('proc'), kind: 'convert', to: 'date', order: 'dmy', decimal: '.', input: null, x: 300, y: 40, ...over };
+}
 export function newLookup(over = {}) {
   return { id: newId('proc'), kind: 'lookup', schema: 'public', table: '', matchColumn: '', valueColumn: '', onMissing: 'error', input: null, x: 300, y: 40, ...over };
 }
@@ -788,7 +882,7 @@ export function blockSource(design, p) {
   }
   return null;
 }
-export const hasInput = (p) => p?.kind === 'split' || p?.kind === 'lookup' || p?.kind === 'case';
+export const hasInput = (p) => p?.kind === 'split' || p?.kind === 'lookup' || p?.kind === 'case' || p?.kind === 'map' || p?.kind === 'convert';
 export const procOf = (design, id) => (design.processors ?? []).find((p) => p.id === id) ?? null;
 
 // The Excel column a mapping reads ({ letter, label }), directly or through a
@@ -888,6 +982,10 @@ export function designToTemplate(design, { editor = true } = {}) {
         use(p);
         out.processor = p.kind === 'split'
           ? { type: 'split', delimiter: p.delimiter, trim: !!p.trim, dropEmpty: !!p.dropEmpty, ...(pre?.kind === 'case' ? { case: pre.mode } : {}) }
+          : p.kind === 'map'
+          ? { type: 'map', pairs: p.pairs.filter((x) => x.from !== '').map((x) => ({ from: x.from, to: x.to })), caseSensitive: !!p.caseSensitive, otherwise: p.otherwise }
+          : p.kind === 'convert'
+          ? { type: 'convert', to: p.to, ...(p.to === 'date' || p.to === 'timestamp' ? { order: p.order } : {}), ...(p.to === 'number' ? { decimal: p.decimal } : {}) }
           : p.kind === 'case'
           ? { type: 'case', mode: p.mode, ...(p.list ? { split: { delimiter: p.delimiter, trim: !!p.trim, dropEmpty: !!p.dropEmpty } } : {}) }
           : { type: 'lookup', schema: p.schema, table: p.table, matchColumn: p.matchColumn, valueColumn: p.valueColumn, onMissing: p.onMissing };
@@ -913,7 +1011,7 @@ export function designToTemplate(design, { editor = true } = {}) {
   }
   const out = {
     format: FORMAT,
-    specVersion: used.some((p) => p.kind === 'case' || (p.kind === 'choice' && hasFilter(p))) ? CASE_VERSION : usesInserted ? INSERTED_VERSION : used.some((p) => p.kind === 'lookup') ? LOOKUP_VERSION : used.length ? BLOCKS_VERSION : BASE_VERSION,
+    specVersion: used.some((p) => p.kind === 'map' || p.kind === 'convert') ? MAP_VERSION : used.some((p) => p.kind === 'case' || (p.kind === 'choice' && hasFilter(p))) ? CASE_VERSION : usesInserted ? INSERTED_VERSION : used.some((p) => p.kind === 'lookup') ? LOOKUP_VERSION : used.length ? BLOCKS_VERSION : BASE_VERSION,
     templateId: design.templateId,
     name: design.name,
     ...(design.description ? { description: design.description } : {}),
@@ -1030,6 +1128,15 @@ export function templateToDesign(t) {
           }
           key = JSON.stringify([k.sourceId, fixed ? letter : label, 'split', cfg.delimiter, cfg.trim, cfg.dropEmpty, cfg.case ?? null]);
           make = () => newSplit({ delimiter: cfg.delimiter, trim: cfg.trim, dropEmpty: cfg.dropEmpty, input: pre ? { procId: pre.id } : input });
+        } else if (m.processor.type === 'map') {
+          const c = m.processor;
+          const pairs = c.pairs.map((x) => ({ from: x.from, to: x.to }));
+          key = JSON.stringify([k.sourceId, fixed ? letter : label, 'map', pairs, !!c.caseSensitive, c.otherwise ?? 'keep']);
+          make = () => newMap({ pairs, caseSensitive: !!c.caseSensitive, otherwise: c.otherwise ?? 'keep', input });
+        } else if (m.processor.type === 'convert') {
+          const c = m.processor;
+          key = JSON.stringify([k.sourceId, fixed ? letter : label, 'convert', c.to, c.order ?? 'dmy', c.decimal ?? '.']);
+          make = () => newConvert({ to: c.to, order: c.order ?? 'dmy', decimal: c.decimal ?? '.', input });
         } else if (m.processor.type === 'case') {
           const sp = m.processor.split ? { ...DEFAULT_SPLIT, ...m.processor.split } : null;
           key = JSON.stringify([k.sourceId, fixed ? letter : label, 'case', m.processor.mode, sp]);
@@ -1191,6 +1298,15 @@ export function designDiagnostics(design, schema, workbook, { sampleRows = 200 }
       const feeder = p.input?.procId ? procOf(design, p.input.procId) : null;
       if (p.input?.procId && (feeder?.kind !== 'case' || feeder.list)) add('error', 'SPLIT_CHAIN', 'A split block can only follow a case block that gives text (its List option off).', { processorId: p.id });
       else if (!sources.has(blockSource(design, p)?.sourceId)) add('error', 'SPLIT_NO_INPUT', 'A split block has no Excel column connected to it.', { processorId: p.id });
+      continue;
+    }
+    if (p.kind === 'map' || p.kind === 'convert') {
+      if (!sources.has(blockSource(design, p)?.sourceId)) add('error', 'BLOCK_NO_INPUT', `A ${p.kind === 'map' ? 'replace' : 'convert'} block has no Excel column connected to it.`, { processorId: p.id });
+      if (p.kind === 'map') {
+        const froms = p.pairs.filter((x) => x.from !== '').map((x) => (p.caseSensitive ? x.from.trim() : x.from.trim().toLowerCase()));
+        if (!froms.length) add('error', 'MAP_EMPTY', 'A replace block needs at least one value to replace.', { processorId: p.id });
+        else if (new Set(froms).size < froms.length) add('warning', 'MAP_DUPLICATE', 'A replace block lists the same value twice: only the first one is used.', { processorId: p.id });
+      }
       continue;
     }
     if (p.kind === 'case') {
