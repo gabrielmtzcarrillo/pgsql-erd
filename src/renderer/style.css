@@ -1330,6 +1330,8 @@ dialog.medium { width: min(760px, 94vw); }
 .imp-col.drop { outline: 2px solid var(--accent); outline-offset: -2px; }
 .imp-col.disabled { opacity: 0.5; }
 .imp-col.dup .imp-label { color: var(--danger); }
+.imp-col.missing .imp-label { color: var(--danger); text-decoration: line-through; }
+.imp-col.missing { opacity: 0.7; }
 .imp-col.required .imp-label { color: var(--danger); }
 .imp-col.mapped .imp-label { font-weight: 600; }
 .imp-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }

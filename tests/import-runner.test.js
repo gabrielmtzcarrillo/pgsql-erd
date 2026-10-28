@@ -116,3 +116,15 @@ test('an inserted key needs the parent to have inserted that worksheet row', asy
   await assert.rejects(runImport(client, template(), partial), /did not insert worksheet row 3/);
   await assert.rejects(runImport(fakeClient(), template(), [rows[0]]), /no rows were prepared/);
 });
+
+test('columns the extractor reported as skipped are left out of the INSERT', async () => {
+  const client = fakeClient();
+  const tpl = { execution: { operation: 'insert', transaction: 'atomic', tasks: [{ id: 't', order: 1, sourceId: 's', target: { schema: 'public', table: 'p' }, mappings: [
+    { source: { mode: 'header', name: 'Name' }, targetColumn: 'name' },
+    { source: { mode: 'header', name: 'Phone' }, targetColumn: 'phone', optional: true },
+  ] }] } };
+  await runImport(client, tpl, [{ id: 't', skipped: ['phone'], rows: [{ row: 2, values: { name: 'Ana' } }] }]);
+  const ins = client.log.find((l) => l.sql.startsWith('INSERT'));
+  assert.equal(ins.sql, 'INSERT INTO "public"."p" ("name") VALUES ($1)');
+  assert.deepEqual(ins.params, ['Ana']);
+});

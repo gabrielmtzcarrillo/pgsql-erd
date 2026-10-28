@@ -1,4 +1,4 @@
-# Excel → PostgreSQL INSERT template, specification 1.7
+# Excel → PostgreSQL INSERT template, specification 1.8
 
 The Import Designer exports a **template**: a JSON document that tells a runner which worksheets of an Excel
 workbook to read and which `INSERT`s to perform, in which order. The designer is only one way to author it;
@@ -21,9 +21,9 @@ exactly one worksheet, one header row and its mapped columns.
 - `format` must be `"excel-pg-insert-template"`.
 - `specVersion` is `"<major>.<minor>"`. A reader **must reject a version above the one it implements** (another
   major, or a newer minor) and must not guess: new fields can change what a template does, so ignoring them is
-  unsafe. This document is 1.7. A template is written with the lowest version that covers what it uses, so older
+  unsafe. This document is 1.8. A template is written with the lowest version that covers what it uses, so older
   readers still run it. 1.1 adds *processor blocks* (`processor` on mappings, `parameters`, the `parameter`
-  source); 1.2 adds the `lookup` processor; 1.3 adds `inserted` keys; 1.4 adds the `case` processor and the optional `filter` of a table dropdown; 1.5 adds the `map` and `convert` processors; 1.6 adds `processors` (chains); 1.7 adds the `join` and `constant` sources and the `clean`, `extract` and `default` processors.
+  source); 1.2 adds the `lookup` processor; 1.3 adds `inserted` keys; 1.4 adds the `case` processor and the optional `filter` of a table dropdown; 1.5 adds the `map` and `convert` processors; 1.6 adds `processors` (chains); 1.7 adds the `join` and `constant` sources and the `clean`, `extract` and `default` processors; 1.8 adds the `distinct` processor and source.
 - `editor` is presentation only (node positions). Runners **must ignore** it; it never changes behaviour.
 
 ## Document
@@ -88,6 +88,9 @@ Each task is `{ id, order, sourceId, target: { schema, table }, mappings[] }`.
 - Optional per mapping: `trim` (default `false`) trims the cell text; `blank` is what a blank cell becomes:
   `"null"` (default), `"emptyString"` or `"error"` (the run fails, naming sheet, row and column); `read` is
   `"text"`, the only value in 1.0.
+- `optional` (default `false`, `header` sources only): when the worksheet has no header with that name, the column is left
+  out of the INSERT (so the table default applies) instead of failing the run. `extractRows()` lists those columns in the
+  task's `skipped`, and the runner drops them from the INSERT.
 - A task needs at least one mapping that reads the worksheet or takes an inserted key (1.3); one with only
   `parameter` sources has no rows.
 
@@ -137,6 +140,21 @@ pattern makes the template invalid.
 
 **Default (1.7).** `processor: { "type": "default", "value": "unknown" }`, as the first processor, replaces a blank cell
 by `value` before the `blank` policy is looked at; other cells are untouched.
+
+**Distinct values (1.8).** Two forms give a task one row for each *different* value instead of one row for each
+worksheet row; blank values are left out.
+
+- `processor: { "type": "distinct", "ignoreCase": false }` on a worksheet column (a `column`, `header` or `join`
+  source): the first row with each text is kept. Processors before it (`clean`, `case`, ...) work on every cell, so
+  the comparison is made on their result; processors after it work on each different value. Only one per column.
+- `source: { "mode": "distinct", "schema": "public", "table": "category", "column": "name" }`: the different values of a
+  column of a table, in the database. Processors may follow. The runner reads them (`SELECT DISTINCT`), so
+  `extractRows()` takes them as `tableValues`, keyed by `distinctKey(source)`; `distinctTables(template)` lists what to
+  read. Such a task has no worksheet: its `sourceId` may be omitted.
+
+A task with a distinct column can hold, besides it, only `constant` and `parameter` mappings: its rows no longer
+correspond to worksheet rows, so it cannot read other worksheet columns, and a later task cannot use its `inserted`
+keys. To link the rows afterwards use a `lookup` on the same value.
 
 **Chains (1.6): `processors`.** A mapping may carry `processors`, an array of two or more processors applied in order,
 each to the text the one before gave, instead of a single `processor` (never both). Every processor but the last must

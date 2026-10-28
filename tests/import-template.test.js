@@ -48,7 +48,7 @@ test('unknown major versions, bad structure and inconsistent tasks are refused',
   v2.specVersion = '2.0';
   assert.match(validateTemplate(v2)[0], /Unsupported specVersion/);
   assert.deepEqual(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.1' }), []);
-  assert.match(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.8' })[0], /Unsupported specVersion/);
+  assert.match(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.9' })[0], /Unsupported specVersion/);
   assert.match(validateTemplate({ ...clone(TEMPLATE), format: 'x' })[0], /format/);
   const gap = clone(TEMPLATE);
   gap.execution.tasks[1].order = 3;
@@ -355,7 +355,7 @@ test('lookup blocks: a foreign key found from a value, version 1.2', () => {
   const lookup = { type: 'lookup', schema: 'public', table: 'catCarreras', matchColumn: 'nombre', valueColumn: 'idCarrera', onMissing: 'error' };
   t.execution.tasks[1].mappings[2] = { source: { mode: 'header', name: 'ID Carrera' }, targetColumn: 'idCarrera', trim: true, processor: lookup };
   assert.deepEqual(validateTemplate(t), []);
-  assert.match(validateTemplate({ ...clone(t), specVersion: '1.8' })[0], /Unsupported/);
+  assert.match(validateTemplate({ ...clone(t), specVersion: '1.9' })[0], /Unsupported/);
   const bad = clone(t);
   bad.execution.tasks[1].mappings[2].processor = { type: 'lookup', table: 'x' };
   assert.notEqual(validateTemplate(bad).length, 0);
@@ -662,4 +662,89 @@ test('join, constant, clean, extract and default, version 1.7', () => {
   const fixed = clone(t);
   fixed.execution.tasks[1].mappings.at(-3).processor = { type: 'clean' };
   assert.match(validateTemplate(fixed).join(), /constant cannot have a processor/);
+});
+
+test('an optional header the workbook lacks is skipped; a required one still fails', () => {
+  const t = clone(TEMPLATE);
+  t.execution.tasks[1].mappings.push({ source: { mode: 'header', name: 'Extra' }, targetColumn: 'nota', optional: true });
+  assert.deepEqual(validateTemplate(t), []);
+  const withExtra = extractRows(t, [careers([]), students([['Ana', 'A1', '1', 'hi']])]);
+  assert.deepEqual(withExtra.tasks[1].skipped, []);
+  assert.equal(withExtra.tasks[1].rows[0].values.nota, 'hi');
+  const lacking = { ...students([['Ana', 'A1', '1']]), rows: [['Nombre', 'Matrícula', 'ID Carrera'], ['Ana', 'A1', '1']] };
+  const run = extractRows(t, [careers([]), lacking]);
+  assert.equal(run.ok, true);
+  assert.deepEqual(run.tasks[1].skipped, ['nota']);
+  assert.equal('nota' in run.tasks[1].rows[0].values, false);
+  t.execution.tasks[1].mappings.at(-1).optional = false;
+  assert.equal(extractRows(t, [careers([]), lacking]).ok, false);
+});
+
+test('distinct values of a worksheet column and of a table column, version 1.8', () => {
+  const base = (tasks) => ({
+    format: 'excel-pg-insert-template',
+    specVersion: '1.8',
+    templateId: 'cats',
+    name: 'Categorias',
+    sources: [{
+      id: 'src',
+      sheet: { mode: 'name', value: 'Alumnos' },
+      header: { mode: 'detect', scanRows: { from: 1, to: 5 }, match: { trim: true, caseSensitive: false } },
+      data: { firstRow: { mode: 'afterHeader', offset: 1 }, endMode: 'lastNonEmptyMappedRow', skipEmptyRows: true },
+    }],
+    execution: { operation: 'insert', transaction: 'atomic', tasks },
+  });
+  const wb = [students([['Ana', 'A1', ' x ', ''], ['Bo', 'B1', 'X', ''], ['Cy', 'C1', 'y', ''], ['Di', 'D1', '', ''], ['Ed', 'E1', 'y', '']])];
+  wb[0].rows[0][2] = 'Cat';
+  const t = base([{
+    id: 'cats', order: 1, sourceId: 'src', target: { schema: 'public', table: 'cat' },
+    mappings: [
+      { source: { mode: 'header', name: 'Cat' }, targetColumn: 'name', processors: [{ type: 'clean', collapseSpaces: true, removeControl: true, removeAccents: false }, { type: 'distinct', ignoreCase: true }, { type: 'case', mode: 'upper' }] },
+      { source: { mode: 'constant', value: 'on' }, targetColumn: 'state' },
+    ],
+  }]);
+  assert.deepEqual(validateTemplate(t), []);
+  const run = extractRows(t, wb);
+  assert.equal(run.ok, true);
+  assert.deepEqual(run.tasks[0].rows.map((r) => r.values), [{ name: 'X', state: 'on' }, { name: 'Y', state: 'on' }]);
+  assert.equal(run.tasks[0].total, 2);
+  // Without ignoreCase the two spellings stay apart.
+  t.execution.tasks[0].mappings[0].processors[1] = { type: 'distinct' };
+  assert.equal(extractRows(t, wb).tasks[0].total, 3);
+
+  // A table column: the runner hands in its values; the task has no worksheet.
+  const tt = base([{
+    id: 'fromTable', order: 1, target: { schema: 'public', table: 'copy' },
+    mappings: [{ source: { mode: 'distinct', schema: 'public', table: 'cat', column: 'name' }, targetColumn: 'name', processor: { type: 'case', mode: 'lower' } }],
+  }]);
+  assert.deepEqual(validateTemplate(tt), []);
+  assert.equal(extractRows(tt, wb).ok, false);
+  const key = JSON.stringify(['public', 'cat', 'name']);
+  const got = extractRows(tt, wb, { tableValues: { [key]: ['A', 'B', ' '] } });
+  assert.deepEqual(got.tasks[0].rows.map((r) => r.values.name), ['a', 'b']);
+  assert.equal(extractRows(tt, wb, { previewMissing: true }).tasks[0].total, 0);
+
+  // The designer reads and writes both forms.
+  for (const tpl of [t, tt]) {
+    const d = templateToDesign(tpl);
+    assert.equal(d.processors.some((p) => p.kind === 'distinct'), true);
+    assert.deepEqual(designToTemplate(d, { editor: false }).execution, tpl.execution);
+    assert.equal(designToTemplate(d, { editor: false }).specVersion, '1.8');
+    assert.equal(designDiagnostics(d, null, null).some((x) => x.level === 'error'), false);
+  }
+
+  // Rules: one distinct column, no other worksheet columns, no inserted keys from it.
+  const mix = clone(t);
+  mix.execution.tasks[0].mappings.push({ source: { mode: 'header', name: 'Nombre' }, targetColumn: 'other' });
+  assert.match(validateTemplate(mix).join(), /only hold fixed values/);
+  const two = clone(t);
+  two.execution.tasks[0].mappings.push({ source: { mode: 'header', name: 'Nombre' }, targetColumn: 'other', processor: { type: 'distinct' } });
+  assert.match(validateTemplate(two).join(), /only one column/);
+  const child = clone(t);
+  child.execution.tasks.push({ id: 'kid', order: 2, sourceId: 'src', target: { schema: 'public', table: 'kid' }, mappings: [{ source: { mode: 'inserted', taskId: 'cats', column: 'id' }, targetColumn: 'cat_id' }, { source: { mode: 'header', name: 'Nombre' }, targetColumn: 'n' }] });
+  assert.match(validateTemplate(child).join(), /distinct values/);
+  const noSource = clone(t);
+  delete noSource.execution.tasks[0].sourceId;
+  assert.match(validateTemplate(noSource).join(), /needs a sourceId/);
+  assert.match(validateTemplate({ ...t, specVersion: '1.9' }).join(), /Unsupported/);
 });

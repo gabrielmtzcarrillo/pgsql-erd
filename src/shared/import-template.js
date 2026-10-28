@@ -26,8 +26,10 @@ export const FORMAT = 'excel-pg-insert-template';
 // 1.6 adds `processors`: several processors in a row, each taking the text the one before gave.
 // 1.5 adds the map (replace values) and convert (date, number, boolean) processors.
 // 1.4 adds the case processor: the text in upper or lower case.
+// 1.8 adds the distinct processor and source: the different values of a worksheet column or of a table column are the rows a task inserts.
 // A template is written with the lowest version that covers what it uses.
-export const SPEC_VERSION = '1.7';
+export const SPEC_VERSION = '1.8';
+export const DISTINCT_VERSION = '1.8';
 export const MORE_BLOCKS_VERSION = '1.7';
 export const CHAIN_VERSION = '1.6';
 export const MAP_VERSION = '1.5';
@@ -36,7 +38,7 @@ export const CASE_VERSION = '1.4';
 export const LOOKUP_VERSION = '1.2';
 export const BASE_VERSION = '1.0';
 export const BLOCKS_VERSION = '1.1';
-export const SCHEMA_ID = 'urn:pgsql-erd:excel-pg-insert-template:1.7';
+export const SCHEMA_ID = 'urn:pgsql-erd:excel-pg-insert-template:1.8';
 export const LOOKUP_MISSING = ['error', 'null'];
 
 // Limits a runner applies when the template doesn't set its own.
@@ -50,7 +52,9 @@ export const CONVERT_TYPES = ['date', 'timestamp', 'number', 'boolean'];
 export const DATE_ORDERS = ['dmy', 'mdy', 'ymd'];
 export const MAP_OTHERWISE = ['keep', 'null', 'error'];
 // Processors that give text, so that another one can follow.
-const isTextProcessor = (pr) => ['map', 'convert', 'clean', 'extract', 'default'].includes(pr.type) || (pr.type === 'case' && !pr.split);
+const isTextProcessor = (pr) => ['map', 'convert', 'clean', 'extract', 'default', 'distinct'].includes(pr.type) || (pr.type === 'case' && !pr.split);
+// Names the table column a distinct source reads; extractRows() takes its values by this key.
+export const distinctKey = (s) => JSON.stringify([s.schema, s.table, s.column]);
 export const DEFAULT_SPLIT = { delimiter: ',', trim: true, dropEmpty: true };
 
 // ---------------------------------------------------------------- columns and headers
@@ -214,11 +218,11 @@ export const IMPORT_TEMPLATE_SCHEMA = {
           minItems: 1,
           items: {
             type: 'object',
-            required: ['id', 'order', 'sourceId', 'target', 'mappings'],
+            required: ['id', 'order', 'target', 'mappings'],
             properties: {
               id,
               order: { type: 'integer', minimum: 1 },
-              sourceId: id,
+              sourceId: { ...id, description: 'Omit it only when the task reads a table column with a distinct source (1.8).' },
               target: { type: 'object', required: ['schema', 'table'], properties: { schema: { type: 'string', minLength: 1, maxLength: 63 }, table: { type: 'string', minLength: 1, maxLength: 63 } } },
               mappings: {
                 type: 'array',
@@ -227,6 +231,7 @@ export const IMPORT_TEMPLATE_SCHEMA = {
                   type: 'object',
                   required: ['source', 'targetColumn'],
                   properties: {
+                    optional: { type: 'boolean', description: 'Only with a `header` source: when the worksheet has no such header, the column is left out of the INSERT instead of failing.' },
                     source: {
                       anyOf: [
                         { type: 'object', required: ['mode', 'column'], properties: { mode: { const: 'column' }, column } },
@@ -243,6 +248,17 @@ export const IMPORT_TEMPLATE_SCHEMA = {
                           required: ['mode', 'value'],
                           description: 'The same text for every row (1.7). Not for processors.',
                           properties: { mode: { const: 'constant' }, value: { type: 'string', maxLength: 1000 } },
+                        },
+                        {
+                          type: 'object',
+                          required: ['mode', 'schema', 'table', 'column'],
+                          description: 'The different values of a table column (1.8): the task inserts one row for each. The runner reads them from the database. Processors may follow; the task can hold no other column of the worksheet.',
+                          properties: {
+                            mode: { const: 'distinct' },
+                            schema: { type: 'string', minLength: 1, maxLength: 63 },
+                            table: { type: 'string', minLength: 1, maxLength: 63 },
+                            column: { type: 'string', minLength: 1, maxLength: 63 },
+                          },
                         },
                         {
                           type: 'object',
@@ -356,6 +372,15 @@ export const IMPORT_TEMPLATE_SCHEMA = {
                         },
                         {
                           type: 'object',
+                          required: ['type'],
+                          description: 'distinct (1.8): keeps the first of each different text (blank texts are dropped), so the task inserts one row for each different value. Processors before it work on every cell, the ones after it on each different value. One per column; the task can hold no other worksheet column.',
+                          properties: {
+                            type: { const: 'distinct' },
+                            ignoreCase: { type: 'boolean', description: 'A and a are the same value. Default false.' },
+                          },
+                        },
+                        {
+                          type: 'object',
                           required: ['type', 'schema', 'table', 'matchColumn', 'valueColumn'],
                           description: 'lookup (1.2): the value of valueColumn in the row of the table whose matchColumn equals the cell text, found when the task runs.',
                           properties: {
@@ -390,6 +415,19 @@ export const IMPORT_TEMPLATE_SCHEMA = {
     minItems: 2,
     items: { anyOf: mapping.processor.anyOf },
   };
+}
+
+// A mapping whose values are the different values of a table column or of a worksheet column.
+const isDistinctMapping = (m) => m.source.mode === 'distinct' || (m.processors ?? (m.processor ? [m.processor] : [])).some((p) => p.type === 'distinct');
+
+// The table columns a template reads distinct values from: [{ schema, table, column }].
+// A runner reads them from the database and hands them to extractRows() as `tableValues`.
+export function distinctTables(template) {
+  const out = new Map();
+  for (const task of template.execution?.tasks ?? []) {
+    for (const m of task.mappings) if (m.source.mode === 'distinct') out.set(distinctKey(m.source), { schema: m.source.schema, table: m.source.table, column: m.source.column });
+  }
+  return [...out.values()];
 }
 
 // ---------------------------------------------------------------- template validation
@@ -451,9 +489,21 @@ export function validateTemplate(t) {
     if (ids.has(k.id)) errors.push(`Duplicate task id ${k.id}.`);
     ids.add(k.id);
     const src = sources.get(k.sourceId);
-    if (!src) {
+    if (k.sourceId === undefined) {
+      if (!k.mappings.some((m) => m.source.mode === 'distinct')) {
+        errors.push(`Task ${k.id}: it needs a sourceId.`);
+        continue;
+      }
+    } else if (!src) {
       errors.push(`Task ${k.id}: unknown source ${k.sourceId}.`);
       continue;
+    }
+    const dedup = k.mappings.filter(isDistinctMapping);
+    if (dedup.length > 1) errors.push(`Task ${k.id}: only one column can take distinct values.`);
+    for (const m of k.mappings) {
+      if (dedup.length && !dedup.includes(m) && m.source.mode !== 'parameter' && m.source.mode !== 'constant') {
+        errors.push(`Task ${k.id}: ${m.targetColumn}: a task that inserts distinct values can only hold fixed values and dropdowns besides.`);
+      }
     }
     const seen = new Set();
     if (k.mappings.every((m) => m.source.mode === 'parameter' || m.source.mode === 'constant')) errors.push(`Task ${k.id}: it needs at least one column of the worksheet, or the inserted key of an earlier task, to know its rows.`);
@@ -463,6 +513,7 @@ export function validateTemplate(t) {
       const chain = m.processors ?? (m.processor ? [m.processor] : []);
       if (m.processor && m.processors) errors.push(`Task ${k.id}: ${m.targetColumn} has both processor and processors.`);
       chain.forEach((pr, at) => {
+        if (pr.type === 'distinct' && chain.findIndex((x) => x.type === 'distinct') !== at) errors.push(`Task ${k.id}: ${m.targetColumn}: a column has one distinct processor at most.`);
         if (pr.type === 'default' && at > 0) errors.push(`Task ${k.id}: ${m.targetColumn}: a default processor must be the first one.`);
         if (pr.type === 'extract' && pr.mode === 'regex') {
           try {
@@ -482,6 +533,7 @@ export function validateTemplate(t) {
         const from = tasks.find((x) => x.id === m.source.taskId);
         if (m.processor || m.processors) errors.push(`Task ${k.id}: ${m.targetColumn}: an inserted value cannot have a processor.`);
         if (!from) errors.push(`Task ${k.id}: ${m.targetColumn} uses the inserted values of the unknown task ${m.source.taskId}.`);
+        else if (from.mappings.some(isDistinctMapping)) errors.push(`Task ${k.id}: ${m.targetColumn} uses ${from.id}, which inserts distinct values: they have no worksheet row to match.`);
         else if (from.order >= k.order) errors.push(`Task ${k.id}: ${m.targetColumn} uses ${from.id}, which runs after it (order ${from.order}); a task can only use the keys of earlier tasks.`);
         else if (from.sourceId !== k.sourceId) errors.push(`Task ${k.id}: ${m.targetColumn} uses ${from.id}, which reads another source: rows are matched by worksheet row, so both must read the same source.`);
         continue;
@@ -490,6 +542,7 @@ export function validateTemplate(t) {
         if (m.processor || m.processors) errors.push(`Task ${k.id}: ${m.targetColumn}: a constant cannot have a processor.`);
         continue;
       }
+      if (m.source.mode === 'distinct') continue;
       if (m.source.mode === 'join') {
         for (const part of m.source.parts) {
           if (part.column === undefined) continue;
@@ -524,7 +577,7 @@ export function requiredHeaders(template, source) {
   for (const task of template.execution?.tasks ?? []) {
     if (task.sourceId !== source.id) continue;
     for (const m of task.mappings) {
-      if (m.source.mode === 'header') out.push(m.source.name);
+      if (m.source.mode === 'header' && !m.optional) out.push(m.source.name);
       if (m.source.mode === 'join') for (const part of m.source.parts) if (part.header !== undefined) out.push(part.header);
     }
   }
@@ -771,7 +824,7 @@ export function splitText(value, processor = {}) {
 // where known, taskId, row and column.
 // `parameters` gives the values of the table dropdowns by name (over the template's
 // defaults); with `previewMissing` a parameter without a value reads as null.
-export function extractRows(template, workbook, { limit = Infinity, maxErrors = 100, parameters = {}, previewMissing = false } = {}) {
+export function extractRows(template, workbook, { limit = Infinity, maxErrors = 100, parameters = {}, previewMissing = false, tableValues = {} } = {}) {
   const problems = validateTemplate(template);
   if (problems.length) return { ok: false, errors: problems.map((message) => ({ code: 'TEMPLATE', message })), tasks: [] };
   const lim = { ...DEFAULT_LIMITS, ...(template.limits ?? {}) };
@@ -785,15 +838,17 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
 
   for (const task of [...template.execution.tasks].sort((a, b) => a.order - b.order)) {
     const source = template.sources.find((s) => s.id === task.sourceId);
-    if (!sources.has(source.id)) sources.set(source.id, resolveSource(template, source, workbook));
-    const res = sources.get(source.id);
+    // A task that reads only a table column has no worksheet.
+    if (source && !sources.has(source.id)) sources.set(source.id, resolveSource(template, source, workbook));
+    const res = source ? sources.get(source.id) : { ok: true, errors: [], columns: [], sheetName: null };
     const out = {
       id: task.id,
       order: task.order,
-      sourceId: source.id,
+      sourceId: source?.id ?? null,
       sheetName: res.sheetName ?? null,
       target: task.target,
       columns: task.mappings.map((m) => m.targetColumn),
+      skipped: [], // optional columns the worksheet lacks; the INSERT leaves them out
       total: 0,
       rows: [],
     };
@@ -806,7 +861,7 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
       continue;
     }
 
-    const match = matchOf(source);
+    const match = source ? matchOf(source) : DEFAULT_MATCH;
     const picks = [];
     let bad = false;
     for (const m of task.mappings) {
@@ -828,6 +883,10 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
       }
       if (m.source.mode === 'constant') {
         picks.push({ m, param: m.source.value });
+        continue;
+      }
+      if (m.source.mode === 'distinct') {
+        picks.push({ m, table: distinctKey(m.source) });
         continue;
       }
       // The index of the column a header names, or -1 after reporting why not.
@@ -853,6 +912,11 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
       if (m.source.mode === 'column') {
         col = colIndex(m.source.column);
       } else {
+        // An optional column the worksheet lacks is left out of the INSERT.
+        if (m.optional && !res.columns.some((c) => normHeader(c.label, match) === normHeader(m.source.name, match))) {
+          out.skipped.push(m.targetColumn);
+          continue;
+        }
         col = byHeader(m.source.name);
         if (col === -1) continue;
       }
@@ -860,13 +924,20 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
     }
     if (bad) continue;
 
-    const rows = res.sheet.rows;
+    const rows = res.sheet?.rows ?? [];
     const reads = picks.filter((p) => p.col !== undefined || p.cols);
     const blankAt = (p, r) => (p.cols ? p.cols.every((c) => isBlank(rows[r - 1]?.[c])) : isBlank(rows[r - 1]?.[p.col]));
     // The worksheet rows this task inserts. A task that reads no column of its own (only
     // inserted keys and dropdowns) inserts one row for each row of the task whose key it uses.
     let rowList = [];
-    if (reads.length) {
+    const tablePick = picks.find((p) => p.table !== undefined);
+    const listed = tablePick ? tableValues[tablePick.table] : null;
+    const where = (r) => (tablePick ? `${tablePick.m.source.schema}.${tablePick.m.source.table}.${tablePick.m.source.column}, value ${r}` : `Worksheet "${res.sheetName}", row ${r}`);
+    if (tablePick) {
+      if (!listed) {
+        if (!previewMissing) push({ code: 'DISTINCT_TABLE_MISSING', taskId: task.id, message: `The values of ${tablePick.m.source.schema}.${tablePick.m.source.table}.${tablePick.m.source.column} were not read from the database.` });
+      } else listed.forEach((v, i) => !isBlank(v) && rowList.push(i + 1));
+    } else if (reads.length) {
       let last = rows.length;
       while (last >= res.firstDataRow && reads.every((p) => blankAt(p, last))) last--;
       if (last - res.firstDataRow + 1 > lim.maxRows) {
@@ -883,17 +954,34 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
       rowList = rowNumbers.get(parent) ?? [];
     }
     rowNumbers.set(task.id, rowList);
+    const seenValues = new Set(); // for a distinct processor
+    // Processors in order on one value; a failure is reported and gives null.
+    const runAll = (list, v, r0, m) => {
+      for (const proc of list) {
+        if (v === null) break;
+        const done = applyProcessor(v, proc);
+        if (!done.ok) {
+          push({ code: done.code, taskId: task.id, row: r0, column: m.targetColumn, message: `${where(r0)}: ${m.targetColumn}: "${v}" ${done.what}.` });
+          return null;
+        }
+        v = done.value;
+      }
+      return v;
+    };
     for (const r of rowList) {
       const r0 = r;
       const line = rows[r - 1] ?? [];
       const values = {};
-      for (const { m, col, cols, param } of picks) {
-        if (col === undefined && !cols) {
+      let skip = false;
+      for (const { m, col, cols, param, table } of picks) {
+        if (col === undefined && !cols && table === undefined) {
           values[m.targetColumn] = param;
           continue;
         }
         let v;
-        if (cols) {
+        if (table !== undefined) {
+          v = String(listed[r - 1]);
+        } else if (cols) {
           const parts = cols.map((c) => (m.trim ? String(line[c] ?? '').trim() : String(line[c] ?? '')));
           const shown = (m.source.skipBlank ?? true) ? parts.filter((x) => !isBlank(x)) : parts;
           v = shown.some((x) => !isBlank(x)) ? `${m.source.prefix ?? ''}${shown.join(m.source.separator ?? ' ')}${m.source.suffix ?? ''}` : '';
@@ -906,22 +994,34 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
         if (isBlank(v) && fill?.type === 'default' && !isBlank(fill.value)) v = fill.value;
         if (isBlank(v)) {
           const policy = m.blank ?? 'null';
-          if (policy === 'error') push({ code: 'BLANK_NOT_ALLOWED', taskId: task.id, row: r, column: m.targetColumn, message: `Worksheet "${res.sheetName}", row ${r}: ${m.targetColumn} cannot be blank.` });
+          if (procsOf(m).some((x) => x.type === 'distinct')) {
+            skip = true; // distinct values leave the blanks out
+            break;
+          }
+          if (policy === 'error') push({ code: 'BLANK_NOT_ALLOWED', taskId: task.id, row: r, column: m.targetColumn, message: `${where(r)}: ${m.targetColumn} cannot be blank.` });
           v = policy === 'emptyString' ? (makesArray(procsOf(m).at(-1)) ? [] : '') : null;
         } else {
-          for (const proc of procsOf(m)) {
-            if (v === null) break;
-            const r = applyProcessor(v, proc);
-            if (!r.ok) {
-              push({ code: r.code, taskId: task.id, row: r0, column: m.targetColumn, message: `Worksheet "${res.sheetName}", row ${r0}: ${m.targetColumn}: "${v}" ${r.what}.` });
-              v = null;
+          const procs = procsOf(m);
+          const at = procs.findIndex((x) => x.type === 'distinct');
+          v = runAll(at === -1 ? procs : procs.slice(0, at), v, r0, m);
+          if (at !== -1) {
+            // Only the first row with each text is kept; the processors after it work on that text.
+            if (v === null || isBlank(v)) {
+              skip = true;
               break;
             }
-            v = r.value;
+            const key = procs[at].ignoreCase ? String(v).toLowerCase() : String(v);
+            if (seenValues.has(key)) {
+              skip = true;
+              break;
+            }
+            seenValues.add(key);
+            v = runAll(procs.slice(at + 1), v, r0, m);
           }
         }
         values[m.targetColumn] = v;
       }
+      if (skip) continue;
       out.total++;
       if (out.rows.length < limit) out.rows.push({ row: r, values });
     }
@@ -1058,6 +1158,12 @@ export function newExtract(over = {}) {
 export function newDefault(over = {}) {
   return { id: newId('proc'), kind: 'default', value: '', input: null, x: 300, y: 40, ...over };
 }
+// A distinct block gives the different values of an Excel column (`from` "column", it reads `input`
+// like the other blocks) or of a table column (`from` "table"); the task inserts one row for each.
+export function newDistinct(over = {}) {
+  return { id: newId('proc'), kind: 'distinct', from: 'column', ignoreCase: false, schema: 'public', table: '', column: '', input: null, x: 300, y: 40, ...over };
+}
+export const isTableDistinct = (p) => p?.kind === 'distinct' && p.from === 'table';
 export function newLookup(over = {}) {
   return { id: newId('proc'), kind: 'lookup', schema: 'public', table: '', matchColumn: '', valueColumn: '', onMissing: 'error', input: null, x: 300, y: 40, ...over };
 }
@@ -1087,7 +1193,7 @@ export function blockSource(design, p) {
   return null;
 }
 // Blocks that give text, which another block may take as its input.
-export const isTextBlock = (p) => ['map', 'convert', 'clean', 'extract', 'default', 'join'].includes(p?.kind) || (p?.kind === 'case' && !p.list);
+export const isTextBlock = (p) => ['map', 'convert', 'clean', 'extract', 'default', 'join', 'distinct'].includes(p?.kind) || (p?.kind === 'case' && !p.list);
 // Blocks whose value does not come from the worksheet: a table dropdown and a constant.
 export const isFixedBlock = (p) => p?.kind === 'choice' || p?.kind === 'constant';
 // The blocks from the one that reads the Excel column up to `p`.
@@ -1110,9 +1216,19 @@ const processorOf = (p) => (p.kind === 'split'
   ? { type: 'extract', mode: p.mode, ...(p.mode === 'regex' ? { pattern: p.pattern, group: Number(p.group) || 0, ignoreCase: !!p.ignoreCase } : { start: Number(p.start) || 1, ...(Number(p.length) > 0 ? { length: Number(p.length) } : {}) }), otherwise: p.otherwise }
   : p.kind === 'default'
   ? { type: 'default', value: p.value }
+  : p.kind === 'distinct'
+  ? { type: 'distinct', ...(p.ignoreCase ? { ignoreCase: true } : {}) }
   : { type: 'lookup', schema: p.schema, table: p.table, matchColumn: p.matchColumn, valueColumn: p.valueColumn, onMissing: p.onMissing });
-export const hasInput = (p) => p?.kind === 'split' || p?.kind === 'lookup' || p?.kind === 'case' || p?.kind === 'map' || p?.kind === 'convert' || p?.kind === 'clean' || p?.kind === 'extract' || p?.kind === 'default' || p?.kind === 'join';
+export const hasInput = (p) => p?.kind === 'split' || p?.kind === 'lookup' || p?.kind === 'case' || p?.kind === 'map' || p?.kind === 'convert' || p?.kind === 'clean' || p?.kind === 'extract' || p?.kind === 'default' || p?.kind === 'join' || (p?.kind === 'distinct' && p.from === 'column');
 export const procOf = (design, id) => (design.processors ?? []).find((p) => p.id === id) ?? null;
+
+// The blocks a mapping goes through, from the first to the one it takes its value from.
+export const mappingChain = (design, m) => {
+  const p = m.via ? procOf(design, m.via) : null;
+  return p ? chainOf(design, p) : [];
+};
+// True when a task inserts the different values of a column.
+export const isDistinctTask = (design, t) => t.mappings.some((m) => mappingChain(design, m).some((b) => b.kind === 'distinct'));
 
 // The Excel column a mapping reads ({ letter, label }), directly or through a
 // split block; null for a table dropdown or a split without input.
@@ -1211,9 +1327,17 @@ export function designToTemplate(design, { editor = true } = {}) {
         use(p);
         return [{ source: { mode: 'constant', value: p.value }, targetColumn: m.targetColumn }];
       }
+      const whole = p ? chainOf(design, p) : [];
+      if (isTableDistinct(whole[0])) {
+        for (const b of whole) use(b);
+        const d = whole[0];
+        const rest = whole.slice(1).map(processorOf);
+        if (rest.length > 1) usesChain = true;
+        return [{ source: { mode: 'distinct', schema: d.schema, table: d.table, column: d.column }, targetColumn: m.targetColumn, ...(rest.length === 1 ? { processor: rest[0] } : rest.length > 1 ? { processors: rest } : {}) }];
+      }
       const ref = mappingRef(design, m);
       if (!ref) return [];
-      let chain = p ? chainOf(design, p) : [];
+      let chain = whole;
       for (const b of chain) use(b);
       if (chain[0]?.kind === 'join') {
         const j = chain[0];
@@ -1239,9 +1363,10 @@ export function designToTemplate(design, { editor = true } = {}) {
       }
       if (m.trim) out.trim = true;
       if (m.blank && m.blank !== 'null') out.blank = m.blank;
-      return [{ source: out.source, targetColumn: out.targetColumn, ...(procs.length === 1 ? { processor: procs[0] } : procs.length > 1 ? { processors: procs } : {}), ...(out.trim ? { trim: true } : {}), ...(out.blank ? { blank: out.blank } : {}) }];
+      if (m.optional && out.source.mode === 'header') out.optional = true;
+      return [{ source: out.source, targetColumn: out.targetColumn, ...(out.optional ? { optional: true } : {}), ...(procs.length === 1 ? { processor: procs[0] } : procs.length > 1 ? { processors: procs } : {}), ...(out.trim ? { trim: true } : {}), ...(out.blank ? { blank: out.blank } : {}) }];
     });
-    return { id: t.id, order: i + 1, sourceId: t.sourceId, target: { schema: t.schema, table: t.table }, mappings };
+    return { id: t.id, order: i + 1, ...(t.sourceId ? { sourceId: t.sourceId } : {}), target: { schema: t.schema, table: t.table }, mappings };
   });
   const parameters = [];
   for (const p of used) {
@@ -1258,7 +1383,7 @@ export function designToTemplate(design, { editor = true } = {}) {
   }
   const out = {
     format: FORMAT,
-    specVersion: used.some((p) => ['join', 'constant', 'clean', 'extract', 'default'].includes(p.kind)) ? MORE_BLOCKS_VERSION : usesChain ? CHAIN_VERSION : used.some((p) => p.kind === 'map' || p.kind === 'convert') ? MAP_VERSION : used.some((p) => p.kind === 'case' || (p.kind === 'choice' && hasFilter(p))) ? CASE_VERSION : usesInserted ? INSERTED_VERSION : used.some((p) => p.kind === 'lookup') ? LOOKUP_VERSION : used.length ? BLOCKS_VERSION : BASE_VERSION,
+    specVersion: used.some((p) => p.kind === 'distinct') ? DISTINCT_VERSION : used.some((p) => ['join', 'constant', 'clean', 'extract', 'default'].includes(p.kind)) ? MORE_BLOCKS_VERSION : usesChain ? CHAIN_VERSION : used.some((p) => p.kind === 'map' || p.kind === 'convert') ? MAP_VERSION : used.some((p) => p.kind === 'case' || (p.kind === 'choice' && hasFilter(p))) ? CASE_VERSION : usesInserted ? INSERTED_VERSION : used.some((p) => p.kind === 'lookup') ? LOOKUP_VERSION : used.length ? BLOCKS_VERSION : BASE_VERSION,
     templateId: design.templateId,
     name: design.name,
     ...(design.description ? { description: design.description } : {}),
@@ -1350,7 +1475,7 @@ export function templateToDesign(t) {
 
   t.execution.tasks.slice().sort((a, b) => a.order - b.order).forEach((k, i) => {
     const src = design.sources.find((s) => s.id === k.sourceId);
-    const task = newTask(k.target.schema, k.target.table, { id: k.id, sourceId: k.sourceId, x: nodes[k.id]?.x ?? 520, y: nodes[k.id]?.y ?? 40 + i * 320, ...size(nodes[k.id]) });
+    const task = newTask(k.target.schema, k.target.table, { id: k.id, sourceId: k.sourceId ?? null, x: nodes[k.id]?.x ?? 520, y: nodes[k.id]?.y ?? 40 + i * 320, ...size(nodes[k.id]) });
     for (const m of k.mappings) {
       if (m.source.mode === 'inserted') {
         task.mappings.push({ id: newId('map'), letter: '', label: '', inserted: { taskId: m.source.taskId, column: m.source.column }, targetColumn: m.targetColumn, blank: 'null', trim: false });
@@ -1365,12 +1490,21 @@ export function templateToDesign(t) {
         continue;
       }
       const list = m.processors ?? (m.processor ? [m.processor] : []);
+      if (m.source.mode === 'distinct') {
+        const d = m.source;
+        const dkey = JSON.stringify(['distinct', d.schema, d.table, d.column]);
+        if (!splits.has(dkey)) splits.set(dkey, place(newDistinct({ from: 'table', schema: d.schema, table: d.table, column: d.column })));
+      }
       let mapping;
       let root = null;
       let fixed = false;
       let letter = '';
       let label = '';
-      if (m.source.mode === 'join') {
+      if (m.source.mode === 'distinct') {
+        const d = m.source;
+        root = splits.get(JSON.stringify(['distinct', d.schema, d.table, d.column]));
+        mapping = { id: newId('map'), letter: '', label: '', targetColumn: m.targetColumn, blank: m.blank ?? 'null', trim: !!m.trim };
+      } else if (m.source.mode === 'join') {
         const j = m.source;
         const inputs = j.parts.map((part) => {
           const byLetter = part.column !== undefined;
@@ -1390,7 +1524,7 @@ export function templateToDesign(t) {
         if (fixed ? !src.columns.some((c) => c.letter === letter) : !src.columns.some((c) => c.label === label)) {
           src.columns.push({ letter, label });
         }
-        mapping = { id: newId('map'), letter, label, targetColumn: m.targetColumn, blank: m.blank ?? 'null', trim: !!m.trim };
+        mapping = { id: newId('map'), letter, label, targetColumn: m.targetColumn, blank: m.blank ?? 'null', trim: !!m.trim, ...(m.optional ? { optional: true } : {}) };
       }
       if (list.length || root) {
         // One block per processor, each reading the one before (the first reads the Excel column).
@@ -1425,6 +1559,9 @@ export function templateToDesign(t) {
             const cfg = { mode: proc.mode, start: proc.start ?? 1, length: proc.length ?? null, pattern: proc.pattern ?? '', group: proc.group ?? 0, ignoreCase: !!proc.ignoreCase, otherwise: proc.otherwise ?? 'null' };
             desc = ['extract', cfg];
             make = () => newExtract({ ...cfg, input });
+          } else if (proc.type === 'distinct') {
+            desc = ['distinct', !!proc.ignoreCase];
+            make = () => newDistinct({ from: 'column', ignoreCase: !!proc.ignoreCase, input });
           } else if (proc.type === 'default') {
             desc = ['default', proc.value];
             make = () => newDefault({ value: proc.value, input });
@@ -1530,7 +1667,7 @@ export function suggestOrder(design, schema) {
 // acknowledged) or 'info'. `schema` (schema-model.js) and `workbook` may be
 // null when there is no connection / no example file: the checks that need
 // them are then reported as unverified.
-export function designDiagnostics(design, schema, workbook, { sampleRows = 200 } = {}) {
+export function designDiagnostics(design, schema, workbook, { sampleRows = 200, tableValues = {} } = {}) {
   const out = [];
   const add = (level, code, message, extra = {}) => out.push({ level, code, message, ...extra });
   if (!design.tasks.length) add('error', 'NO_TASKS', 'Add at least one PostgreSQL table to insert into.');
@@ -1541,7 +1678,10 @@ export function designDiagnostics(design, schema, workbook, { sampleRows = 200 }
   for (const t of design.tasks) {
     const label = `${t.schema}.${t.table}`;
     const src = sources.get(t.sourceId);
-    if (!src) add('error', 'NO_SOURCE', `${label}: connect at least one Excel column to it.`, { taskId: t.id });
+    const dedup = t.mappings.filter((m) => mappingChain(design, m).some((b) => b.kind === 'distinct'));
+    if (dedup.length > 1) add('error', 'DISTINCT_MANY', `${label}: only one column of a task can take distinct values.`, { taskId: t.id });
+    if (dedup.length && t.mappings.some((m) => !dedup.includes(m) && !isFixedBlock(procOf(design, m.via)))) add('error', 'DISTINCT_MIX', `${label}: a task that inserts distinct values cannot also read other Excel columns or inserted keys; its other columns can only hold fixed values and table dropdowns.`, { taskId: t.id });
+    if (!src && !t.mappings.some((m) => isTableDistinct(mappingChain(design, m)[0]))) add('error', 'NO_SOURCE', `${label}: connect at least one Excel column to it.`, { taskId: t.id });
     if (!t.mappings.length) add('error', 'NO_MAPPINGS', `${label}: no column is mapped.`, { taskId: t.id });
     else if (src && t.mappings.every((m) => isFixedBlock(procOf(design, m.via)))) add('error', 'NO_SOURCE_COLUMN', `${label}: it needs at least one column of the worksheet, or the inserted key of an earlier task, not only table dropdowns.`, { taskId: t.id });
     const seen = new Set();
@@ -1553,6 +1693,7 @@ export function designDiagnostics(design, schema, workbook, { sampleRows = 200 }
         const j = design.tasks.findIndex((x) => x.id === m.inserted.taskId);
         const from = design.tasks[j];
         if (!from) add('error', 'INSERTED_TASK', `${label}.${m.targetColumn}: the task it takes the inserted key from no longer exists.`, { taskId: t.id });
+        else if (isDistinctTask(design, from)) add('error', 'INSERTED_DISTINCT', `${label}.${m.targetColumn} uses the key of ${from.schema}.${from.table}, which inserts distinct values: they have no worksheet row to match.`, { taskId: t.id });
         else if (j >= i) add('error', 'INSERTED_ORDER', `${label}.${m.targetColumn} uses inserted.${m.inserted.column} of ${from.schema}.${from.table}, which is inserted at the same time or later: move that task before it.`, { taskId: t.id });
         else if (from.sourceId !== t.sourceId) add('error', 'INSERTED_SOURCE', `${label}.${m.targetColumn} uses inserted.${m.inserted.column} of ${from.schema}.${from.table}, which reads another worksheet: rows are matched by worksheet row, so both tasks must read the same source.`, { taskId: t.id });
         else if (schema) {
@@ -1583,16 +1724,31 @@ export function designDiagnostics(design, schema, workbook, { sampleRows = 200 }
 
   // Processor blocks.
   const names = new Set();
+  // A block reads an Excel column, directly or through the blocks before it, or starts from a table column.
+  const rooted = (p) => sources.has(blockSource(design, p)?.sourceId) || isTableDistinct(chainOf(design, p)[0]);
   for (const p of design.processors ?? []) {
     if (hasInput(p) && p.input?.procId && !isTextBlock(procOf(design, p.input.procId))) {
       add('error', 'CHAIN_INPUT', 'A block can only take its text from a case block that gives text (List off), a replace block or a convert block.', { processorId: p.id });
     }
     if (p.kind === 'split') {
       if (!p.delimiter) add('error', 'SPLIT_DELIMITER', 'A split block needs a delimiter.', { processorId: p.id });
-      if (!sources.has(blockSource(design, p)?.sourceId)) add('error', 'SPLIT_NO_INPUT', 'A split block has no Excel column connected to it.', { processorId: p.id });
+      if (!rooted(p)) add('error', 'SPLIT_NO_INPUT', 'A split block has no Excel column connected to it.', { processorId: p.id });
       continue;
     }
     if (p.kind === 'constant') continue;
+    if (p.kind === 'distinct') {
+      if (p.from === 'column') {
+        if (!rooted(p)) add('error', 'DISTINCT_NO_INPUT', 'A distinct block has no Excel column connected to it.', { processorId: p.id });
+      } else if (!p.table || !p.column) {
+        add('error', 'DISTINCT_TABLE', 'A distinct block needs a table and a column.', { processorId: p.id });
+      } else if (schema) {
+        const tb = findTable(schema, tableId(p.schema, p.table));
+        if (!tb) add('error', 'DISTINCT_TABLE', `The distinct block: ${p.schema}.${p.table} does not exist.`, { processorId: p.id });
+        else if (!tb.columns.some((x) => x.name === p.column)) add('error', 'DISTINCT_TABLE', `The distinct block: ${p.schema}.${p.table} has no column ${p.column}.`, { processorId: p.id });
+      }
+      if (!design.tasks.some((t) => t.mappings.some((m) => mappingChain(design, m).includes(p)))) add('info', 'DISTINCT_UNUSED', 'A distinct block is not connected to a table column.', { processorId: p.id });
+      continue;
+    }
     if (p.kind === 'join') {
       const ids = new Set(p.inputs.map((i) => i.sourceId));
       if (!p.inputs.length || [...ids].some((x) => !sources.has(x))) add('error', 'JOIN_NO_INPUT', 'A join block needs at least one Excel column connected to it.', { processorId: p.id });
@@ -1601,7 +1757,7 @@ export function designDiagnostics(design, schema, workbook, { sampleRows = 200 }
     }
     if (['map', 'convert', 'clean', 'extract', 'default'].includes(p.kind)) {
       const name = { map: 'replace', convert: 'convert', clean: 'clean', extract: 'extract', default: 'fill-blanks' }[p.kind];
-      if (!sources.has(blockSource(design, p)?.sourceId)) add('error', 'BLOCK_NO_INPUT', `A ${name} block has no Excel column connected to it.`, { processorId: p.id });
+      if (!rooted(p)) add('error', 'BLOCK_NO_INPUT', `A ${name} block has no Excel column connected to it.`, { processorId: p.id });
       if (p.kind === 'default' && p.input?.procId) add('warning', 'DEFAULT_POSITION', 'A fill-blanks block only works when it reads the Excel column directly.', { processorId: p.id });
       if (p.kind === 'default' && p.value === '') add('error', 'DEFAULT_EMPTY', 'A fill-blanks block needs a value.', { processorId: p.id });
       if (p.kind === 'extract' && p.mode === 'regex') {
@@ -1621,13 +1777,13 @@ export function designDiagnostics(design, schema, workbook, { sampleRows = 200 }
       continue;
     }
     if (p.kind === 'case') {
-      if (!sources.has(blockSource(design, p)?.sourceId)) add('error', 'CASE_NO_INPUT', 'A case block has no Excel column connected to it.', { processorId: p.id });
+      if (!rooted(p)) add('error', 'CASE_NO_INPUT', 'A case block has no Excel column connected to it.', { processorId: p.id });
       if (p.list && !p.delimiter) add('error', 'SPLIT_DELIMITER', 'A case block that converts a list needs a separator.', { processorId: p.id });
       continue;
     }
     if (p.kind === 'lookup') {
       const what = `${p.schema}.${p.table || '?'}`;
-      if (!sources.has(blockSource(design, p)?.sourceId)) add('error', 'LOOKUP_NO_INPUT', `The lookup in ${what} has no Excel column connected to it.`, { processorId: p.id });
+      if (!rooted(p)) add('error', 'LOOKUP_NO_INPUT', `The lookup in ${what} has no Excel column connected to it.`, { processorId: p.id });
       if (!p.table || !p.matchColumn || !p.valueColumn) add('error', 'LOOKUP_TABLE', 'A lookup needs a table, the column to match and the column to return.', { processorId: p.id });
       else if (schema) {
         const tb = findTable(schema, tableId(p.schema, p.table));
@@ -1674,7 +1830,7 @@ export function designDiagnostics(design, schema, workbook, { sampleRows = 200 }
   if (!workbook) {
     if (design.sources.length) add('warning', 'NO_WORKBOOK', 'No example workbook is loaded: the Excel sources were not verified.');
   } else {
-    const run = extractRows(template, workbook, { limit: sampleRows, previewMissing: true });
+    const run = extractRows(template, workbook, { limit: sampleRows, previewMissing: true, tableValues });
     for (const e of run.errors) {
       if (e.code === 'TEMPLATE') continue;
       add('error', e.code, e.message, { taskId: e.taskId, sourceId: e.sourceId });

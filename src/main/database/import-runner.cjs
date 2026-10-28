@@ -78,14 +78,17 @@ async function runImport(client, template, tasks, { timeoutMs = 600000 } = {}) {
       if (!atomic) await begin();
       const keep = needed.has(task.id) ? new Map() : null;
       if (keep) returned.set(task.id, keep);
-      const columns = task.mappings.map((m) => m.targetColumn);
+      // Optional columns the worksheet lacked were reported by extractRows(); they are left out.
+      const skipped = new Set(data.skipped ?? []);
+      const mappings = task.mappings.filter((m) => !skipped.has(m.targetColumn));
+      const columns = mappings.map((m) => m.targetColumn);
       const sql = `INSERT INTO ${quote(task.target.schema)}.${quote(task.target.table)} (${columns.map(quote).join(', ')}) VALUES (${columns.map((_, i) => `$${i + 1}`).join(', ')})`
         + (keep ? ` RETURNING ${[...needed.get(task.id)].map(quote).join(', ')}` : '');
       let inserted = 0;
       for (const row of data.rows) {
         try {
           const params = [];
-          for (const m of task.mappings) params.push(await valueOf(task, m, row));
+          for (const m of mappings) params.push(await valueOf(task, m, row));
           const res = await client.query(sql, params);
           if (keep) keep.set(row.row, res.rows[0] ?? {});
           inserted++;

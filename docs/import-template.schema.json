@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "urn:pgsql-erd:excel-pg-insert-template:1.7",
+  "$id": "urn:pgsql-erd:excel-pg-insert-template:1.8",
   "title": "Excel to PostgreSQL INSERT template",
   "description": "Maps worksheets of any structurally compatible .xlsx workbook onto ordered INSERT tasks. Version 1.x; a runner must reject any other major version.",
   "type": "object",
@@ -356,7 +356,6 @@
             "required": [
               "id",
               "order",
-              "sourceId",
               "target",
               "mappings"
             ],
@@ -373,7 +372,8 @@
               "sourceId": {
                 "type": "string",
                 "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
-                "maxLength": 64
+                "maxLength": 64,
+                "description": "Omit it only when the task reads a table column with a distinct source (1.8)."
               },
               "target": {
                 "type": "object",
@@ -404,6 +404,10 @@
                     "targetColumn"
                   ],
                   "properties": {
+                    "optional": {
+                      "type": "boolean",
+                      "description": "Only with a `header` source: when the worksheet has no such header, the column is left out of the INSERT instead of failing."
+                    },
                     "source": {
                       "anyOf": [
                         {
@@ -495,6 +499,36 @@
                             "value": {
                               "type": "string",
                               "maxLength": 1000
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "mode",
+                            "schema",
+                            "table",
+                            "column"
+                          ],
+                          "description": "The different values of a table column (1.8): the task inserts one row for each. The runner reads them from the database. Processors may follow; the task can hold no other column of the worksheet.",
+                          "properties": {
+                            "mode": {
+                              "const": "distinct"
+                            },
+                            "schema": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 63
+                            },
+                            "table": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 63
+                            },
+                            "column": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 63
                             }
                           }
                         },
@@ -817,6 +851,22 @@
                         {
                           "type": "object",
                           "required": [
+                            "type"
+                          ],
+                          "description": "distinct (1.8): keeps the first of each different text (blank texts are dropped), so the task inserts one row for each different value. Processors before it work on every cell, the ones after it on each different value. One per column; the task can hold no other worksheet column.",
+                          "properties": {
+                            "type": {
+                              "const": "distinct"
+                            },
+                            "ignoreCase": {
+                              "type": "boolean",
+                              "description": "A and a are the same value. Default false."
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
                             "type",
                             "schema",
                             "table",
@@ -1110,6 +1160,22 @@
                                 "type": "string",
                                 "minLength": 1,
                                 "maxLength": 1000
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "type"
+                            ],
+                            "description": "distinct (1.8): keeps the first of each different text (blank texts are dropped), so the task inserts one row for each different value. Processors before it work on every cell, the ones after it on each different value. One per column; the task can hold no other worksheet column.",
+                            "properties": {
+                              "type": {
+                                "const": "distinct"
+                              },
+                              "ignoreCase": {
+                                "type": "boolean",
+                                "description": "A and a are the same value. Default false."
                               }
                             }
                           },

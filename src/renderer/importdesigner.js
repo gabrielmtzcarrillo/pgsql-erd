@@ -18,6 +18,7 @@ import {
   colLetter, colIndex, normHeader, newDesign, newSource, newTask, newId, designToTemplate, templateToDesign,
   designDiagnostics, hasErrors, suggestOrder, resolveSource, extractRows, checkSample, inferHint, validateTemplate,
   newSplit, newCase, newMap, newConvert, newJoin, newConstant, newClean, newExtract, newDefault, blockSource, isTextBlock, isFixedBlock, chainOf, newChoice, newLookup, hasInput, procOf, mappingRef, columnRefs,
+  newDistinct, isTableDistinct, distinctKey,
 } from '../shared/import-template.js';
 import { iconElement, decorateButtons } from './icons.js';
 import { tr, trn } from '../shared/i18n.js';
@@ -58,7 +59,7 @@ export function setupImportDesigner(ctx) {
 
   const makeRecord = (design, title, filePath = null) => ({
     design, title, filePath, wb: null, sheet: null, sel: null, undo: [], redo: [], resolved: {}, diag: [],
-    dock: 'inspector', zoom: 1, pick: 'header', dirty: false, order: null, loading: false, run: null, running: false,
+    dock: 'inspector', zoom: 1, pick: 'header', dirty: false, order: null, loading: false, run: null, running: false, distinct: new Map(),
   });
 
   // ------------------------------------------------------------ persistence
@@ -106,6 +107,25 @@ export function setupImportDesigner(ctx) {
   const sourceOf = (id) => T.design.sources.find((s) => s.id === id);
   const taskOf = (id) => T.design.tasks.find((t) => t.id === id);
   const template = () => designToTemplate(T.design, { editor: false });
+  // The values the distinct blocks read from tables, by distinctKey(): read from the database when needed.
+  const tableValues = () => Object.fromEntries([...T.distinct].filter(([, v]) => v.values).map(([k, v]) => [k, v.values]));
+  async function loadDistinct(force = false) {
+    const rec = T;
+    const want = new Map();
+    for (const p of rec.design.processors ?? []) if (isTableDistinct(p) && p.table && p.column) want.set(distinctKey(p), p);
+    for (const k of [...rec.distinct.keys()]) if (!want.has(k)) rec.distinct.delete(k);
+    if (!db.connected()) return;
+    for (const [k, p] of want) {
+      if (!force && rec.distinct.has(k)) continue;
+      try {
+        const res = await call(host.data.distinct, { table: `${p.schema}.${p.table}`, column: p.column, limit: 5000 });
+        if (res.truncated) throw new Error(tr('{table} has more than 5000 different values in {column}.', { table: `${p.schema}.${p.table}`, column: p.column }));
+        rec.distinct.set(k, { values: res.values.map((v) => v.value).filter((v) => v !== null && String(v).trim() !== '') });
+      } catch (err) {
+        rec.distinct.set(k, { error: err.message });
+      }
+    }
+  }
   const selectedSource = () => (T.sel?.type === 'source' ? sourceOf(T.sel.id) : null);
 
   function snapshot() {
@@ -139,7 +159,7 @@ export function setupImportDesigner(ctx) {
 
   // Reads the example workbook through the sources' rules: the node columns
   // follow the file, and mappings follow their columns.
-  function syncColumns() {
+  function syncColumns(fresh = false) {
     T.resolved = {};
     if (!T.wb) return;
     const tpl = template();
@@ -147,8 +167,21 @@ export function setupImportDesigner(ctx) {
       const src = sourceOf(ts.id);
       const res = resolveSource(tpl, ts, T.wb.sheets);
       T.resolved[ts.id] = res;
-      if (!res.ok) continue;
-      src.columns = res.columns.map((c) => ({ letter: c.letter, label: c.label }));
+      if (!res.ok) {
+        // A freshly loaded workbook that lacks the worksheet: every old column is missing.
+        if (fresh) for (const c of src.columns) c.missing = true;
+        continue;
+      }
+      const match0 = { caseSensitive: src.header.caseSensitive };
+      const same = (a, b) => (src.header.mode === 'detect' ? normHeader(a.label, match0) === normHeader(b.label, match0) : a.letter === b.letter);
+      const used = (c) => T.design.tasks.some((t) => t.sourceId === src.id && t.mappings.some((m) => !m.via && !m.inserted && same(m, c)))
+        || (T.design.processors ?? []).some((p) => (hasInput(p) && p.input?.sourceId === src.id && same(p.input, c)) || (p.inputs ?? []).some((i) => i.sourceId === src.id && same(i, c)));
+      // Columns of the old file that the new one lacks stay on the block, marked, so their mappings keep a place.
+      const gone = src.columns.filter((c) => !res.columns.some((x) => same(x, c)) && (fresh || (c.missing && used(c))));
+      src.columns = [
+        ...res.columns.map((c) => ({ letter: c.letter, label: c.label })),
+        ...gone.map((c) => ({ letter: c.letter, label: c.label, missing: true })),
+      ];
       const refresh = (ref) => {
         const match = { caseSensitive: src.header.caseSensitive };
         const c = src.header.mode === 'detect'
@@ -171,9 +204,12 @@ export function setupImportDesigner(ctx) {
   let diagTimer = 0;
   function scheduleDiagnostics() {
     clearTimeout(diagTimer);
-    diagTimer = setTimeout(() => {
+    diagTimer = setTimeout(async () => {
       if (!T) return;
-      T.diag = designDiagnostics(T.design, schema(), T.wb?.sheets ?? null);
+      const rec = T;
+      await loadDistinct();
+      if (T !== rec) return;
+      T.diag = designDiagnostics(T.design, schema(), T.wb?.sheets ?? null, { tableValues: tableValues() });
       if (isShown()) {
         renderDock();
         markNodes();
@@ -252,6 +288,7 @@ export function setupImportDesigner(ctx) {
     else if (kind === 'default') p = newDefault(pos);
     else if (kind === 'convert') p = newConvert(pos);
     else if (kind === 'lookup') p = newLookup(pos);
+    else if (kind === 'distinct') p = newDistinct(pos);
     else {
       const names = new Set((T.design.processors ?? []).map((x) => x.name));
       let n = 1;
@@ -366,7 +403,8 @@ export function setupImportDesigner(ctx) {
     const p = procOf(T.design, procId);
     const task = taskOf(taskId);
     if (!p || !task) return;
-    if (hasInput(p)) {
+    const tableRooted = isTableDistinct(chainOf(T.design, p)[0]);
+    if (hasInput(p) && !tableRooted) {
       const root = blockSource(T.design, p);
       if (!root) return status(tr('Connect an Excel column to the block first.'));
       if (task.sourceId && task.sourceId !== root.sourceId && task.mappings.length) {
@@ -376,7 +414,7 @@ export function setupImportDesigner(ctx) {
     const id = newId('map');
     edit((d) => {
       const t = d.tasks.find((x) => x.id === taskId);
-      if (hasInput(p)) t.sourceId = blockSource(T.design, p).sourceId;
+      if (hasInput(p) && !tableRooted) t.sourceId = blockSource(T.design, p).sourceId;
       t.mappings = t.mappings.filter((m) => m.targetColumn !== targetColumn);
       t.mappings.push({ id, letter: '', label: '', via: procId, targetColumn, blank: 'null', trim: false });
     });
@@ -551,7 +589,7 @@ export function setupImportDesigner(ctx) {
       const dup = s.header.mode === 'detect' && (!c.label || s.columns.filter((x) => normHeader(x.label, match) === normHeader(c.label, match)).length > 1);
       const port = h('span', { class: 'imp-port out', title: dup ? tr('This header is blank or repeated: it cannot be found by name.') : tr('Drag to a table column to map it') });
       if (!dup || s.header.mode !== 'detect') port.addEventListener('pointerdown', (e) => startConnect(e, { sourceId: s.id, key }));
-      return h('div', { class: `imp-col${dup ? ' dup' : ''}`, 'data-key': key, title: `${c.letter} ${c.label}`.trim() }, [
+      return h('div', { class: `imp-col${dup ? ' dup' : ''}${c.missing ? ' missing' : ''}`, 'data-key': key, title: c.missing ? tr('This column is not in the current workbook.') : `${c.letter} ${c.label}`.trim() }, [
         h('span', { class: 'imp-letter' }, c.letter || '·'),
         h('span', { class: 'imp-label' }, c.label || '—'),
         port,
@@ -577,13 +615,14 @@ export function setupImportDesigner(ctx) {
     case: tr('Change the case'),
     map: tr('Replace values'),
     convert: tr('Convert the type'),
+    distinct: tr('Distinct values'),
     join: tr('Join columns'),
     constant: tr('Fixed value'),
     clean: tr('Clean the text'),
     extract: tr('Extract part of the text'),
     default: tr('Fill blanks'),
   }[p.kind] ?? tr('Split into an array'));
-  const BLOCK_ICON = { split: 'block-split', case: 'block-case', map: 'block-map', convert: 'block-convert', join: 'block-join', constant: 'block-constant', clean: 'block-clean', extract: 'block-extract', default: 'block-default' };
+  const BLOCK_ICON = { split: 'block-split', case: 'block-case', map: 'block-map', convert: 'block-convert', join: 'block-join', constant: 'block-constant', clean: 'block-clean', extract: 'block-extract', default: 'block-default', distinct: 'block-distinct' };
   const OUT_LABEL = () => ({ map: tr('Replaced text'), convert: tr('Converted value'), clean: tr('Clean text'), extract: tr('Extracted text'), default: tr('Text with the default') });
 
   function procNode(p) {
@@ -629,6 +668,33 @@ export function setupImportDesigner(ctx) {
           check(tr('Skip blank'), p.skipBlank, (v) => setBlock(p.id, (x) => (x.skipBlank = v)), tr('Leave out the columns whose cell is blank, with their separator')),
         ]),
       );
+      return withGrip(node, p);
+    }
+    if (p.kind === 'distinct') {
+      const fromSel = h('label', { title: tr('Where the values come from.') }, [tr('From'), h('select', { onchange: (e) => setBlock(p.id, (x) => Object.assign(x, { from: e.target.value, input: null })) }, [
+        h('option', { value: 'column', selected: p.from === 'column' }, tr('An Excel column')),
+        h('option', { value: 'table', selected: p.from === 'table' }, tr('A table column')),
+      ])]);
+      const outCol = h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, tr('Different values')), out]);
+      if (p.from === 'table') {
+        node.append(
+          nodeHead(p, 'block-distinct', blockTitle(p), () => removeProcessor(p.id)),
+          h('div', { class: 'imp-cols' }, [outCol]),
+          tableForm(p, input, [['column', tr('Column')]], [], [fromSel]),
+        );
+      } else {
+        node.append(
+          nodeHead(p, 'block-distinct', blockTitle(p), () => removeProcessor(p.id)),
+          h('div', { class: 'imp-cols' }, [
+            h('div', { class: 'imp-col proc-in', title: inLabel(p, tr('Drop an Excel column here')) }, [
+              h('span', { class: 'imp-port in' }),
+              h('span', { class: 'imp-label' }, inLabel(p, tr('Text from an Excel column'))),
+            ]),
+            outCol,
+          ]),
+          h('div', { class: 'imp-procform choice' }, [fromSel, check(tr('Ignore case'), p.ignoreCase, (v) => setBlock(p.id, (x) => (x.ignoreCase = v)), tr('A and a are the same value; the first one found is kept'))]),
+        );
+      }
       return withGrip(node, p);
     }
     if (p.kind === 'constant') {
@@ -1256,7 +1322,7 @@ export function setupImportDesigner(ctx) {
     }
     rec.loading = false;
     if (rec === T) {
-      syncColumns();
+      syncColumns(true);
       render();
       scheduleDiagnostics();
     }
@@ -1533,7 +1599,7 @@ export function setupImportDesigner(ctx) {
       const src = sourceOf(task.sourceId);
       const tb = dbTable(task);
       const col = tb?.columns.find((c) => c.name === m.targetColumn);
-      const run = T.wb ? extractRows(template(), T.wb.sheets, { limit: 8, previewMissing: true }) : null;
+      const run = T.wb ? extractRows(template(), T.wb.sheets, { limit: 8, previewMissing: true, tableValues: tableValues() }) : null;
       const samples = run?.tasks.find((x) => x.id === task.id)?.rows.map((r) => r.values[m.targetColumn]).filter((v) => v !== null && v !== undefined) ?? [];
       const bad = col ? samples.map((v) => checkSample(col, v)).find(Boolean) : null;
       const via = m.via ? procOf(T.design, m.via) : null;
@@ -1541,7 +1607,7 @@ export function setupImportDesigner(ctx) {
       const parent = m.inserted ? taskOf(m.inserted.taskId) : null;
       const from = m.inserted ? `inserted.${m.inserted.column}${parent ? ` (${taskName(parent)})` : ''}` : via?.kind === 'choice' ? tr('dropdown {name}', { name: via.name }) : via?.kind === 'constant' ? tr('fixed value')
         : !ref ? '?'
-          : `${src?.header.mode === 'detect' ? `"${ref.label}"` : `${ref.letter} ${ref.label}`.trim()}${via ? ` ${via.kind === 'lookup' ? tr('looked up') : via.kind === 'case' ? (via.mode === 'upper' ? tr('in uppercase') : tr('in lowercase')) : via.kind === 'map' ? tr('replaced') : via.kind === 'convert' ? tr('converted') : via.kind === 'join' ? tr('joined') : via.kind === 'clean' ? tr('cleaned') : via.kind === 'extract' ? tr('extracted') : via.kind === 'default' ? tr('with a default') : tr('split')}` : ''}`;
+          : `${src?.header.mode === 'detect' ? `"${ref.label}"` : `${ref.letter} ${ref.label}`.trim()}${via ? ` ${via.kind === 'lookup' ? tr('looked up') : via.kind === 'case' ? (via.mode === 'upper' ? tr('in uppercase') : tr('in lowercase')) : via.kind === 'map' ? tr('replaced') : via.kind === 'convert' ? tr('converted') : via.kind === 'join' ? tr('joined') : via.kind === 'clean' ? tr('cleaned') : via.kind === 'distinct' ? tr('without repeats') : via.kind === 'extract' ? tr('extracted') : via.kind === 'default' ? tr('with a default') : tr('split')}` : ''}`;
       const set = (fn) => edit((d) => fn(d.tasks.find((x) => x.id === task.id).mappings.find((y) => y.id === m.id)));
       return [
         h('div', { class: 'imp-detail' }, [
@@ -1556,6 +1622,9 @@ export function setupImportDesigner(ctx) {
               h('option', { value: 'error', selected: m.blank === 'error' }, tr('Report an error')),
             ])]),
             h('label', { class: 'imp-field' }, [h('span', {}, tr('Trim spaces')), h('input', { type: 'checkbox', checked: !!m.trim, onchange: (e) => set((x) => (x.trim = e.target.checked)) })]),
+            src?.header.mode === 'detect' && via?.kind !== 'join'
+              ? h('label', { class: 'imp-field', title: tr('When a workbook has no column with this header, the column is left out of the INSERT instead of failing.') }, [h('span', {}, tr('Optional column')), h('input', { type: 'checkbox', checked: !!m.optional, onchange: (e) => set((x) => (x.optional = e.target.checked)) })])
+              : null,
             h('div', { class: 'imp-field' }, [h('span', {}, tr('Column type')), h('span', {}, col?.databaseType ?? tr('unknown'))]),
           ]),
           m.inserted ? h('p', { class: 'small' }, tr('The value is the key that the INSERT of {table} returns (RETURNING {column}) for the same worksheet row, so this task runs after it.', { table: parent ? taskName(parent) : '?', column: m.inserted.column })) : null,
@@ -1604,6 +1673,8 @@ export function setupImportDesigner(ctx) {
           ? tr('The Excel cell holds a primary key of the chosen table. The row with that key is found when the import runs, after the earlier tasks, so rows they inserted count, and the value of its return column (the key itself by default) is inserted. If no row has the key the import reports it. Put the task for that table first.')
           : p.kind === 'join'
           ? tr('Writes several Excel columns as one text, for example first name and last name, with a separator. Drag each Excel column to the left dots; blank columns are left out. Then drag its right dot to a table column, or to another block to keep processing the text.')
+          : p.kind === 'distinct'
+          ? tr('Gives each different value once, for example the categories of a product list, so a task can insert them into their own table. It reads an Excel column or a table column. A task with a distinct block holds no other Excel column, only fixed values and dropdowns. Blank cells are left out. Drag its right dot to a table column.')
           : p.kind === 'constant'
           ? tr('The same text is inserted in every row; nothing is read from the worksheet. Drag its right dot to a table column.')
           : p.kind === 'clean'
@@ -1710,7 +1781,7 @@ export function setupImportDesigner(ctx) {
   let previewTask = null;
   function dockPreview() {
     if (!T.wb) return h('p', { class: 'imp-help' }, tr('Open an example workbook to preview the rows each task would insert.'));
-    const run = extractRows(template(), T.wb.sheets, { limit: 20, previewMissing: true });
+    const run = extractRows(template(), T.wb.sheets, { limit: 20, previewMissing: true, tableValues: tableValues() });
     const tasks = run.tasks;
     if (!tasks.length) return [h('p', { class: 'imp-help' }, tr('Nothing to preview yet.')), ...run.errors.map((e) => h('p', { class: 'small error' }, e.message))];
     const pick = tasks.find((t) => t.id === (T.sel?.task ?? T.sel?.id)) ?? tasks.find((t) => t.id === previewTask) ?? tasks[0];
@@ -1724,7 +1795,7 @@ export function setupImportDesigner(ctx) {
     return [
       h('div', { class: 'imp-order-bar' }, [
         select1,
-        h('span', { class: 'muted small' }, pick.sheetName ? tr('{rows} from "{sheet}"; first {n} shown. Nothing is written to the database.', { rows: trn(pick.total, '{n} row', '{n} rows'), sheet: pick.sheetName, n: pick.rows.length }) : ''),
+        h('span', { class: 'muted small' }, pick.sheetName ? tr('{rows} from "{sheet}"; first {n} shown. Nothing is written to the database.', { rows: trn(pick.total, '{n} row', '{n} rows'), sheet: pick.sheetName, n: pick.rows.length }) : tr('{rows} of different values; first {n} shown. Nothing is written to the database.', { rows: trn(pick.total, '{n} row', '{n} rows'), n: pick.rows.length })),
       ]),
       ...errors.slice(0, 5).map((e) => h('p', { class: 'small error' }, e.message)),
       pick.rows.length
@@ -1757,7 +1828,10 @@ export function setupImportDesigner(ctx) {
     if (!rec.wb) return status(tr('Open the workbook to import first: the rows come from it.'));
     if (!db.connected()) return db.openConnect();
     if (!policy?.allowWrites) return status(tr('This connection is read-only (see its policy in Database → Connect).'));
-    rec.diag = designDiagnostics(rec.design, schema(), rec.wb.sheets);
+    await loadDistinct(true);
+    if (T !== rec) return;
+    rec.diag = designDiagnostics(rec.design, schema(), rec.wb.sheets, { tableValues: tableValues() });
+    for (const v of rec.distinct.values()) if (v.error) rec.diag.push({ level: 'error', code: 'DISTINCT_READ', message: tr('Could not read the different values: {message}', { message: v.error }) });
     renderDock();
     markNodes();
     const fail = (list) => {
@@ -1769,7 +1843,7 @@ export function setupImportDesigner(ctx) {
     };
     if (hasErrors(rec.diag)) return fail([]);
     const tpl = designToTemplate(rec.design, { editor: false });
-    const read = extractRows(tpl, rec.wb.sheets);
+    const read = extractRows(tpl, rec.wb.sheets, { tableValues: tableValues() });
     if (!read.ok) return fail(read.errors.map((e) => ({ level: 'error', code: e.code, message: e.message, taskId: e.taskId })));
     const total = read.tasks.reduce((n, t) => n + t.total, 0);
     if (!total) return status(tr('The workbook has no rows to insert.'));
@@ -1791,7 +1865,7 @@ export function setupImportDesigner(ctx) {
     $('#imp-run').disabled = true;
     status(tr('Running the import…'));
     try {
-      const res = await call(host.import.run, { template: tpl, tasks: read.tasks.map((t) => ({ id: t.id, order: t.order, rows: t.rows })) });
+      const res = await call(host.import.run, { template: tpl, tasks: read.tasks.map((t) => ({ id: t.id, order: t.order, skipped: t.skipped, rows: t.rows })) });
       rec.run = { ok: true, total: res.total, tasks: res.tasks, db: info?.description ?? '' };
       status(tr('Inserted {rows}.', { rows: trn(res.total, '{n} row', '{n} rows') }));
     } catch (err) {
@@ -1837,6 +1911,7 @@ export function setupImportDesigner(ctx) {
   $('#imp-add-convert').addEventListener('click', () => addBlock('convert'));
   $('#imp-add-choice').addEventListener('click', () => addBlock('choice'));
   $('#imp-add-lookup').addEventListener('click', () => addBlock('lookup'));
+  $('#imp-add-distinct').addEventListener('click', () => addBlock('distinct'));
   $('#imp-add-source').addEventListener('click', () => T.sheet && addSource(T.sheet));
   for (const r of page.querySelectorAll('input[name="imp-pick"]')) {
     r.addEventListener('change', () => r.checked && (T.pick = r.value));

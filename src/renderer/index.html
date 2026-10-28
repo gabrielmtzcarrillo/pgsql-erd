@@ -220,6 +220,7 @@
     <section class="imp-main">
       <div class="q-toolbar">
         <button type="button" data-cmd="toggle-db-tree" title="Show the tables of the connected database">Explorer</button>
+        <button type="button" data-cmd="import-new" data-icon="plus" title="Start another importer in a new tab (Ctrl+Alt+Shift+M)">New importer</button>
         <input id="imp-name" class="imp-name-input" placeholder="Template name" title="Name of the import template" spellcheck="false">
         <input id="imp-id" class="imp-id-input" placeholder="template-id" title="Identifier of the template: letters, digits, - and _" spellcheck="false">
         <label class="check" title="Whether a failure undoes every task or only the failing one">Transaction
@@ -245,6 +246,7 @@
         <button type="button" id="imp-add-default" data-icon="block-default" title="Add a block that gives a value to blank cells">Default block</button>
         <button type="button" id="imp-add-choice" data-icon="block-choice" title="Add a block whose value is picked from the rows of a table when the import runs">Table dropdown</button>
         <button type="button" id="imp-add-lookup" data-icon="block-lookup" title="Add a block that finds the key of a row (such as a generated id) from a value of the worksheet">Lookup block</button>
+        <button type="button" id="imp-add-distinct" data-icon="block-distinct" title="Add a block that gives each different value of an Excel column or of a table column once, to insert them as rows">Distinct block</button>
         <span class="grow"></span>
       </div>
       <div id="imp-canvas" class="imp-canvas">
