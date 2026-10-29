@@ -48,7 +48,7 @@ test('unknown major versions, bad structure and inconsistent tasks are refused',
   v2.specVersion = '2.0';
   assert.match(validateTemplate(v2)[0], /Unsupported specVersion/);
   assert.deepEqual(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.1' }), []);
-  assert.match(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.9' })[0], /Unsupported specVersion/);
+  assert.match(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.10' })[0], /Unsupported specVersion/);
   assert.match(validateTemplate({ ...clone(TEMPLATE), format: 'x' })[0], /format/);
   const gap = clone(TEMPLATE);
   gap.execution.tasks[1].order = 3;
@@ -355,7 +355,7 @@ test('lookup blocks: a foreign key found from a value, version 1.2', () => {
   const lookup = { type: 'lookup', schema: 'public', table: 'catCarreras', matchColumn: 'nombre', valueColumn: 'idCarrera', onMissing: 'error' };
   t.execution.tasks[1].mappings[2] = { source: { mode: 'header', name: 'ID Carrera' }, targetColumn: 'idCarrera', trim: true, processor: lookup };
   assert.deepEqual(validateTemplate(t), []);
-  assert.match(validateTemplate({ ...clone(t), specVersion: '1.9' })[0], /Unsupported/);
+  assert.match(validateTemplate({ ...clone(t), specVersion: '1.10' })[0], /Unsupported/);
   const bad = clone(t);
   bad.execution.tasks[1].mappings[2].processor = { type: 'lookup', table: 'x' };
   assert.notEqual(validateTemplate(bad).length, 0);
@@ -712,6 +712,14 @@ test('distinct values of a worksheet column and of a table column, version 1.8',
   t.execution.tasks[0].mappings[0].processors[1] = { type: 'distinct' };
   assert.equal(extractRows(t, wb).tasks[0].total, 3);
 
+  // stopAtEmpty ends the reading at the first blank cell: Di's blank hides Ed's "y" (already seen) and anything after it.
+  const wb2 = [students([['Ana', 'A1', 'x', ''], ['Bo', 'B1', 'y', ''], ['Cy', 'C1', '', ''], ['Di', 'D1', 'z', '']])];
+  wb2[0].rows[0][2] = 'Cat';
+  t.execution.tasks[0].mappings[0].processors[1] = { type: 'distinct' };
+  assert.deepEqual(extractRows(t, wb2).tasks[0].rows.map((r) => r.values.name), ['X', 'Y', 'Z']);
+  t.execution.tasks[0].mappings[0].processors[1] = { type: 'distinct', stopAtEmpty: true };
+  assert.deepEqual(extractRows(t, wb2).tasks[0].rows.map((r) => r.values.name), ['X', 'Y']);
+
   // A table column: the runner hands in its values; the task has no worksheet.
   const tt = base([{
     id: 'fromTable', order: 1, target: { schema: 'public', table: 'copy' },
@@ -746,5 +754,45 @@ test('distinct values of a worksheet column and of a table column, version 1.8',
   const noSource = clone(t);
   delete noSource.execution.tasks[0].sourceId;
   assert.match(validateTemplate(noSource).join(), /needs a sourceId/);
-  assert.match(validateTemplate({ ...t, specVersion: '1.9' }).join(), /Unsupported/);
+  assert.match(validateTemplate({ ...t, specVersion: '1.10' }).join(), /Unsupported/);
+});
+
+test('a range of worksheet columns gives an array, version 1.9', () => {
+  const t = {
+    format: 'excel-pg-insert-template',
+    specVersion: '1.9',
+    templateId: 'range',
+    name: 'Rango',
+    sources: [{
+      id: 'src',
+      sheet: { mode: 'name', value: 'Alumnos' },
+      header: { mode: 'detect', scanRows: { from: 1, to: 5 }, match: { trim: true, caseSensitive: false } },
+      data: { firstRow: { mode: 'afterHeader', offset: 1 }, endMode: 'lastNonEmptyMappedRow', skipEmptyRows: true },
+    }],
+    execution: {
+      operation: 'insert',
+      transaction: 'atomic',
+      tasks: [{
+        id: 'grades', order: 1, sourceId: 'src', target: { schema: 'public', table: 'grade' },
+        mappings: [
+          { source: { mode: 'header', name: 'Nombre' }, targetColumn: 'name' },
+          { source: { mode: 'range', from: { header: 'Matrícula' }, to: { header: 'Extra' } }, targetColumn: 'cells', processor: { type: 'case', mode: 'upper' } },
+        ],
+      }],
+    },
+  };
+  assert.deepEqual(validateTemplate(t), []);
+  const run = extractRows(t, [students([['Ana', 'a1', '1', 'x'], ['Bo', '', '', '']])]);
+  assert.equal(run.ok, true);
+  assert.deepEqual(run.tasks[0].rows.map((r) => r.values.cells), [['A1', '1', 'X'], null]);
+  // The designer shows a select block with the first and the last column and writes the same range back.
+  const d = templateToDesign(t);
+  assert.equal(d.processors[0].kind, 'select');
+  assert.deepEqual(d.processors[0].inputs.map((i) => i.label), ['Matrícula', 'Extra']);
+  const back = designToTemplate(d, { editor: false });
+  assert.equal(back.specVersion, '1.9');
+  assert.deepEqual(back.execution.tasks[0].mappings[1], t.execution.tasks[0].mappings[1]);
+  const bad = clone(t);
+  bad.execution.tasks[0].mappings[1].processor = { type: 'clean' };
+  assert.match(validateTemplate(bad).join(), /only a case processor/);
 });

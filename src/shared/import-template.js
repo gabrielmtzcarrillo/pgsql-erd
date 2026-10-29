@@ -26,9 +26,11 @@ export const FORMAT = 'excel-pg-insert-template';
 // 1.6 adds `processors`: several processors in a row, each taking the text the one before gave.
 // 1.5 adds the map (replace values) and convert (date, number, boolean) processors.
 // 1.4 adds the case processor: the text in upper or lower case.
+// 1.9 adds the range source: a run of worksheet columns as an array.
 // 1.8 adds the distinct processor and source: the different values of a worksheet column or of a table column are the rows a task inserts.
 // A template is written with the lowest version that covers what it uses.
-export const SPEC_VERSION = '1.8';
+export const SPEC_VERSION = '1.9';
+export const RANGE_VERSION = '1.9';
 export const DISTINCT_VERSION = '1.8';
 export const MORE_BLOCKS_VERSION = '1.7';
 export const CHAIN_VERSION = '1.6';
@@ -262,6 +264,16 @@ export const IMPORT_TEMPLATE_SCHEMA = {
                         },
                         {
                           type: 'object',
+                          required: ['mode', 'from', 'to'],
+                          description: 'The cells of every worksheet column from `from` to `to`, both included, as an array of texts (1.9). Use column letters with a fixed header and header names with a detected one. Only a case processor (without split) may follow.',
+                          properties: {
+                            mode: { const: 'range' },
+                            from: { anyOf: [{ type: 'object', required: ['column'], properties: { column } }, { type: 'object', required: ['header'], properties: { header: text } }] },
+                            to: { anyOf: [{ type: 'object', required: ['column'], properties: { column } }, { type: 'object', required: ['header'], properties: { header: text } }] },
+                          },
+                        },
+                        {
+                          type: 'object',
                           required: ['mode', 'parts'],
                           description: 'Several columns of the worksheet written as one text (1.7); processors may follow. Use column letters with a fixed header and header names with a detected one.',
                           properties: {
@@ -377,6 +389,7 @@ export const IMPORT_TEMPLATE_SCHEMA = {
                           properties: {
                             type: { const: 'distinct' },
                             ignoreCase: { type: 'boolean', description: 'A and a are the same value. Default false.' },
+                            stopAtEmpty: { type: 'boolean', description: 'Stop reading rows at the first blank cell of the column instead of skipping the blanks. Default false.' },
                           },
                         },
                         {
@@ -551,6 +564,15 @@ export function validateTemplate(t) {
         }
         continue;
       }
+      if (m.source.mode === 'range') {
+        for (const end of [m.source.from, m.source.to]) {
+          if (end.column === undefined) continue;
+          if (src.header.mode === 'detect') errors.push(`Task ${k.id}: ${m.targetColumn} selects a column letter but source ${src.id} detects its header; use header names.`);
+          else if (colIndex(end.column) < colIndex(src.header.startColumn)) errors.push(`Task ${k.id}: column ${end.column} is left of the header start ${src.header.startColumn}.`);
+        }
+        if (procsOf(m).some((x) => !(x.type === 'case' && !x.split))) errors.push(`Task ${k.id}: ${m.targetColumn}: a range gives an array; only a case processor without split may follow.`);
+        continue;
+      }
       if (m.source.mode === 'parameter') {
         if (!params.has(m.source.name)) errors.push(`Task ${k.id}: ${m.targetColumn} uses the undeclared parameter ${m.source.name}.`);
         if (m.processor || m.processors) errors.push(`Task ${k.id}: ${m.targetColumn}: a parameter cannot have a processor.`);
@@ -579,6 +601,7 @@ export function requiredHeaders(template, source) {
     for (const m of task.mappings) {
       if (m.source.mode === 'header' && !m.optional) out.push(m.source.name);
       if (m.source.mode === 'join') for (const part of m.source.parts) if (part.header !== undefined) out.push(part.header);
+      if (m.source.mode === 'range') for (const end of [m.source.from, m.source.to]) if (end.header !== undefined) out.push(end.header);
     }
   }
   const match = matchOf(source);
@@ -909,6 +932,14 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
         if (!cols.includes(-1)) picks.push({ m, cols });
         continue;
       }
+      if (m.source.mode === 'range') {
+        const ends = [m.source.from, m.source.to].map((end) => (end.column !== undefined ? colIndex(end.column) : byHeader(end.header)));
+        if (!ends.includes(-1)) {
+          const lo = Math.min(...ends);
+          picks.push({ m, cols: Array.from({ length: Math.max(...ends) - lo + 1 }, (_, i) => lo + i), range: true });
+        }
+        continue;
+      }
       if (m.source.mode === 'column') {
         col = colIndex(m.source.column);
       } else {
@@ -945,7 +976,9 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
         continue;
       }
       const skipEmpty = source.data.skipEmptyRows ?? true;
+      const stoppers = reads.filter((p) => procsOf(p.m).some((x) => x.type === 'distinct' && x.stopAtEmpty));
       for (let r = res.firstDataRow; r <= last; r++) {
+        if (stoppers.some((p) => blankAt(p, r))) break; // distinct with stopAtEmpty: reading ends at the first blank cell
         if (skipEmpty && reads.every((p) => blankAt(p, r))) continue;
         rowList.push(r);
       }
@@ -968,12 +1001,14 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
       }
       return v;
     };
+    let stop = false; // a distinct processor with stopAtEmpty met a blank cell
     for (const r of rowList) {
+      if (stop) break;
       const r0 = r;
       const line = rows[r - 1] ?? [];
       const values = {};
       let skip = false;
-      for (const { m, col, cols, param, table } of picks) {
+      for (const { m, col, cols, param, table, range } of picks) {
         if (col === undefined && !cols && table === undefined) {
           values[m.targetColumn] = param;
           continue;
@@ -981,6 +1016,9 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
         let v;
         if (table !== undefined) {
           v = String(listed[r - 1]);
+        } else if (range) {
+          const cells = cols.map((c) => (m.trim ? String(line[c] ?? '').trim() : String(line[c] ?? '')));
+          v = cells.every(isBlank) ? '' : cells;
         } else if (cols) {
           const parts = cols.map((c) => (m.trim ? String(line[c] ?? '').trim() : String(line[c] ?? '')));
           const shown = (m.source.skipBlank ?? true) ? parts.filter((x) => !isBlank(x)) : parts;
@@ -994,12 +1032,14 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
         if (isBlank(v) && fill?.type === 'default' && !isBlank(fill.value)) v = fill.value;
         if (isBlank(v)) {
           const policy = m.blank ?? 'null';
-          if (procsOf(m).some((x) => x.type === 'distinct')) {
-            skip = true; // distinct values leave the blanks out
+          const dist = procsOf(m).find((x) => x.type === 'distinct');
+          if (dist) {
+            skip = true; // distinct values leave the blanks out, or end the reading
+            if (dist.stopAtEmpty) stop = true;
             break;
           }
           if (policy === 'error') push({ code: 'BLANK_NOT_ALLOWED', taskId: task.id, row: r, column: m.targetColumn, message: `${where(r)}: ${m.targetColumn} cannot be blank.` });
-          v = policy === 'emptyString' ? (makesArray(procsOf(m).at(-1)) ? [] : '') : null;
+          v = policy === 'emptyString' ? (range || makesArray(procsOf(m).at(-1)) ? [] : '') : null;
         } else {
           const procs = procsOf(m);
           const at = procs.findIndex((x) => x.type === 'distinct');
@@ -1008,6 +1048,7 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
             // Only the first row with each text is kept; the processors after it work on that text.
             if (v === null || isBlank(v)) {
               skip = true;
+              if (procs[at].stopAtEmpty) stop = true;
               break;
             }
             const key = procs[at].ignoreCase ? String(v).toLowerCase() : String(v);
@@ -1146,6 +1187,11 @@ export function newConvert(over = {}) {
 export function newJoin(over = {}) {
   return { id: newId('proc'), kind: 'join', inputs: [], separator: ' ', skipBlank: true, prefix: '', suffix: '', x: 300, y: 40, ...over };
 }
+// A select block gives the cells of the Excel columns from its first input to its second, as an array.
+export function newSelect(over = {}) {
+  return { id: newId('proc'), kind: 'select', inputs: [], x: 300, y: 40, ...over };
+}
+export const isMultiInput = (p) => p?.kind === 'join' || p?.kind === 'select';
 export function newConstant(over = {}) {
   return { id: newId('proc'), kind: 'constant', value: '', x: 300, y: 40, ...over };
 }
@@ -1161,7 +1207,7 @@ export function newDefault(over = {}) {
 // A distinct block gives the different values of an Excel column (`from` "column", it reads `input`
 // like the other blocks) or of a table column (`from` "table"); the task inserts one row for each.
 export function newDistinct(over = {}) {
-  return { id: newId('proc'), kind: 'distinct', from: 'column', ignoreCase: false, schema: 'public', table: '', column: '', input: null, x: 300, y: 40, ...over };
+  return { id: newId('proc'), kind: 'distinct', from: 'column', ignoreCase: false, stopAtEmpty: false, schema: 'public', table: '', column: '', input: null, x: 300, y: 40, ...over };
 }
 export const isTableDistinct = (p) => p?.kind === 'distinct' && p.from === 'table';
 export function newLookup(over = {}) {
@@ -1187,7 +1233,7 @@ export function blockSource(design, p) {
   const seen = new Set();
   for (let q = p; q && !seen.has(q.id); q = q.input?.procId ? procOf(design, q.input.procId) : null) {
     seen.add(q.id);
-    if (q.kind === 'join') return q.inputs?.[0] ?? null;
+    if (isMultiInput(q)) return q.inputs?.[0] ?? null;
     if (q.input?.sourceId) return q.input;
   }
   return null;
@@ -1217,9 +1263,9 @@ const processorOf = (p) => (p.kind === 'split'
   : p.kind === 'default'
   ? { type: 'default', value: p.value }
   : p.kind === 'distinct'
-  ? { type: 'distinct', ...(p.ignoreCase ? { ignoreCase: true } : {}) }
+  ? { type: 'distinct', ...(p.ignoreCase ? { ignoreCase: true } : {}), ...(p.stopAtEmpty ? { stopAtEmpty: true } : {}) }
   : { type: 'lookup', schema: p.schema, table: p.table, matchColumn: p.matchColumn, valueColumn: p.valueColumn, onMissing: p.onMissing });
-export const hasInput = (p) => p?.kind === 'split' || p?.kind === 'lookup' || p?.kind === 'case' || p?.kind === 'map' || p?.kind === 'convert' || p?.kind === 'clean' || p?.kind === 'extract' || p?.kind === 'default' || p?.kind === 'join' || (p?.kind === 'distinct' && p.from === 'column');
+export const hasInput = (p) => p?.kind === 'split' || p?.kind === 'lookup' || p?.kind === 'case' || p?.kind === 'map' || p?.kind === 'convert' || p?.kind === 'clean' || p?.kind === 'extract' || p?.kind === 'default' || isMultiInput(p) || (p?.kind === 'distinct' && p.from === 'column');
 export const procOf = (design, id) => (design.processors ?? []).find((p) => p.id === id) ?? null;
 
 // The blocks a mapping goes through, from the first to the one it takes its value from.
@@ -1248,7 +1294,7 @@ export function columnRefs(design, source) {
     for (const m of t.mappings) {
       const p = m.via ? procOf(design, m.via) : null;
       const root = p ? chainOf(design, p)[0] : null;
-      if (root?.kind === 'join') {
+      if (isMultiInput(root)) {
         out.push(...root.inputs.filter((i) => i.sourceId === source.id));
         continue;
       }
@@ -1339,7 +1385,14 @@ export function designToTemplate(design, { editor = true } = {}) {
       if (!ref) return [];
       let chain = whole;
       for (const b of chain) use(b);
-      if (chain[0]?.kind === 'join') {
+      if (chain[0]?.kind === 'select') {
+        const detect = src?.header.mode === 'detect';
+        const [a, b] = chain[0].inputs;
+        const end = (i) => (detect ? { header: i.label } : { column: i.letter });
+        if (!a || !b) return [];
+        out.source = { mode: 'range', from: end(a), to: end(b) };
+        chain = chain.slice(1);
+      } else if (chain[0]?.kind === 'join') {
         const j = chain[0];
         const detect = src?.header.mode === 'detect';
         out.source = {
@@ -1383,7 +1436,7 @@ export function designToTemplate(design, { editor = true } = {}) {
   }
   const out = {
     format: FORMAT,
-    specVersion: used.some((p) => p.kind === 'distinct') ? DISTINCT_VERSION : used.some((p) => ['join', 'constant', 'clean', 'extract', 'default'].includes(p.kind)) ? MORE_BLOCKS_VERSION : usesChain ? CHAIN_VERSION : used.some((p) => p.kind === 'map' || p.kind === 'convert') ? MAP_VERSION : used.some((p) => p.kind === 'case' || (p.kind === 'choice' && hasFilter(p))) ? CASE_VERSION : usesInserted ? INSERTED_VERSION : used.some((p) => p.kind === 'lookup') ? LOOKUP_VERSION : used.length ? BLOCKS_VERSION : BASE_VERSION,
+    specVersion: used.some((p) => p.kind === 'select') ? RANGE_VERSION : used.some((p) => p.kind === 'distinct') ? DISTINCT_VERSION : used.some((p) => ['join', 'constant', 'clean', 'extract', 'default'].includes(p.kind)) ? MORE_BLOCKS_VERSION : usesChain ? CHAIN_VERSION : used.some((p) => p.kind === 'map' || p.kind === 'convert') ? MAP_VERSION : used.some((p) => p.kind === 'case' || (p.kind === 'choice' && hasFilter(p))) ? CASE_VERSION : usesInserted ? INSERTED_VERSION : used.some((p) => p.kind === 'lookup') ? LOOKUP_VERSION : used.length ? BLOCKS_VERSION : BASE_VERSION,
     templateId: design.templateId,
     name: design.name,
     ...(design.description ? { description: design.description } : {}),
@@ -1504,6 +1557,18 @@ export function templateToDesign(t) {
         const d = m.source;
         root = splits.get(JSON.stringify(['distinct', d.schema, d.table, d.column]));
         mapping = { id: newId('map'), letter: '', label: '', targetColumn: m.targetColumn, blank: m.blank ?? 'null', trim: !!m.trim };
+      } else if (m.source.mode === 'range') {
+        const inputs = [m.source.from, m.source.to].map((end) => {
+          const byLetter = end.column !== undefined;
+          const l = byLetter ? end.column.toUpperCase() : '';
+          const lab = byLetter ? src.columns.find((c) => c.letter === l)?.label ?? '' : end.header;
+          if (byLetter ? !src.columns.some((c) => c.letter === l) : !src.columns.some((c) => c.label === lab)) src.columns.push({ letter: l, label: lab });
+          return { sourceId: k.sourceId, letter: l, label: lab };
+        });
+        const skey = JSON.stringify([k.sourceId, 'select', inputs.map((x) => [x.letter, x.label])]);
+        if (!splits.has(skey)) splits.set(skey, place(newSelect({ inputs })));
+        root = splits.get(skey);
+        mapping = { id: newId('map'), letter: '', label: '', targetColumn: m.targetColumn, blank: m.blank ?? 'null', trim: !!m.trim };
       } else if (m.source.mode === 'join') {
         const j = m.source;
         const inputs = j.parts.map((part) => {
@@ -1560,8 +1625,8 @@ export function templateToDesign(t) {
             desc = ['extract', cfg];
             make = () => newExtract({ ...cfg, input });
           } else if (proc.type === 'distinct') {
-            desc = ['distinct', !!proc.ignoreCase];
-            make = () => newDistinct({ from: 'column', ignoreCase: !!proc.ignoreCase, input });
+            desc = ['distinct', !!proc.ignoreCase, !!proc.stopAtEmpty];
+            make = () => newDistinct({ from: 'column', ignoreCase: !!proc.ignoreCase, stopAtEmpty: !!proc.stopAtEmpty, input });
           } else if (proc.type === 'default') {
             desc = ['default', proc.value];
             make = () => newDefault({ value: proc.value, input });
@@ -1747,6 +1812,12 @@ export function designDiagnostics(design, schema, workbook, { sampleRows = 200, 
         else if (!tb.columns.some((x) => x.name === p.column)) add('error', 'DISTINCT_TABLE', `The distinct block: ${p.schema}.${p.table} has no column ${p.column}.`, { processorId: p.id });
       }
       if (!design.tasks.some((t) => t.mappings.some((m) => mappingChain(design, m).includes(p)))) add('info', 'DISTINCT_UNUSED', 'A distinct block is not connected to a table column.', { processorId: p.id });
+      continue;
+    }
+    if (p.kind === 'select') {
+      const ids = new Set(p.inputs.map((i) => i.sourceId));
+      if (p.inputs.length !== 2 || [...ids].some((x) => !sources.has(x))) add('error', 'SELECT_NO_INPUT', 'A select block needs two Excel columns connected to it: the first and the last of the range.', { processorId: p.id });
+      else if (ids.size > 1) add('error', 'SELECT_SOURCE', 'A select block reads columns of different worksheets.', { processorId: p.id });
       continue;
     }
     if (p.kind === 'join') {

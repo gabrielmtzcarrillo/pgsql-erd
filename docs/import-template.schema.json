@@ -536,6 +536,78 @@
                           "type": "object",
                           "required": [
                             "mode",
+                            "from",
+                            "to"
+                          ],
+                          "description": "The cells of every worksheet column from `from` to `to`, both included, as an array of texts (1.9). Use column letters with a fixed header and header names with a detected one. Only a case processor (without split) may follow.",
+                          "properties": {
+                            "mode": {
+                              "const": "range"
+                            },
+                            "from": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "column"
+                                  ],
+                                  "properties": {
+                                    "column": {
+                                      "type": "string",
+                                      "pattern": "^[A-Za-z]{1,3}$"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "header"
+                                  ],
+                                  "properties": {
+                                    "header": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 256
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            "to": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "column"
+                                  ],
+                                  "properties": {
+                                    "column": {
+                                      "type": "string",
+                                      "pattern": "^[A-Za-z]{1,3}$"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "header"
+                                  ],
+                                  "properties": {
+                                    "header": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 256
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "mode",
                             "parts"
                           ],
                           "description": "Several columns of the worksheet written as one text (1.7); processors may follow. Use column letters with a fixed header and header names with a detected one.",
@@ -861,6 +933,10 @@
                             "ignoreCase": {
                               "type": "boolean",
                               "description": "A and a are the same value. Default false."
+                            },
+                            "stopAtEmpty": {
+                              "type": "boolean",
+                              "description": "Stop reading rows at the first blank cell of the column instead of skipping the blanks. Default false."
                             }
                           }
                         },
@@ -1176,6 +1252,10 @@
                               "ignoreCase": {
                                 "type": "boolean",
                                 "description": "A and a are the same value. Default false."
+                              },
+                              "stopAtEmpty": {
+                                "type": "boolean",
+                                "description": "Stop reading rows at the first blank cell of the column instead of skipping the blanks. Default false."
                               }
                             }
                           },

@@ -23,7 +23,7 @@ exactly one worksheet, one header row and its mapped columns.
   major, or a newer minor) and must not guess: new fields can change what a template does, so ignoring them is
   unsafe. This document is 1.8. A template is written with the lowest version that covers what it uses, so older
   readers still run it. 1.1 adds *processor blocks* (`processor` on mappings, `parameters`, the `parameter`
-  source); 1.2 adds the `lookup` processor; 1.3 adds `inserted` keys; 1.4 adds the `case` processor and the optional `filter` of a table dropdown; 1.5 adds the `map` and `convert` processors; 1.6 adds `processors` (chains); 1.7 adds the `join` and `constant` sources and the `clean`, `extract` and `default` processors; 1.8 adds the `distinct` processor and source.
+  source); 1.2 adds the `lookup` processor; 1.3 adds `inserted` keys; 1.4 adds the `case` processor and the optional `filter` of a table dropdown; 1.5 adds the `map` and `convert` processors; 1.6 adds `processors` (chains); 1.7 adds the `join` and `constant` sources and the `clean`, `extract` and `default` processors; 1.8 adds the `distinct` processor and source. 1.9 adds the `range` source.
 - `editor` is presentation only (node positions). Runners **must ignore** it; it never changes behaviour.
 
 ## Document
@@ -147,6 +147,8 @@ worksheet row; blank values are left out.
 - `processor: { "type": "distinct", "ignoreCase": false }` on a worksheet column (a `column`, `header` or `join`
   source): the first row with each text is kept. Processors before it (`clean`, `case`, ...) work on every cell, so
   the comparison is made on their result; processors after it work on each different value. Only one per column.
+  `"stopAtEmpty": true` ends the reading at the first blank cell of the column (the rows after it are ignored)
+  instead of skipping the blanks.
 - `source: { "mode": "distinct", "schema": "public", "table": "category", "column": "name" }`: the different values of a
   column of a table, in the database. Processors may follow. The runner reads them (`SELECT DISTINCT`), so
   `extractRows()` takes them as `tableValues`, keyed by `distinctKey(source)`; `distinctTables(template)` lists what to
@@ -247,3 +249,9 @@ A conforming runner:
 Out of scope for 1.0: foreign-key resolution, ID propagation between tasks, lookups, generated values,
 transformations, scripts, UPDATE / UPSERT / DELETE, table creation. The designer warns about insertion order
 against foreign keys but cannot know which parent rows already exist in a database.
+
+**Range of columns (1.9).** `source: { "mode": "range", "from": { "header": "Jan" }, "to": { "header": "Dec" } }` gives the
+cells of every worksheet column from `from` to `to` (both included, in either order) as an array of texts, for an
+array column such as `text[]`. Use `{ "column": "C" }` ends with a fixed header and `{ "header": ... }` ends with a
+detected one. A row whose cells are all blank gives the `blank` policy's value (`null`, or an empty array with
+`emptyString`). Only a `case` processor without `split` may follow. The designer writes it from a *Select* block.

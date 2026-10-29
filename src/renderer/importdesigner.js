@@ -17,7 +17,7 @@ import { schemaFromErd, findTable, allTables } from '../shared/schema-model.js';
 import {
   colLetter, colIndex, normHeader, newDesign, newSource, newTask, newId, designToTemplate, templateToDesign,
   designDiagnostics, hasErrors, suggestOrder, resolveSource, extractRows, checkSample, inferHint, validateTemplate,
-  newSplit, newCase, newMap, newConvert, newJoin, newConstant, newClean, newExtract, newDefault, blockSource, isTextBlock, isFixedBlock, chainOf, newChoice, newLookup, hasInput, procOf, mappingRef, columnRefs,
+  newSplit, newCase, newMap, newConvert, newJoin, newSelect, isMultiInput, newConstant, newClean, newExtract, newDefault, blockSource, isTextBlock, isFixedBlock, chainOf, newChoice, newLookup, hasInput, procOf, mappingRef, columnRefs,
   newDistinct, isTableDistinct, distinctKey,
 } from '../shared/import-template.js';
 import { iconElement, decorateButtons } from './icons.js';
@@ -282,6 +282,7 @@ export function setupImportDesigner(ctx) {
     else if (kind === 'case') p = newCase(pos);
     else if (kind === 'map') p = newMap(pos);
     else if (kind === 'join') p = newJoin(pos);
+    else if (kind === 'select') p = newSelect(pos);
     else if (kind === 'constant') p = newConstant(pos);
     else if (kind === 'clean') p = newClean(pos);
     else if (kind === 'extract') p = newExtract(pos);
@@ -348,8 +349,9 @@ export function setupImportDesigner(ctx) {
       return status(tr('That header is blank or repeated, so it cannot be found by name.'));
     }
     const target = procOf(T.design, procId);
-    if (target?.kind === 'join') {
+    if (isMultiInput(target)) {
       if (target.inputs.length && target.inputs[0].sourceId !== sourceId) return status(tr('A join block reads the columns of one worksheet.'));
+      if (target.kind === 'select' && target.inputs.length >= 2) return status(tr('A select block takes two Excel columns: the first and the last of the range.'));
       if (target.inputs.some((i) => i.letter === col.letter && i.label === col.label)) return;
       setBlock(procId, (p) => p.inputs.push({ sourceId, letter: col.letter, label: col.label }));
       select({ type: 'proc', id: procId });
@@ -363,7 +365,7 @@ export function setupImportDesigner(ctx) {
   function connectBlockInput(fromId, procId) {
     const from = procOf(T.design, fromId);
     const to = procOf(T.design, procId);
-    if (!from || !to || !hasInput(to) || to.kind === 'join') return status(tr('Only a block that reads an Excel column can take its text from another block.'));
+    if (!from || !to || !hasInput(to) || isMultiInput(to)) return status(tr('Only a block that reads an Excel column can take its text from another block.'));
     if (!isTextBlock(from)) return status(tr('Only a block that gives text (a case block with List off, a replace or a convert block) can feed another block.'));
     if (chainOf(T.design, from).includes(to)) return status(tr('A block cannot take its text from itself or from a block that already depends on it.'));
     setBlock(procId, (p) => (p.input = { procId: fromId }));
@@ -617,12 +619,13 @@ export function setupImportDesigner(ctx) {
     convert: tr('Convert the type'),
     distinct: tr('Distinct values'),
     join: tr('Join columns'),
+    select: tr('Select columns'),
     constant: tr('Fixed value'),
     clean: tr('Clean the text'),
     extract: tr('Extract part of the text'),
     default: tr('Fill blanks'),
   }[p.kind] ?? tr('Split into an array'));
-  const BLOCK_ICON = { split: 'block-split', case: 'block-case', map: 'block-map', convert: 'block-convert', join: 'block-join', constant: 'block-constant', clean: 'block-clean', extract: 'block-extract', default: 'block-default', distinct: 'block-distinct' };
+  const BLOCK_ICON = { split: 'block-split', case: 'block-case', map: 'block-map', convert: 'block-convert', join: 'block-join', select: 'block-select', constant: 'block-constant', clean: 'block-clean', extract: 'block-extract', default: 'block-default', distinct: 'block-distinct' };
   const OUT_LABEL = () => ({ map: tr('Replaced text'), convert: tr('Converted value'), clean: tr('Clean text'), extract: tr('Extracted text'), default: tr('Text with the default') });
 
   function procNode(p) {
@@ -648,6 +651,22 @@ export function setupImportDesigner(ctx) {
           check(tr('Trim'), p.trim, (v) => setBlock(p.id, (x) => (x.trim = v)), tr('Remove the spaces around each value')),
           check(tr('Skip empty'), p.dropEmpty, (v) => setBlock(p.id, (x) => (x.dropEmpty = v)), tr('Leave out values that are empty')),
         ]),
+      );
+      return withGrip(node, p);
+    }
+    if (p.kind === 'select') {
+      const names = [tr('First column'), tr('Last column')];
+      const rows = [0, 1].map((n) => {
+        const i = p.inputs[n];
+        return h('div', { class: 'imp-col proc-in', 'data-i': n, title: i ? `${i.letter} ${i.label}`.trim() : tr('Drop an Excel column here') }, [
+          h('span', { class: 'imp-port in' }),
+          h('span', { class: `imp-label${i ? '' : ' muted'}` }, i ? `${names[n]}: ${i.letter} ${i.label}`.trim() : `${names[n]}: ${tr('Drop an Excel column here')}`),
+          i ? h('button', { type: 'button', class: 'imp-remove', icon: 'close', title: tr('Remove'), onclick: () => setBlock(p.id, (x) => x.inputs.splice(n, 1)) }) : null,
+        ]);
+      });
+      node.append(
+        nodeHead(p, 'block-select', blockTitle(p), () => removeProcessor(p.id)),
+        h('div', { class: 'imp-cols' }, [...rows, h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, tr('Array of values')), out])]),
       );
       return withGrip(node, p);
     }
@@ -692,7 +711,7 @@ export function setupImportDesigner(ctx) {
             ]),
             outCol,
           ]),
-          h('div', { class: 'imp-procform choice' }, [fromSel, check(tr('Ignore case'), p.ignoreCase, (v) => setBlock(p.id, (x) => (x.ignoreCase = v)), tr('A and a are the same value; the first one found is kept'))]),
+          h('div', { class: 'imp-procform choice' }, [fromSel, check(tr('Ignore case'), p.ignoreCase, (v) => setBlock(p.id, (x) => (x.ignoreCase = v)), tr('A and a are the same value; the first one found is kept')), check(tr('Stop at first empty'), p.stopAtEmpty, (v) => setBlock(p.id, (x) => (x.stopAtEmpty = v)), tr('Stop reading rows at the first empty cell of the column'))]),
         );
       }
       return withGrip(node, p);
@@ -1083,7 +1102,7 @@ export function setupImportDesigner(ctx) {
     const procOut = new Map();
     const procIn = new Map();
     const joinIn = new Map();
-    for (const el of area.querySelectorAll('.imp-node.join .imp-col.proc-in[data-i]')) joinIn.set(`${el.closest('.imp-node').dataset.id}\0${el.dataset.i}`, el.querySelector('.imp-port'));
+    for (const el of area.querySelectorAll('.imp-node.join .imp-col.proc-in[data-i], .imp-node.select .imp-col.proc-in[data-i]')) joinIn.set(`${el.closest('.imp-node').dataset.id}\0${el.dataset.i}`, el.querySelector('.imp-port'));
     for (const el of area.querySelectorAll('.imp-node.proc')) {
       procOut.set(el.dataset.id, el.querySelector('.proc-out .imp-port'));
       procIn.set(el.dataset.id, el.querySelector('.proc-in .imp-port'));
@@ -1123,7 +1142,7 @@ export function setupImportDesigner(ctx) {
       out.push(`<g data-proc-in="${p.id}"><path class="imp-hit" d="${d}"/><path class="imp-edge${sel ? ' selected' : ''}" d="${d}" marker-end="url(#imp-arrow)"/></g>`);
     }
     for (const p of T.design.processors ?? []) {
-      if (p.kind !== 'join') continue;
+      if (!isMultiInput(p)) continue;
       p.inputs.forEach((inp, n) => {
         const src = sourceOf(inp.sourceId);
         const a = src && outs.get(`${src.id}\0${src.header.mode === 'detect' ? inp.label : inp.letter}`);
@@ -1607,7 +1626,7 @@ export function setupImportDesigner(ctx) {
       const parent = m.inserted ? taskOf(m.inserted.taskId) : null;
       const from = m.inserted ? `inserted.${m.inserted.column}${parent ? ` (${taskName(parent)})` : ''}` : via?.kind === 'choice' ? tr('dropdown {name}', { name: via.name }) : via?.kind === 'constant' ? tr('fixed value')
         : !ref ? '?'
-          : `${src?.header.mode === 'detect' ? `"${ref.label}"` : `${ref.letter} ${ref.label}`.trim()}${via ? ` ${via.kind === 'lookup' ? tr('looked up') : via.kind === 'case' ? (via.mode === 'upper' ? tr('in uppercase') : tr('in lowercase')) : via.kind === 'map' ? tr('replaced') : via.kind === 'convert' ? tr('converted') : via.kind === 'join' ? tr('joined') : via.kind === 'clean' ? tr('cleaned') : via.kind === 'distinct' ? tr('without repeats') : via.kind === 'extract' ? tr('extracted') : via.kind === 'default' ? tr('with a default') : tr('split')}` : ''}`;
+          : `${src?.header.mode === 'detect' ? `"${ref.label}"` : `${ref.letter} ${ref.label}`.trim()}${via ? ` ${via.kind === 'lookup' ? tr('looked up') : via.kind === 'case' ? (via.mode === 'upper' ? tr('in uppercase') : tr('in lowercase')) : via.kind === 'map' ? tr('replaced') : via.kind === 'convert' ? tr('converted') : via.kind === 'join' ? tr('joined') : via.kind === 'select' ? tr('selected') : via.kind === 'clean' ? tr('cleaned') : via.kind === 'distinct' ? tr('without repeats') : via.kind === 'extract' ? tr('extracted') : via.kind === 'default' ? tr('with a default') : tr('split')}` : ''}`;
       const set = (fn) => edit((d) => fn(d.tasks.find((x) => x.id === task.id).mappings.find((y) => y.id === m.id)));
       return [
         h('div', { class: 'imp-detail' }, [
@@ -1622,7 +1641,7 @@ export function setupImportDesigner(ctx) {
               h('option', { value: 'error', selected: m.blank === 'error' }, tr('Report an error')),
             ])]),
             h('label', { class: 'imp-field' }, [h('span', {}, tr('Trim spaces')), h('input', { type: 'checkbox', checked: !!m.trim, onchange: (e) => set((x) => (x.trim = e.target.checked)) })]),
-            src?.header.mode === 'detect' && via?.kind !== 'join'
+            src?.header.mode === 'detect' && !isMultiInput(via)
               ? h('label', { class: 'imp-field', title: tr('When a workbook has no column with this header, the column is left out of the INSERT instead of failing.') }, [h('span', {}, tr('Optional column')), h('input', { type: 'checkbox', checked: !!m.optional, onchange: (e) => set((x) => (x.optional = e.target.checked)) })])
               : null,
             h('div', { class: 'imp-field' }, [h('span', {}, tr('Column type')), h('span', {}, col?.databaseType ?? tr('unknown'))]),
@@ -1671,6 +1690,8 @@ export function setupImportDesigner(ctx) {
         ]),
         h('p', { class: 'small' }, p.kind === 'lookup'
           ? tr('The Excel cell holds a primary key of the chosen table. The row with that key is found when the import runs, after the earlier tasks, so rows they inserted count, and the value of its return column (the key itself by default) is inserted. If no row has the key the import reports it. Put the task for that table first.')
+          : p.kind === 'select'
+          ? tr('Gives the cells of a run of Excel columns as an array, for example the columns Jan to Dec. Drag the first column of the range to the top left dot and the last one to the bottom left dot; every column between them is included. Then drag its right dot to an array column of a table.')
           : p.kind === 'join'
           ? tr('Writes several Excel columns as one text, for example first name and last name, with a separator. Drag each Excel column to the left dots; blank columns are left out. Then drag its right dot to a table column, or to another block to keep processing the text.')
           : p.kind === 'distinct'
@@ -1907,7 +1928,7 @@ export function setupImportDesigner(ctx) {
   $('#imp-add-split').addEventListener('click', () => addBlock('split'));
   $('#imp-add-case').addEventListener('click', () => addBlock('case'));
   $('#imp-add-map').addEventListener('click', () => addBlock('map'));
-  for (const kind of ['join', 'constant', 'clean', 'extract', 'default']) $(`#imp-add-${kind}`).addEventListener('click', () => addBlock(kind));
+  for (const kind of ['join', 'select', 'constant', 'clean', 'extract', 'default']) $(`#imp-add-${kind}`).addEventListener('click', () => addBlock(kind));
   $('#imp-add-convert').addEventListener('click', () => addBlock('convert'));
   $('#imp-add-choice').addEventListener('click', () => addBlock('choice'));
   $('#imp-add-lookup').addEventListener('click', () => addBlock('lookup'));
