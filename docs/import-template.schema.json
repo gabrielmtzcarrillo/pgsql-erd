@@ -536,71 +536,31 @@
                           "type": "object",
                           "required": [
                             "mode",
-                            "from",
-                            "to"
+                            "fromRow"
                           ],
-                          "description": "The cells of every worksheet column from `from` to `to`, both included, as an array of texts (1.9). Use column letters with a fixed header and header names with a detected one. Only a case processor (without split) may follow.",
+                          "description": "The cells of one worksheet column from row `fromRow` to row `toRow`, both included, as an array of texts (1.9); blank cells are empty texts. Give `column` (with a fixed header) or `header` (with a detected one). The same array goes to every row of the task. Only a case processor (without split) may follow.",
                           "properties": {
                             "mode": {
                               "const": "range"
                             },
-                            "from": {
-                              "anyOf": [
-                                {
-                                  "type": "object",
-                                  "required": [
-                                    "column"
-                                  ],
-                                  "properties": {
-                                    "column": {
-                                      "type": "string",
-                                      "pattern": "^[A-Za-z]{1,3}$"
-                                    }
-                                  }
-                                },
-                                {
-                                  "type": "object",
-                                  "required": [
-                                    "header"
-                                  ],
-                                  "properties": {
-                                    "header": {
-                                      "type": "string",
-                                      "minLength": 1,
-                                      "maxLength": 256
-                                    }
-                                  }
-                                }
-                              ]
+                            "column": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z]{1,3}$"
                             },
-                            "to": {
-                              "anyOf": [
-                                {
-                                  "type": "object",
-                                  "required": [
-                                    "column"
-                                  ],
-                                  "properties": {
-                                    "column": {
-                                      "type": "string",
-                                      "pattern": "^[A-Za-z]{1,3}$"
-                                    }
-                                  }
-                                },
-                                {
-                                  "type": "object",
-                                  "required": [
-                                    "header"
-                                  ],
-                                  "properties": {
-                                    "header": {
-                                      "type": "string",
-                                      "minLength": 1,
-                                      "maxLength": 256
-                                    }
-                                  }
-                                }
-                              ]
+                            "header": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 256
+                            },
+                            "fromRow": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "description": "First worksheet row (1-based)."
+                            },
+                            "toRow": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "description": "Last worksheet row. Default: the last row with a value in the column."
                             }
                           }
                         },

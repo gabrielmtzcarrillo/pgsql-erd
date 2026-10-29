@@ -250,8 +250,9 @@ Out of scope for 1.0: foreign-key resolution, ID propagation between tasks, look
 transformations, scripts, UPDATE / UPSERT / DELETE, table creation. The designer warns about insertion order
 against foreign keys but cannot know which parent rows already exist in a database.
 
-**Range of columns (1.9).** `source: { "mode": "range", "from": { "header": "Jan" }, "to": { "header": "Dec" } }` gives the
-cells of every worksheet column from `from` to `to` (both included, in either order) as an array of texts, for an
-array column such as `text[]`. Use `{ "column": "C" }` ends with a fixed header and `{ "header": ... }` ends with a
-detected one. A row whose cells are all blank gives the `blank` policy's value (`null`, or an empty array with
-`emptyString`). Only a `case` processor without `split` may follow. The designer writes it from a *Select* block.
+**Range of rows (1.9).** `source: { "mode": "range", "header": "Matrícula", "fromRow": 2, "toRow": 10 }` gives the cells of
+one worksheet column, from worksheet row `fromRow` to row `toRow` (both included, counted from 1 over the whole
+sheet), as an array of texts, for an array column such as `text[]`. Use `"column": "C"` instead of `header` with a
+fixed header. Without `toRow` it reads to the last row with a value in the column. Blank cells are empty texts. The
+same array goes to every row of the task, and a task of only ranges and fixed values inserts one row. Only a `case`
+processor without `split` may follow. The designer writes it from a *Select* block.

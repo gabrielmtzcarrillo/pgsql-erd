@@ -757,7 +757,7 @@ test('distinct values of a worksheet column and of a table column, version 1.8',
   assert.match(validateTemplate({ ...t, specVersion: '1.10' }).join(), /Unsupported/);
 });
 
-test('a range of worksheet columns gives an array, version 1.9', () => {
+test('a range of rows of one worksheet column gives an array, version 1.9', () => {
   const t = {
     format: 'excel-pg-insert-template',
     specVersion: '1.9',
@@ -776,23 +776,29 @@ test('a range of worksheet columns gives an array, version 1.9', () => {
         id: 'grades', order: 1, sourceId: 'src', target: { schema: 'public', table: 'grade' },
         mappings: [
           { source: { mode: 'header', name: 'Nombre' }, targetColumn: 'name' },
-          { source: { mode: 'range', from: { header: 'Matrícula' }, to: { header: 'Extra' } }, targetColumn: 'cells', processor: { type: 'case', mode: 'upper' } },
+          { source: { mode: 'range', header: 'Matrícula', fromRow: 2, toRow: 3 }, targetColumn: 'cells', processor: { type: 'case', mode: 'upper' } },
+          { source: { mode: 'range', header: 'Matrícula', fromRow: 3 }, targetColumn: 'rest' },
         ],
       }],
     },
   };
   assert.deepEqual(validateTemplate(t), []);
-  const run = extractRows(t, [students([['Ana', 'a1', '1', 'x'], ['Bo', '', '', '']])]);
+  const run = extractRows(t, [students([['Ana', 'a1', '1', 'x'], ['Bo', 'b2', '', ''], ['Cy', 'c3', '', '']])]);
   assert.equal(run.ok, true);
-  assert.deepEqual(run.tasks[0].rows.map((r) => r.values.cells), [['A1', '1', 'X'], null]);
-  // The designer shows a select block with the first and the last column and writes the same range back.
+  // The same array goes to every row; no toRow reads to the last value of the column.
+  assert.deepEqual(run.tasks[0].rows.map((r) => r.values.cells), [['A1', 'B2'], ['A1', 'B2'], ['A1', 'B2']]);
+  assert.deepEqual(run.tasks[0].rows[0].values.rest, ['b2', 'c3']);
+  // The designer shows a select block reading the column and writes the same range back.
   const d = templateToDesign(t);
   assert.equal(d.processors[0].kind, 'select');
-  assert.deepEqual(d.processors[0].inputs.map((i) => i.label), ['Matrícula', 'Extra']);
+  assert.deepEqual([d.processors[0].input.label, d.processors[0].fromRow, d.processors[0].toRow], ['Matrícula', 2, 3]);
   const back = designToTemplate(d, { editor: false });
   assert.equal(back.specVersion, '1.9');
-  assert.deepEqual(back.execution.tasks[0].mappings[1], t.execution.tasks[0].mappings[1]);
+  assert.deepEqual(back.execution.tasks[0].mappings.slice(1), t.execution.tasks[0].mappings.slice(1));
   const bad = clone(t);
   bad.execution.tasks[0].mappings[1].processor = { type: 'clean' };
   assert.match(validateTemplate(bad).join(), /only a case processor/);
+  delete bad.execution.tasks[0].mappings[1].processor;
+  bad.execution.tasks[0].mappings[1].source.toRow = 1;
+  assert.match(validateTemplate(bad).join(), /before row 2/);
 });

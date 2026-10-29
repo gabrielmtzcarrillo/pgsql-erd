@@ -351,7 +351,6 @@ export function setupImportDesigner(ctx) {
     const target = procOf(T.design, procId);
     if (isMultiInput(target)) {
       if (target.inputs.length && target.inputs[0].sourceId !== sourceId) return status(tr('A join block reads the columns of one worksheet.'));
-      if (target.kind === 'select' && target.inputs.length >= 2) return status(tr('A select block takes two Excel columns: the first and the last of the range.'));
       if (target.inputs.some((i) => i.letter === col.letter && i.label === col.label)) return;
       setBlock(procId, (p) => p.inputs.push({ sourceId, letter: col.letter, label: col.label }));
       select({ type: 'proc', id: procId });
@@ -655,18 +654,20 @@ export function setupImportDesigner(ctx) {
       return withGrip(node, p);
     }
     if (p.kind === 'select') {
-      const names = [tr('First column'), tr('Last column')];
-      const rows = [0, 1].map((n) => {
-        const i = p.inputs[n];
-        return h('div', { class: 'imp-col proc-in', 'data-i': n, title: i ? `${i.letter} ${i.label}`.trim() : tr('Drop an Excel column here') }, [
-          h('span', { class: 'imp-port in' }),
-          h('span', { class: `imp-label${i ? '' : ' muted'}` }, i ? `${names[n]}: ${i.letter} ${i.label}`.trim() : `${names[n]}: ${tr('Drop an Excel column here')}`),
-          i ? h('button', { type: 'button', class: 'imp-remove', icon: 'close', title: tr('Remove'), onclick: () => setBlock(p.id, (x) => x.inputs.splice(n, 1)) }) : null,
-        ]);
-      });
+      const row = (v) => Math.max(0, parseInt(v, 10) || 0);
       node.append(
         nodeHead(p, 'block-select', blockTitle(p), () => removeProcessor(p.id)),
-        h('div', { class: 'imp-cols' }, [...rows, h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, tr('Array of values')), out])]),
+        h('div', { class: 'imp-cols' }, [
+          h('div', { class: 'imp-col proc-in', title: inLabel(p, tr('Drop an Excel column here')) }, [
+            h('span', { class: 'imp-port in' }),
+            h('span', { class: 'imp-label' }, inLabel(p, tr('An Excel column'))),
+          ]),
+          h('div', { class: 'imp-col proc-out' }, [h('span', { class: 'imp-label right' }, tr('Array of values')), out]),
+        ]),
+        h('div', { class: 'imp-procform' }, [
+          h('label', { title: tr('The first worksheet row to read, counting from 1.') }, [tr('From row'), input(String(p.fromRow ?? 1), (v) => setBlock(p.id, (x) => (x.fromRow = Math.max(1, row(v)))), 44)]),
+          h('label', { title: tr('The last worksheet row to read; leave it empty for the last row with a value.') }, [tr('To row'), input(p.toRow ? String(p.toRow) : '', (v) => setBlock(p.id, (x) => (x.toRow = row(v) || null)), 44)]),
+        ]),
       );
       return withGrip(node, p);
     }
@@ -1691,7 +1692,7 @@ export function setupImportDesigner(ctx) {
         h('p', { class: 'small' }, p.kind === 'lookup'
           ? tr('The Excel cell holds a primary key of the chosen table. The row with that key is found when the import runs, after the earlier tasks, so rows they inserted count, and the value of its return column (the key itself by default) is inserted. If no row has the key the import reports it. Put the task for that table first.')
           : p.kind === 'select'
-          ? tr('Gives the cells of a run of Excel columns as an array, for example the columns Jan to Dec. Drag the first column of the range to the top left dot and the last one to the bottom left dot; every column between them is included. Then drag its right dot to an array column of a table.')
+          ? tr('Gives the cells of one Excel column, from one worksheet row to another, as an array, for example a list of values written down a column. Drag the Excel column to its left dot, set the first and last row (leave the last empty to read to the end of the column), then drag its right dot to an array column of a table. The same array goes to every row of the task.')
           : p.kind === 'join'
           ? tr('Writes several Excel columns as one text, for example first name and last name, with a separator. Drag each Excel column to the left dots; blank columns are left out. Then drag its right dot to a table column, or to another block to keep processing the text.')
           : p.kind === 'distinct'
