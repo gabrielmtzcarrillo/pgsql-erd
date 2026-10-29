@@ -48,7 +48,7 @@ test('unknown major versions, bad structure and inconsistent tasks are refused',
   v2.specVersion = '2.0';
   assert.match(validateTemplate(v2)[0], /Unsupported specVersion/);
   assert.deepEqual(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.1' }), []);
-  assert.match(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.10' })[0], /Unsupported specVersion/);
+  assert.match(validateTemplate({ ...clone(TEMPLATE), specVersion: '1.11' })[0], /Unsupported specVersion/);
   assert.match(validateTemplate({ ...clone(TEMPLATE), format: 'x' })[0], /format/);
   const gap = clone(TEMPLATE);
   gap.execution.tasks[1].order = 3;
@@ -355,7 +355,7 @@ test('lookup blocks: a foreign key found from a value, version 1.2', () => {
   const lookup = { type: 'lookup', schema: 'public', table: 'catCarreras', matchColumn: 'nombre', valueColumn: 'idCarrera', onMissing: 'error' };
   t.execution.tasks[1].mappings[2] = { source: { mode: 'header', name: 'ID Carrera' }, targetColumn: 'idCarrera', trim: true, processor: lookup };
   assert.deepEqual(validateTemplate(t), []);
-  assert.match(validateTemplate({ ...clone(t), specVersion: '1.10' })[0], /Unsupported/);
+  assert.match(validateTemplate({ ...clone(t), specVersion: '1.11' })[0], /Unsupported/);
   const bad = clone(t);
   bad.execution.tasks[1].mappings[2].processor = { type: 'lookup', table: 'x' };
   assert.notEqual(validateTemplate(bad).length, 0);
@@ -754,7 +754,7 @@ test('distinct values of a worksheet column and of a table column, version 1.8',
   const noSource = clone(t);
   delete noSource.execution.tasks[0].sourceId;
   assert.match(validateTemplate(noSource).join(), /needs a sourceId/);
-  assert.match(validateTemplate({ ...t, specVersion: '1.10' }).join(), /Unsupported/);
+  assert.match(validateTemplate({ ...t, specVersion: '1.11' }).join(), /Unsupported/);
 });
 
 test('a range of rows of one worksheet column gives an array, version 1.9', () => {
@@ -801,4 +801,50 @@ test('a range of rows of one worksheet column gives an array, version 1.9', () =
   delete bad.execution.tasks[0].mappings[1].processor;
   bad.execution.tasks[0].mappings[1].source.toRow = 1;
   assert.match(validateTemplate(bad).join(), /before row 2/);
+});
+
+test('lastRow ends the rows a source reads, version 1.10', () => {
+  const t = {
+    format: 'excel-pg-insert-template',
+    specVersion: '1.10',
+    templateId: 'last',
+    name: 'Ultima',
+    sources: [{
+      id: 'src',
+      sheet: { mode: 'name', value: 'Alumnos' },
+      header: { mode: 'detect', scanRows: { from: 1, to: 5 }, match: { trim: true, caseSensitive: false } },
+      data: { firstRow: { mode: 'afterHeader', offset: 1 }, endMode: 'lastNonEmptyMappedRow', lastRow: 3, skipEmptyRows: true },
+    }],
+    execution: {
+      operation: 'insert',
+      transaction: 'atomic',
+      tasks: [{
+        id: 'a', order: 1, sourceId: 'src', target: { schema: 'public', table: 'alumno' },
+        mappings: [{ source: { mode: 'header', name: 'Nombre' }, targetColumn: 'name' }],
+      }],
+    },
+  };
+  assert.deepEqual(validateTemplate(t), []);
+  const book = [students([['Ana', 'a1', '', ''], ['Bo', 'b2', '', ''], ['Cy', 'c3', '', ''], ['Di', 'd4', '', '']])];
+  const cut = extractRows(t, book);
+  assert.equal(cut.ok, true);
+  assert.deepEqual(cut.tasks[0].rows.map((r) => r.values.name), ['Ana', 'Bo']); // the header is row 1: rows 2 and 3
+  const all = clone(t);
+  delete all.sources[0].data.lastRow;
+  assert.equal(extractRows(all, book).tasks[0].rows.length, 4);
+  const from = clone(t);
+  from.sources[0].data.firstRow = { mode: 'row', row: 3 };
+  assert.deepEqual(extractRows(from, book).tasks[0].rows.map((r) => r.values.name), ['Bo']); // rows 3 to 3
+  const dd = templateToDesign(from);
+  assert.equal(dd.sources[0].startRow, 3);
+  assert.deepEqual(designToTemplate(dd, { editor: false }).sources[0].data.firstRow, { mode: 'row', row: 3 });
+  const d = templateToDesign(t);
+  assert.equal(d.sources[0].lastRow, 3);
+  const back = designToTemplate(d, { editor: false });
+  assert.equal(back.sources[0].data.lastRow, 3);
+  assert.equal(back.specVersion, '1.10');
+  const bad = clone(t);
+  bad.sources[0].header = { mode: 'fixed', row: 1, startColumn: 'A' };
+  bad.sources[0].data.lastRow = 1;
+  assert.match(validateTemplate(bad).join(), /lastRow is before/);
 });

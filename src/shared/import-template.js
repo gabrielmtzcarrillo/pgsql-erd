@@ -26,10 +26,12 @@ export const FORMAT = 'excel-pg-insert-template';
 // 1.6 adds `processors`: several processors in a row, each taking the text the one before gave.
 // 1.5 adds the map (replace values) and convert (date, number, boolean) processors.
 // 1.4 adds the case processor: the text in upper or lower case.
+// 1.10 adds the range of rows a source reads: `data.lastRow` and the `row` mode of `data.firstRow`.
 // 1.9 adds the range source: a run of worksheet columns as an array.
 // 1.8 adds the distinct processor and source: the different values of a worksheet column or of a table column are the rows a task inserts.
 // A template is written with the lowest version that covers what it uses.
-export const SPEC_VERSION = '1.9';
+export const SPEC_VERSION = '1.10';
+export const LAST_ROW_VERSION = '1.10';
 export const RANGE_VERSION = '1.9';
 export const DISTINCT_VERSION = '1.8';
 export const MORE_BLOCKS_VERSION = '1.7';
@@ -166,8 +168,9 @@ export const IMPORT_TEMPLATE_SCHEMA = {
             type: 'object',
             required: ['firstRow', 'endMode'],
             properties: {
-              firstRow: { type: 'object', required: ['mode'], properties: { mode: { const: 'afterHeader' }, offset: { type: 'integer', minimum: 1 } } },
+              firstRow: { type: 'object', required: ['mode'], properties: { mode: { enum: ['afterHeader', 'row'] }, offset: { type: 'integer', minimum: 1 }, row: { type: 'integer', minimum: 1, description: 'With mode "row" (1.10): the worksheet row the data starts at, wherever the header is.' } } },
               endMode: { const: 'lastNonEmptyMappedRow' },
+              lastRow: { type: 'integer', minimum: 1, description: 'Last worksheet row the source reads (1.10); rows below it are ignored.' },
               skipEmptyRows: { type: 'boolean' },
             },
           },
@@ -473,6 +476,7 @@ export function validateTemplate(t) {
     } else if (colIndex(s.header.startColumn) < 0) {
       errors.push(`Source ${s.id}: startColumn ${s.header.startColumn} is not a column.`);
     }
+    if (s.header.mode === 'fixed' && s.data.lastRow !== undefined && s.data.lastRow < (s.data.firstRow.mode === 'row' ? s.data.firstRow.row : s.header.row + (s.data.firstRow.offset ?? 1))) errors.push(`Source ${s.id}: lastRow is before the first data row.`);
   }
   const params = new Set();
   for (const p of t.parameters ?? []) {
@@ -712,7 +716,7 @@ export function resolveSource(template, source, workbook, limits = {}) {
     sheetName: sheet.name,
     sheet,
     headerRow,
-    firstDataRow: headerRow + (source.data.firstRow.offset ?? 1),
+    firstDataRow: source.data.firstRow.mode === 'row' ? Math.max(source.data.firstRow.row ?? 1, headerRow + 1) : headerRow + (source.data.firstRow.offset ?? 1),
     columns,
   };
 }
@@ -979,7 +983,7 @@ export function extractRows(template, workbook, { limit = Infinity, maxErrors = 
         if (!previewMissing) push({ code: 'DISTINCT_TABLE_MISSING', taskId: task.id, message: `The values of ${tablePick.m.source.schema}.${tablePick.m.source.table}.${tablePick.m.source.column} were not read from the database.` });
       } else listed.forEach((v, i) => !isBlank(v) && rowList.push(i + 1));
     } else if (reads.length) {
-      let last = rows.length;
+      let last = Math.min(rows.length, source.data.lastRow ?? rows.length);
       while (last >= res.firstDataRow && reads.every((p) => blankAt(p, last))) last--;
       if (last - res.firstDataRow + 1 > lim.maxRows) {
         push({ code: 'ROW_LIMIT', taskId: task.id, message: `Worksheet "${res.sheetName}" has more than ${lim.maxRows} data rows.` });
@@ -1157,6 +1161,8 @@ export function newSource(over = {}) {
     sheet: { mode: 'name', value: '', headers: null },
     header: { mode: 'fixed', row: 1, startColumn: 'A', scanFrom: 1, scanTo: DEFAULT_SCAN.to, caseSensitive: false, expected: null },
     dataOffset: 1,
+    startRow: null,
+    lastRow: null,
     skipEmptyRows: true,
     columns: [],
     x: 40,
@@ -1351,7 +1357,7 @@ export function designToTemplate(design, { editor = true } = {}) {
       id: s.id,
       sheet,
       header,
-      data: { firstRow: { mode: 'afterHeader', offset: s.dataOffset }, endMode: 'lastNonEmptyMappedRow', skipEmptyRows: s.skipEmptyRows },
+      data: { firstRow: s.startRow > 0 ? { mode: 'row', row: s.startRow } : { mode: 'afterHeader', offset: s.dataOffset }, endMode: 'lastNonEmptyMappedRow', ...(s.lastRow > 0 ? { lastRow: s.lastRow } : {}), skipEmptyRows: s.skipEmptyRows },
     };
   });
   const byId = new Map(design.sources.map((s) => [s.id, s]));
@@ -1441,7 +1447,7 @@ export function designToTemplate(design, { editor = true } = {}) {
   }
   const out = {
     format: FORMAT,
-    specVersion: used.some((p) => p.kind === 'select') ? RANGE_VERSION : used.some((p) => p.kind === 'distinct') ? DISTINCT_VERSION : used.some((p) => ['join', 'constant', 'clean', 'extract', 'default'].includes(p.kind)) ? MORE_BLOCKS_VERSION : usesChain ? CHAIN_VERSION : used.some((p) => p.kind === 'map' || p.kind === 'convert') ? MAP_VERSION : used.some((p) => p.kind === 'case' || (p.kind === 'choice' && hasFilter(p))) ? CASE_VERSION : usesInserted ? INSERTED_VERSION : used.some((p) => p.kind === 'lookup') ? LOOKUP_VERSION : used.length ? BLOCKS_VERSION : BASE_VERSION,
+    specVersion: design.sources.some((s) => s.lastRow > 0 || s.startRow > 0) ? LAST_ROW_VERSION : used.some((p) => p.kind === 'select') ? RANGE_VERSION : used.some((p) => p.kind === 'distinct') ? DISTINCT_VERSION : used.some((p) => ['join', 'constant', 'clean', 'extract', 'default'].includes(p.kind)) ? MORE_BLOCKS_VERSION : usesChain ? CHAIN_VERSION : used.some((p) => p.kind === 'map' || p.kind === 'convert') ? MAP_VERSION : used.some((p) => p.kind === 'case' || (p.kind === 'choice' && hasFilter(p))) ? CASE_VERSION : usesInserted ? INSERTED_VERSION : used.some((p) => p.kind === 'lookup') ? LOOKUP_VERSION : used.length ? BLOCKS_VERSION : BASE_VERSION,
     templateId: design.templateId,
     name: design.name,
     ...(design.description ? { description: design.description } : {}),
@@ -1482,6 +1488,8 @@ export function templateToDesign(t) {
       id: s.id,
       sheet: { mode: s.sheet.mode, value: s.sheet.value ?? (s.sheet.mode === 'index' ? 1 : ''), headers: s.sheet.headers ?? null },
       dataOffset: s.data.firstRow.offset ?? 1,
+      startRow: s.data.firstRow.mode === 'row' ? s.data.firstRow.row ?? null : null,
+      lastRow: s.data.lastRow ?? null,
       skipEmptyRows: s.data.skipEmptyRows ?? true,
       x: nodes[s.id]?.x ?? 40,
       y: nodes[s.id]?.y ?? 40 + i * 320,

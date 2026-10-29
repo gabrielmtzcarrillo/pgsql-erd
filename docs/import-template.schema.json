@@ -227,16 +227,29 @@
                 ],
                 "properties": {
                   "mode": {
-                    "const": "afterHeader"
+                    "enum": [
+                      "afterHeader",
+                      "row"
+                    ]
                   },
                   "offset": {
                     "type": "integer",
                     "minimum": 1
+                  },
+                  "row": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "With mode \"row\" (1.10): the worksheet row the data starts at, wherever the header is."
                   }
                 }
               },
               "endMode": {
                 "const": "lastNonEmptyMappedRow"
+              },
+              "lastRow": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Last worksheet row the source reads (1.10); rows below it are ignored."
               },
               "skipEmptyRows": {
                 "type": "boolean"

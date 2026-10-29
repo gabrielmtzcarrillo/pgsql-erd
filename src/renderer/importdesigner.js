@@ -1454,6 +1454,14 @@ export function setupImportDesigner(ctx) {
         field(tr('Header'), headerMode),
         ...headerFields,
         field(tr('First data row'), h('span', { class: 'imp-pair' }, [num(s.dataOffset, 1, (v) => set((x) => (x.dataOffset = v)), 56), h('span', { class: 'muted small' }, tr('rows after the header'))])),
+        field(tr('Start at row'), h('span', { class: 'imp-pair' }, [
+          h('input', { type: 'number', min: 1, step: 1, value: s.startRow ?? '', placeholder: tr('after header'), style: 'width:64px', onchange: (e) => set((x) => (x.startRow = Math.round(Number(e.target.value)) > 0 ? Math.round(Number(e.target.value)) : null)) }),
+          h('span', { class: 'muted small' }, tr('worksheet row; replaces "rows after the header"')),
+        ])),
+        field(tr('Last data row'), h('span', { class: 'imp-pair' }, [
+          h('input', { type: 'number', min: 1, step: 1, value: s.lastRow ?? '', placeholder: tr('all'), style: 'width:64px', onchange: (e) => set((x) => (x.lastRow = Math.round(Number(e.target.value)) > 0 ? Math.round(Number(e.target.value)) : null)) }),
+          h('span', { class: 'muted small' }, tr('worksheet row; empty reads to the end')),
+        ])),
         field(tr('Skip empty rows'), h('input', { type: 'checkbox', checked: s.skipEmptyRows, onchange: (e) => set((x) => (x.skipEmptyRows = e.target.checked)) }),
           tr('Rows where every mapped cell is empty are not inserted. The data ends at the last row with a mapped value.')),
       ]),
@@ -1578,7 +1586,10 @@ export function setupImportDesigner(ctx) {
         if (x.sheet.mode === 'name') x.sheet.value = T.sheet;
       } else {
         const hr = T.resolved[x.id]?.headerRow ?? x.header.row;
-        if (r > hr) x.dataOffset = r - hr;
+        if (r > hr) {
+          x.dataOffset = r - hr;
+          x.startRow = null;
+        }
       }
     });
   });

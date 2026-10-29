@@ -1,4 +1,4 @@
-# Excel → PostgreSQL INSERT template, specification 1.8
+# Excel → PostgreSQL INSERT template, specification 1.10
 
 The Import Designer exports a **template**: a JSON document that tells a runner which worksheets of an Excel
 workbook to read and which `INSERT`s to perform, in which order. The designer is only one way to author it;
@@ -23,7 +23,7 @@ exactly one worksheet, one header row and its mapped columns.
   major, or a newer minor) and must not guess: new fields can change what a template does, so ignoring them is
   unsafe. This document is 1.8. A template is written with the lowest version that covers what it uses, so older
   readers still run it. 1.1 adds *processor blocks* (`processor` on mappings, `parameters`, the `parameter`
-  source); 1.2 adds the `lookup` processor; 1.3 adds `inserted` keys; 1.4 adds the `case` processor and the optional `filter` of a table dropdown; 1.5 adds the `map` and `convert` processors; 1.6 adds `processors` (chains); 1.7 adds the `join` and `constant` sources and the `clean`, `extract` and `default` processors; 1.8 adds the `distinct` processor and source. 1.9 adds the `range` source.
+  source); 1.2 adds the `lookup` processor; 1.3 adds `inserted` keys; 1.4 adds the `case` processor and the optional `filter` of a table dropdown; 1.5 adds the `map` and `convert` processors; 1.6 adds `processors` (chains); 1.7 adds the `join` and `constant` sources and the `clean`, `extract` and `default` processors; 1.8 adds the `distinct` processor and source. 1.9 adds the `range` source; 1.10 adds `data.lastRow` and the `row` mode of `firstRow`.
 - `editor` is presentation only (node positions). Runners **must ignore** it; it never changes behaviour.
 
 ## Document
@@ -68,8 +68,13 @@ normalise to the same text, a mapping that selects by that name **fails**; selec
 `data`:
 
 - `firstRow: { "mode": "afterHeader", "offset": 1 }`: the first data row is `header row + offset`.
+- `firstRow: { "mode": "row", "row": 20 }` (1.10): the data starts at that worksheet row, wherever the header is
+  (never above the row after the header). Use it when records begin well after the header.
 - `endMode: "lastNonEmptyMappedRow"`: for each **task**, the data ends at the last row, from the first data row
   on, where at least one of the task's mapped cells is non-blank. Blank rows before that are not a terminator.
+- `lastRow` (1.10, optional): the last worksheet row (1-based) the source reads. Rows below it are ignored, so a
+  worksheet with notes or totals under the data can be read only down to `lastRow`. With `firstRow` it gives the
+  range of rows to use.
 - `skipEmptyRows` (default `true`): rows in that range where **every** mapped cell is blank are not inserted. When
   `false` they are inserted as rows of blanks (subject to the blank policy).
 
