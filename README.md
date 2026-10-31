@@ -69,6 +69,12 @@ Pick tables to add, or refresh the ones already in the diagram.
 
 ![Import tables](docs/screenshots/db-import.png)
 
+### Import from Entity Framework / JSON
+
+Read the entity classes and `DbContext` of an EF Core model (or a JSON description) and add its tables to the diagram.
+
+![Import from Entity Framework](docs/screenshots/ef-import.png)
+
 ### Compare / sync
 
 Differences with the database and the migration SQL.
@@ -193,6 +199,22 @@ A force-directed view; double-click a vertex to expand its neighbours.
   The dialog lets you pick and rename the tables, set the schema and preview the SQL. Names are converted to
   snake_case unless you turn that off. Tables already in the diagram are updated and keep their position.
   Old `.xls` files are not supported; save them as `.xlsx` first.
+- Import tables from **Entity Framework Core classes or JSON** with **File → Import from Entity Framework / JSON…**, or by
+  dropping `.cs` files on the window. Choose the entity classes and the `DbContext` together; they are read as text, nothing is compiled:
+  - **Entities:** public properties (including inherited ones) become columns. `DbSet` names, `[Table]`, `[Column]`,
+    `[Key]`, `[PrimaryKey]`, `[Required]`, `[MaxLength]`, `[StringLength]`, `[Precision]`, `[Index]`, `[Comment]`,
+    `[DatabaseGenerated]` and `[NotMapped]` are honoured, and `int`/`long` keys become `serial`/`bigserial`.
+  - **Fluent API:** `OnModelCreating` and `IEntityTypeConfiguration<T>` are read for `HasDefaultSchema`, `ToTable`, `HasKey`,
+    `Property(...)` (`HasColumnName`, `HasMaxLength`, `IsRequired`, `HasColumnType`, `HasPrecision`, `HasDefaultValue`, `HasDefaultValueSql`),
+    `HasIndex().IsUnique()`, `Ignore` and `HasOne`/`HasMany`/`WithOne`/`WithMany`/`HasForeignKey`/`HasPrincipalKey`.
+  - **Relationships:** foreign keys come from the fluent API, `[ForeignKey]` or EF's naming conventions (a shadow column when
+    there is no key property); two collections that point at each other get a join table. Classes derived from another
+    entity share its table with a `discriminator` column. Owned types and value conversions are not followed.
+  - **JSON:** `{ "schema": "app", "tables": [{ "name": "person", "columns": [{ "name": "id", "type": "serial", "pk": true }, { "name": "boss_id", "type": "int", "references": "person.id" }] }] }`.
+    Columns take `type`, `length`, `precision`/`scale`, `nullable` or `notNull`, `pk`, `unique`, `default`, `description` and
+    `references` (`table.column` or `schema.table.column`); a table may also list `primaryKey` and `foreignKeys`.
+  - The same dialog as the Excel import lets you pick and rename the tables and preview the SQL. A sample is in
+    [docs/examples/ShopContext.cs](docs/examples/ShopContext.cs).
 - Live SQL preview with syntax highlighting, and export to PostgreSQL DDL (`CREATE TABLE`, primary keys, unique
   constraints, foreign keys, comments), SVG or PNG. **Save As…** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>)
   writes any of these: the file type picked in the dialog (`.pgerd`, `.sql`, `.svg` or `.png`) decides the format.
@@ -573,9 +595,10 @@ src/renderer/dbtree.js    database explorer
 src/renderer/graph.js     Graph tab (Apache AGE)
 src/renderer/databrowser.js data tabs and filters
 src/renderer/assistant.js Assistant tab and AI provider settings
-src/renderer/xlui.js      Excel / CSV import dialog
+src/renderer/xlui.js      Excel / CSV and Entity Framework / JSON import dialog
 src/renderer/importdesigner.js Import tabs (Excel -> PostgreSQL import designer)
 src/renderer/lib/pgerd.js .pgerd parsing and serialization
+src/renderer/lib/efimport.js Entity Framework Core (C#) and JSON readers for the import dialog
 src/renderer/lib/sql.js   PostgreSQL DDL generation
 src/renderer/lib/layout.js table geometry, relationship routing, auto layout
 src/renderer/lib/catalog.js catalog rows -> diagram model
@@ -587,6 +610,7 @@ src/renderer/lib/querybuilder.js query builder joins and SELECT generation
 samples/shop.pgerd        example diagram
 build/icon.svg            app icon source; icon.ico (Windows) and icon.png are rendered from it
 scripts/build-windows.bat Windows build script
+scripts/capture-screenshots.mjs retakes the README screenshots that need no database (see docs/screenshots.md)
 tests/                    node:test suites
 ```
 

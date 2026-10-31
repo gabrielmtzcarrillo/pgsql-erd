@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('erdHost', {
   onTheme: (cb) => ipcRenderer.on('theme', (_e, name) => cb(name)),
   openDialog: () => ipcRenderer.invoke('open-dialog'),
   openSpreadsheet: () => ipcRenderer.invoke('open-spreadsheet'),
+  openModel: () => ipcRenderer.invoke('open-model'),
   openSql: () => ipcRenderer.invoke('open-sql'),
   openImportTemplate: () => ipcRenderer.invoke('open-import-template'),
   saveFile: (opts) => ipcRenderer.invoke('save-file', opts),

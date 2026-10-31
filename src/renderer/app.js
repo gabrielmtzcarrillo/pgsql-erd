@@ -22,7 +22,7 @@ import { setupImportDesigner } from './importdesigner.js';
 import { setupGraph } from './graph.js';
 import { setupErdScripts } from './erdscripts.js';
 import { tableKey } from './lib/catalog.js';
-import { setupSpreadsheetImport, SPREADSHEET_EXT } from './xlui.js';
+import { setupSpreadsheetImport, SPREADSHEET_EXT, MODEL_EXT } from './xlui.js';
 import { highlightSQL } from './lib/highlight.js';
 import { vectorKind, vectorIndexSQL } from '../shared/pgvector.js';
 import { ICONS, TABLE_ICONS, decorateButton, decorateButtons, iconElement, tableIconElement } from './icons.js';
@@ -2422,6 +2422,14 @@ document.addEventListener('drop', async (e) => {
   wrap.classList.remove('drop-target');
   const file = e.dataTransfer.files[0];
   if (!file) return;
+  if (/\.cs$/i.test(file.name)) {
+    const open = document.querySelector('dialog[open]');
+    if (!open || open.id === 'xl-import-dialog') {
+      const dropped = [...e.dataTransfer.files].filter((f) => MODEL_EXT.test(f.name));
+      spreadsheet.openModelFiles(await Promise.all(dropped.map(async (f) => ({ name: f.name, text: await f.text() }))));
+    }
+    return;
+  }
   if (/\.(sql|pgsql|psql)$/i.test(file.name)) return query.loadFile(await file.text(), host.pathForFile(file) || file.name);
   if (SPREADSHEET_EXT.test(file.name)) {
     const open = document.querySelector('dialog[open]');

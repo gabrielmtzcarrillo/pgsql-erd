@@ -219,6 +219,26 @@ ipcMain.handle('open-spreadsheet', async (e) => {
   return { filePath, data: new Uint8Array(await fs.readFile(filePath)) };
 });
 
+// Pick Entity Framework Core sources (.cs) or JSON model files for "Import from Entity Framework / JSON".
+const MAX_MODEL_FILE = 5 * 1024 * 1024;
+ipcMain.handle('open-model', async (e) => {
+  const res = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), {
+    title: tr('Import tables from Entity Framework / JSON'),
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: tr('Entity Framework / JSON'), extensions: ['cs', 'json'] },
+      { name: tr('All Files'), extensions: ['*'] },
+    ],
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  const files = [];
+  for (const filePath of res.filePaths) {
+    if ((await fs.stat(filePath)).size > MAX_MODEL_FILE) throw new Error(tr('The file is too large for an import template (over 5 MB).'));
+    files.push({ filePath, text: await fs.readFile(filePath, 'utf8') });
+  }
+  return files;
+});
+
 // Pick an import template (.import.json) for the Import Designer tab.
 const MAX_TEMPLATE_FILE = 5 * 1024 * 1024;
 ipcMain.handle('open-import-template', async (e) => {
@@ -455,6 +475,7 @@ function buildMenu() {
         { label: tr('Save'), icon: menuIcon('save'), accelerator: 'CmdOrCtrl+S', click: cmd('save') },
         { label: tr('Save As…'), icon: menuIcon('save-as'), accelerator: 'CmdOrCtrl+Shift+S', click: cmd('save-as') },
         { type: 'separator' },
+        { label: tr('Import from Entity Framework / JSON…'), icon: menuIcon('import-spreadsheet'), click: cmd('import-model') },
         { label: tr('Import from Excel / CSV…'), icon: menuIcon('import-spreadsheet'), accelerator: 'CmdOrCtrl+Alt+E', click: cmd('import-spreadsheet') },
         { type: 'separator' },
         { label: tr('Export SQL…'), icon: menuIcon('export-sql'), accelerator: 'CmdOrCtrl+Alt+S', click: cmd('export-sql') },

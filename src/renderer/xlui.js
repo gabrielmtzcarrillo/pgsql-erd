@@ -1,6 +1,7 @@
 // Spreadsheet import: pick an Excel workbook or CSV file, review the tables
 // found in its sheets and add them to the diagram.
 
+import { parseModelSource, MODEL_EXT } from './lib/efimport.js';
 import { readSpreadsheet, sheetTables, modelFromSpecs, importSpecs } from './lib/spreadsheet.js';
 import { tableKey } from './lib/catalog.js';
 import { generateSQL } from './lib/sql.js';
@@ -10,6 +11,7 @@ import { tr, trn } from '../shared/i18n.js';
 
 const $ = (sel) => document.querySelector(sel);
 export const SPREADSHEET_EXT = /\.(xlsx|xlsm|csv|tsv)$/i;
+export { MODEL_EXT };
 
 export function setupSpreadsheetImport(ctx) {
   const { host, state, h, commit, computeSizes, fit, status } = ctx;
@@ -21,8 +23,33 @@ export function setupSpreadsheetImport(ctx) {
   const optSnake = $('#xl-snake');
   const optNotNull = $('#xl-notnull');
 
-  let file = null; // { name, sheets }
+  // { name, sheets }; for an EF Core / JSON model { name, sources: [{ name, text }], sheets: [] }
+  let file = null;
+  const title = dialog.querySelector('h3');
+  const excelTitle = title.textContent;
+  const help = dialog.querySelector('p.muted');
+  const excelHelp = help.innerHTML;
+  const notNullOption = optNotNull.closest('label');
+
+  // The same dialog serves both imports; only its explanation and the Excel-only option differ.
+  function setMode(model) {
+    title.textContent = model ? tr('Import tables from Entity Framework / JSON') : excelTitle;
+    if (model) {
+      help.textContent = tr('Each class becomes a table. Entity Framework Core classes (.cs files; choose the entities and the DbContext together) are read for their properties, data annotations, DbSet names and fluent configuration. A JSON file lists tables with their columns (name, type, pk, nullable, unique, default, references). Tables already in the diagram are updated; their position, color and note are kept.');
+    } else help.innerHTML = excelHelp;
+    notNullOption.style.display = model ? 'none' : '';
+  }
   let specs = []; // [{ id, spec, checked, name }]
+
+  // C# files are read together (entities, context and configurations refer to each other); each JSON file on its own.
+  function modelSpecs(sources, opts) {
+    const isJson = (f) => /\.json$/i.test(f.name);
+    const cs = sources.filter((f) => !isJson(f));
+    return [
+      ...(cs.length ? parseModelSource('model.cs', cs.map((f) => f.text).join('\n'), opts) : []),
+      ...sources.filter(isJson).flatMap((f) => parseModelSource(f.name, f.text, opts)),
+    ];
+  }
 
   function setStatus(text, kind = '') {
     statusEl.textContent = text ?? '';
@@ -39,6 +66,17 @@ export function setupSpreadsheetImport(ctx) {
   function analyze() {
     const prev = new Map(specs.map((s) => [s.id, s]));
     specs = [];
+    if (file?.sources) {
+      try {
+        for (const spec of modelSpecs(file.sources, options())) {
+          const id = `\u0000${spec.key}`;
+          const old = prev.get(id);
+          specs.push({ id, spec, checked: old ? old.checked : true, name: old?.name ?? spec.name });
+        }
+      } catch (err) {
+        setStatus(tr('Could not read {file}: {message}', { file: file.name, message: err.message }), 'error');
+      }
+    }
     for (const sheet of file?.sheets ?? []) {
       for (const spec of sheetTables(sheet, options()).tables) {
         const id = `${sheet.name}\u0000${spec.key}`;
@@ -131,7 +169,21 @@ export function setupSpreadsheetImport(ctx) {
     analyze();
   }
 
+  function loadModel(files) {
+    file = { name: files.map((f) => f.name).join(', '), sources: files, sheets: [] };
+    specs = [];
+    setMode(true);
+    $('#xl-file').textContent = file.name;
+    analyze();
+  }
+
+  async function chooseModel() {
+    const res = await host.openModel();
+    if (res) loadModel(res.map((f) => ({ name: f.filePath.split(/[\\/]/).pop(), text: f.text })));
+  }
+
   async function choose() {
+    setMode(false);
     const res = await host.openSpreadsheet();
     if (res) await load(res.filePath.split(/[\\/]/).pop(), res.data);
   }
@@ -140,13 +192,14 @@ export function setupSpreadsheetImport(ctx) {
     file = null;
     specs = [];
     $('#xl-file').textContent = tr('No file chosen');
+    setMode(false);
     setStatus('');
     renderList();
     update();
     dialog.returnValue = '';
   }
 
-  $('#xl-choose').addEventListener('click', choose);
+  $('#xl-choose').addEventListener('click', () => (file?.sources ? chooseModel() : choose()));
   optSchema.addEventListener('change', analyze);
   optSnake.addEventListener('change', analyze);
   optNotNull.addEventListener('change', analyze);
@@ -190,8 +243,22 @@ export function setupSpreadsheetImport(ctx) {
     return choose();
   }
 
+  function openModel() {
+    reset();
+    dialog.showModal();
+    return chooseModel();
+  }
+
   return {
-    commands: { 'import-spreadsheet': open },
+    commands: { 'import-spreadsheet': open, 'import-model': openModel },
+    // Open the dialog on dropped .cs / .json files.
+    openModelFiles(files) {
+      if (!dialog.open) {
+        reset();
+        dialog.showModal();
+      }
+      loadModel(files);
+    },
     // Open the dialog on a file dropped onto the window.
     async openFile(name, bytes) {
       if (!dialog.open) {

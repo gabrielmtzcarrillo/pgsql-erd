@@ -71,6 +71,12 @@ Elige las tablas que quieres agregar o actualiza las que ya están en el diagram
 
 ![Importar tablas](docs/screenshots/es/db-import.png)
 
+### Importar desde Entity Framework / JSON
+
+Lee las clases de entidad y el `DbContext` de un modelo de EF Core (o una descripción JSON) y agrega sus tablas al diagrama.
+
+![Importar desde Entity Framework](docs/screenshots/es/ef-import.png)
+
 ### Comparar / sincronizar
 
 Las diferencias con la base de datos y el SQL de migración.
@@ -200,6 +206,22 @@ Una vista dirigida por fuerzas; haz doble clic en un vértice para expandir sus 
   El diálogo permite elegir y renombrar las tablas, establecer el esquema y ver el SQL. Los nombres se
   convierten a snake_case salvo que lo desactives. Las tablas que ya están en el diagrama se actualizan y
   conservan su posición. Los archivos `.xls` antiguos no se admiten; guárdalos antes como `.xlsx`.
+- Importa tablas desde **clases de Entity Framework Core o JSON** con **Archivo → Importar desde Entity Framework / JSON…** o
+  soltando archivos `.cs` en la ventana. Elige juntas las clases de entidad y el `DbContext`; se leen como texto, no se compila nada:
+  - **Entidades:** las propiedades públicas (también las heredadas) se convierten en columnas. Se respetan los nombres de los
+    `DbSet`, `[Table]`, `[Column]`, `[Key]`, `[PrimaryKey]`, `[Required]`, `[MaxLength]`, `[StringLength]`, `[Precision]`, `[Index]`,
+    `[Comment]`, `[DatabaseGenerated]` y `[NotMapped]`, y las claves `int`/`long` pasan a `serial`/`bigserial`.
+  - **API fluida:** se leen `OnModelCreating` e `IEntityTypeConfiguration<T>`: `HasDefaultSchema`, `ToTable`, `HasKey`,
+    `Property(...)` (`HasColumnName`, `HasMaxLength`, `IsRequired`, `HasColumnType`, `HasPrecision`, `HasDefaultValue`, `HasDefaultValueSql`),
+    `HasIndex().IsUnique()`, `Ignore` y `HasOne`/`HasMany`/`WithOne`/`WithMany`/`HasForeignKey`/`HasPrincipalKey`.
+  - **Relaciones:** las claves foráneas salen de la API fluida, de `[ForeignKey]` o de las convenciones de nombres de EF (una
+    columna sombra si no hay propiedad de clave); dos colecciones que se apuntan entre sí generan una tabla de unión. Las clases
+    derivadas de otra entidad comparten su tabla con una columna `discriminator`. No se siguen los tipos propios (owned) ni las conversiones de valores.
+  - **JSON:** `{ "schema": "app", "tables": [{ "name": "person", "columns": [{ "name": "id", "type": "serial", "pk": true }, { "name": "boss_id", "type": "int", "references": "person.id" }] }] }`.
+    Las columnas aceptan `type`, `length`, `precision`/`scale`, `nullable` o `notNull`, `pk`, `unique`, `default`, `description` y
+    `references` (`tabla.columna` o `esquema.tabla.columna`); una tabla también puede listar `primaryKey` y `foreignKeys`.
+  - El mismo diálogo de la importación de Excel permite elegir y renombrar las tablas y ver el SQL. Hay un ejemplo en
+    [docs/examples/ShopContext.cs](docs/examples/ShopContext.cs).
 - Vista previa SQL en vivo con resaltado de sintaxis, y exportación a DDL de PostgreSQL (`CREATE TABLE`, claves
   primarias, restricciones únicas, claves foráneas, comentarios), SVG o PNG. **Guardar como…**
   (<kbd>Ctrl</kbd>+<kbd>Mayús</kbd>+<kbd>S</kbd>) escribe cualquiera de ellos: el tipo de archivo elegido en el
@@ -621,9 +643,10 @@ src/renderer/dbtree.js    explorador de la base de datos
 src/renderer/graph.js     pestaña Grafo (Apache AGE)
 src/renderer/databrowser.js pestañas de datos y filtros
 src/renderer/assistant.js pestaña Asistente y configuración de los proveedores de IA
-src/renderer/xlui.js      diálogo de importación de Excel / CSV
+src/renderer/xlui.js      diálogo de importación de Excel / CSV y Entity Framework / JSON
 src/renderer/importdesigner.js pestañas Importación (diseñador de importación Excel -> PostgreSQL)
 src/renderer/lib/pgerd.js lectura y escritura de .pgerd
+src/renderer/lib/efimport.js lectores de Entity Framework Core (C#) y JSON para el diálogo de importación
 src/renderer/lib/sql.js   generación de DDL de PostgreSQL
 src/renderer/lib/layout.js geometría de las tablas, trazado de relaciones, organización automática
 src/renderer/lib/catalog.js filas del catálogo -> modelo del diagrama
@@ -635,6 +658,7 @@ src/renderer/lib/querybuilder.js uniones y SELECT del generador de consultas
 samples/shop.pgerd        diagrama de ejemplo
 build/icon.svg            origen del icono de la aplicación; icon.ico (Windows) e icon.png se generan a partir de él
 scripts/build-windows.bat script de compilación para Windows
+scripts/capture-screenshots.mjs vuelve a tomar las capturas del README que no necesitan base de datos (ver docs/screenshots.md)
 tests/                    suites de node:test
 ```
 
