@@ -268,8 +268,13 @@
     <aside id="imp-right" class="imp-right">
       <div class="imp-right-head">
         <button type="button" id="imp-wb-open" data-icon="open" title="Open the example workbook (.xlsx). It is only used to design and preview; the template does not keep it.">Open workbook…</button>
+        <button type="button" id="imp-json-open" data-icon="open" title="Use a folder of JSON files as the source. The reference file (the first one) gives the columns; the records of all the files are the rows. It is only used to design and preview; the template does not keep it.">Open JSON folder…</button>
         <span id="imp-wb-name" class="muted small grow"></span>
         <button type="button" id="imp-add-source" data-icon="plus" title="Add the worksheet shown below as an Excel source on the canvas">Add as source</button>
+      </div>
+      <div id="imp-json-ref-row" class="imp-pick" hidden>
+        <label class="check" for="imp-json-ref">Reference file</label>
+        <select id="imp-json-ref" class="grow" title="The JSON file whose fields are the columns of the source. Pick the first file or any other that shows every field."></select>
       </div>
       <div id="imp-sheets" class="imp-sheets"></div>
       <div id="imp-settings" class="imp-settings"></div>

@@ -1396,6 +1396,8 @@ dialog.medium { width: min(760px, 94vw); }
 .imp-sample { color: var(--muted); }
 .small.ok { color: #1a7f37; }
 .imp-pick { display: flex; align-items: center; gap: 10px; padding: 4px 8px; border-bottom: 1px solid var(--border); flex: none; }
+.imp-pick[hidden] { display: none; }
+#imp-json-ref { min-width: 0; }
 .imp-grid { flex: 1; min-height: 120px; overflow: auto; position: relative; font-size: 12px; background: var(--surface); }
 .imp-grid-empty { padding: 12px; color: var(--muted); }
 .imp-grid-spacer { position: relative; }

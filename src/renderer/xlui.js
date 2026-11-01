@@ -40,15 +40,25 @@ export function setupSpreadsheetImport(ctx) {
     notNullOption.style.display = model ? 'none' : '';
   }
   let specs = []; // [{ id, spec, checked, name }]
+  let skipped = 0; // JSON files of a folder that describe no tables
 
   // C# files are read together (entities, context and configurations refer to each other); each JSON file on its own.
-  function modelSpecs(sources, opts) {
+  // In a folder, JSON files that are not table descriptions (package.json, settings…) are skipped and counted.
+  function modelSpecs(sources, opts, lenient = false) {
     const isJson = (f) => /\.json$/i.test(f.name);
     const cs = sources.filter((f) => !isJson(f));
-    return [
-      ...(cs.length ? parseModelSource('model.cs', cs.map((f) => f.text).join('\n'), opts) : []),
-      ...sources.filter(isJson).flatMap((f) => parseModelSource(f.name, f.text, opts)),
-    ];
+    let skipped = 0;
+    const json = sources.filter(isJson).flatMap((f) => {
+      try {
+        return parseModelSource(f.name, f.text, opts);
+      } catch (err) {
+        if (!lenient) throw err;
+        skipped++;
+        return [];
+      }
+    });
+    const specs = [...(cs.length ? parseModelSource('model.cs', cs.map((f) => f.text).join('\n'), opts) : []), ...json];
+    return { specs, skipped };
   }
 
   function setStatus(text, kind = '') {
@@ -66,13 +76,16 @@ export function setupSpreadsheetImport(ctx) {
   function analyze() {
     const prev = new Map(specs.map((s) => [s.id, s]));
     specs = [];
+    skipped = 0;
     if (file?.sources) {
       try {
-        for (const spec of modelSpecs(file.sources, options())) {
+        const found = modelSpecs(file.sources, options(), !!file.folder);
+        for (const spec of found.specs) {
           const id = `\u0000${spec.key}`;
           const old = prev.get(id);
           specs.push({ id, spec, checked: old ? old.checked : true, name: old?.name ?? spec.name });
         }
+        skipped = found.skipped;
       } catch (err) {
         setStatus(tr('Could not read {file}: {message}', { file: file.name, message: err.message }), 'error');
       }
@@ -150,7 +163,7 @@ export function setupSpreadsheetImport(ctx) {
     const keys = chosen.map(tableKey);
     const dup = keys.find((k, i) => keys.indexOf(k) !== i);
     if (dup) setStatus(tr('More than one selected table is named {name}; rename one of them.', { name: dup }), 'error');
-    else setStatus(`${file.name}: ${tr('{n} of {total} tables selected', { n: chosen.length, total: specs.length })}`);
+    else setStatus(`${file.name}: ${tr('{n} of {total} tables selected', { n: chosen.length, total: specs.length })}${skipped ? `. ${trn(skipped, '{n} JSON file without tables was skipped.', '{n} JSON files without tables were skipped.')}` : ''}`);
     if (dup) $('#xl-import-ok').disabled = true;
   }
 
@@ -169,8 +182,8 @@ export function setupSpreadsheetImport(ctx) {
     analyze();
   }
 
-  function loadModel(files) {
-    file = { name: files.map((f) => f.name).join(', '), sources: files, sheets: [] };
+  function loadModel(files, folder = null) {
+    file = { name: files.map((f) => f.name).join(', '), sources: files, sheets: [], folder };
     specs = [];
     setMode(true);
     $('#xl-file').textContent = file.name;
@@ -180,6 +193,14 @@ export function setupSpreadsheetImport(ctx) {
   async function chooseModel() {
     const res = await host.openModel();
     if (res) loadModel(res.map((f) => ({ name: f.filePath.split(/[\\/]/).pop(), text: f.text })));
+  }
+
+  // Every JSON file under a folder, each read on its own; names are relative to the folder.
+  async function chooseModelFolder() {
+    const res = await host.openModelFolder();
+    if (!res) return;
+    loadModel(res.files.map((f) => ({ name: f.name, text: f.text })), res.folder);
+    $('#xl-file').textContent = res.folder;
   }
 
   async function choose() {
@@ -199,7 +220,7 @@ export function setupSpreadsheetImport(ctx) {
     dialog.returnValue = '';
   }
 
-  $('#xl-choose').addEventListener('click', () => (file?.sources ? chooseModel() : choose()));
+  $('#xl-choose').addEventListener('click', () => (file?.folder ? chooseModelFolder() : file?.sources ? chooseModel() : choose()));
   optSchema.addEventListener('change', analyze);
   optSnake.addEventListener('change', analyze);
   optNotNull.addEventListener('change', analyze);
@@ -249,8 +270,14 @@ export function setupSpreadsheetImport(ctx) {
     return chooseModel();
   }
 
+  function openModelFolder() {
+    reset();
+    dialog.showModal();
+    return chooseModelFolder();
+  }
+
   return {
-    commands: { 'import-spreadsheet': open, 'import-model': openModel },
+    commands: { 'import-spreadsheet': open, 'import-model': openModel, 'import-model-folder': openModelFolder },
     // Open the dialog on dropped .cs / .json files.
     openModelFiles(files) {
       if (!dialog.open) {

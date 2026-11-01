@@ -239,6 +239,73 @@ ipcMain.handle('open-model', async (e) => {
   return files;
 });
 
+// The .json files of a folder and its subfolders (8 levels), sorted; hidden folders and node_modules are skipped.
+const MAX_MODEL_FILES = 500;
+async function listJsonFiles(root) {
+  const paths = [];
+  const walk = async (dir, depth) => {
+    for (const entry of (await fs.readdir(dir, { withFileTypes: true })).sort((x, y) => x.name.localeCompare(y.name))) {
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (depth < 8) await walk(full, depth + 1);
+      } else if (/[.]json$/i.test(entry.name)) paths.push(full);
+    }
+  };
+  await walk(root, 0);
+  if (paths.length > MAX_MODEL_FILES) throw new Error(tr('The folder has too many JSON files (over {n}).', { n: MAX_MODEL_FILES }));
+  return paths;
+}
+
+async function readJsonFile(filePath) {
+  if ((await fs.stat(filePath)).size > MAX_MODEL_FILE) throw new Error(tr('The file is too large for an import template (over 5 MB).'));
+  return fs.readFile(filePath, 'utf8');
+}
+
+// Pick a folder and read every .json file in it for "Import from a folder of JSON files".
+ipcMain.handle('open-model-folder', async (e) => {
+  const res = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), {
+    title: tr('Import tables from a folder of JSON files'),
+    properties: ['openDirectory'],
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  const files = [];
+  for (const filePath of await listJsonFiles(res.filePaths[0])) files.push({ filePath, name: path.relative(res.filePaths[0], filePath), text: await readJsonFile(filePath) });
+  return { folder: res.filePaths[0], files };
+});
+
+// Import Designer: pick a folder of JSON data files; only the names are returned, the reference file is read on its own.
+ipcMain.handle('open-json-folder', async (e) => {
+  const res = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), {
+    title: tr('Open the folder of JSON files'),
+    properties: ['openDirectory'],
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  const folder = res.filePaths[0];
+  return { folder, names: (await listJsonFiles(folder)).map((p) => path.relative(folder, p)) };
+});
+
+// The texts of the chosen files of that folder (in the given order); a file that cannot be read comes back with its error.
+const MAX_JSON_FOLDER_BYTES = 256 * 1024 * 1024;
+ipcMain.handle('read-json-folder-files', async (e, folder, names) => {
+  const root = path.resolve(String(folder));
+  const out = [];
+  let total = 0;
+  for (const name of names) {
+    const full = path.resolve(root, String(name));
+    if (!full.startsWith(root + path.sep) || !/[.]json$/i.test(full)) throw new Error(tr('The file is not inside the folder.'));
+    try {
+      total += (await fs.stat(full)).size;
+      if (total > MAX_JSON_FOLDER_BYTES) throw new Error(tr('The JSON files are too large to load together (over 256 MB).'));
+      out.push({ name, text: await readJsonFile(full) });
+    } catch (err) {
+      if (total > MAX_JSON_FOLDER_BYTES) throw err;
+      out.push({ name, error: err.message });
+    }
+  }
+  return out;
+});
+
 // Pick an import template (.import.json) for the Import Designer tab.
 const MAX_TEMPLATE_FILE = 5 * 1024 * 1024;
 ipcMain.handle('open-import-template', async (e) => {
@@ -476,6 +543,7 @@ function buildMenu() {
         { label: tr('Save As…'), icon: menuIcon('save-as'), accelerator: 'CmdOrCtrl+Shift+S', click: cmd('save-as') },
         { type: 'separator' },
         { label: tr('Import from Entity Framework / JSON…'), icon: menuIcon('import-spreadsheet'), click: cmd('import-model') },
+        { label: tr('Import from a folder of JSON files…'), icon: menuIcon('import-spreadsheet'), click: cmd('import-model-folder') },
         { label: tr('Import from Excel / CSV…'), icon: menuIcon('import-spreadsheet'), accelerator: 'CmdOrCtrl+Alt+E', click: cmd('import-spreadsheet') },
         { type: 'separator' },
         { label: tr('Export SQL…'), icon: menuIcon('export-sql'), accelerator: 'CmdOrCtrl+Alt+S', click: cmd('export-sql') },

@@ -13,6 +13,7 @@
 import { TABLE_DRAG_TYPE } from './dbtree.js';
 import { tableKey } from './lib/catalog.js';
 import { readSpreadsheet } from './lib/spreadsheet.js';
+import { jsonFolderSheets } from './lib/jsonsheet.js';
 import { schemaFromErd, findTable, allTables } from '../shared/schema-model.js';
 import {
   colLetter, colIndex, normHeader, newDesign, newSource, newTask, newId, designToTemplate, templateToDesign,
@@ -1331,14 +1332,43 @@ export function setupImportDesigner(ctx) {
 
   async function loadWorkbook(name, bytes) {
     const rec = T;
+    await showSheets(name, async () => {
+      const sheets = await parseWorkbook(name, bytes);
+      rec.json = null;
+      return sheets;
+    });
+  }
+
+  // Reads a folder of JSON files: the reference file (the first one at the start) gives the columns.
+  async function chooseJsonFolder() {
+    const res = await host.openJsonFolder();
+    if (!res) return;
+    if (!res.names.length) return status(tr('The folder has no JSON files.'));
+    T.json = { folder: res.folder, names: res.names, ref: res.names[0] };
+    await loadJsonReference();
+  }
+
+  async function loadJsonReference() {
+    const json = T.json;
+    // The reference file comes first so its fields are the columns; every file's records are rows.
+    const names = [json.ref, ...json.names.filter((n) => n !== json.ref)];
+    await showSheets(json.folder, async () => {
+      const { sheets, failed } = jsonFolderSheets(await host.readJsonFolderFiles(json.folder, names));
+      if (failed.length) status(trn(failed.length, '{n} JSON file could not be read and was skipped: {file}', '{n} JSON files could not be read and were skipped, for example {file}', { file: failed[0].name }));
+      return sheets;
+    }, json.ref);
+  }
+
+  async function showSheets(name, read, label = name) {
+    const rec = T;
     rec.loading = true;
     renderRight();
     try {
-      const sheets = await parseWorkbook(name, bytes);
+      const sheets = await read();
       rec.wb = { name, sheets, meta: new Map() };
       rec.sheet = sheets.find((s) => !s.hidden)?.name ?? sheets[0]?.name ?? null;
     } catch (err) {
-      status(tr('Could not read {file}: {message}', { file: name, message: err.message }));
+      status(tr('Could not read {file}: {message}', { file: label, message: err.message }));
     }
     rec.loading = false;
     if (rec === T) {
@@ -1382,6 +1412,12 @@ export function setupImportDesigner(ctx) {
   function renderRight() {
     $('#imp-wb-name').textContent = T.loading ? tr('Reading…') : T.wb?.name ?? tr('No example workbook');
     $('#imp-wb-name').title = T.wb?.name ?? '';
+    const refRow = $('#imp-json-ref-row');
+    refRow.hidden = !T.json;
+    if (T.json) {
+      $('#imp-json-ref').replaceChildren(...T.json.names.map((n) => h('option', { value: n, selected: n === T.json.ref }, n)));
+      $('#imp-json-ref').value = T.json.ref;
+    }
     const tabsEl = $('#imp-sheets');
     tabsEl.replaceChildren(...(T.wb?.sheets ?? []).map((s) => h('button', {
       type: 'button',
@@ -1936,6 +1972,12 @@ export function setupImportDesigner(ctx) {
     drawGrid2();
   });
   $('#imp-wb-open').addEventListener('click', chooseWorkbook);
+  $('#imp-json-open').addEventListener('click', chooseJsonFolder);
+  $('#imp-json-ref').addEventListener('change', (e) => {
+    if (!T.json) return;
+    T.json.ref = e.target.value;
+    loadJsonReference();
+  });
   $('#imp-run').addEventListener('click', runImport);
   $('#imp-add-split').addEventListener('click', () => addBlock('split'));
   $('#imp-add-case').addEventListener('click', () => addBlock('case'));
