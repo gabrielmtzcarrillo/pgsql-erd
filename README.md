@@ -75,6 +75,12 @@ Read the entity classes and `DbContext` of an EF Core model (or a JSON descripti
 
 ![Import from Entity Framework](docs/screenshots/ef-import.png)
 
+### Import from SQLite
+
+Read the tables of a SQLite database file and add them to the diagram as PostgreSQL tables.
+
+![Import from SQLite](docs/screenshots/sqlite-import.png)
+
 ### Compare / sync
 
 Differences with the database and the migration SQL.
@@ -215,6 +221,17 @@ A force-directed view; double-click a vertex to expand its neighbours.
     `references` (`table.column` or `schema.table.column`); a table may also list `primaryKey` and `foreignKeys`.
   - The same dialog as the Excel import lets you pick and rename the tables and preview the SQL. A sample is in
     [docs/examples/ShopContext.cs](docs/examples/ShopContext.cs).
+- Import tables from a **SQLite database** with **File → Import from SQLite Database…**, or by dropping a `.db`, `.sqlite`,
+  `.sqlite3`, `.db3`, `.s3db` or `.sl3` file on the window. The file is opened read-only and only its schema is read; no
+  rows are copied:
+  - Declared types become PostgreSQL types (`DATETIME` → `timestamp`, `BLOB` → `bytea`, `REAL` → `double precision`,
+    `VARCHAR(100)`, `DECIMAL(10,2)` and so on). A type PostgreSQL does not have is replaced by the one for its SQLite
+    affinity, and a column without a type becomes `text`. An `INTEGER PRIMARY KEY` becomes `serial`.
+  - Primary keys, `NOT NULL`, single-column `UNIQUE` constraints and unique indexes, and foreign keys are kept.
+  - Defaults are translated (`datetime('now')` → `CURRENT_TIMESTAMP`, `1` → `true` on a boolean column); a default that calls
+    a function only SQLite has is dropped.
+  - Views, virtual tables, `CHECK` constraints, multi-column unique constraints and non-unique indexes are not imported.
+  - The same dialog as the Excel import lets you pick and rename the tables, set the schema and preview the SQL.
 - Live SQL preview with syntax highlighting, and export to PostgreSQL DDL (`CREATE TABLE`, primary keys, unique
   constraints, foreign keys, comments), SVG or PNG. **Save As…** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>)
   writes any of these: the file type picked in the dialog (`.pgerd`, `.sql`, `.svg` or `.png`) decides the format.
@@ -595,10 +612,12 @@ src/renderer/dbtree.js    database explorer
 src/renderer/graph.js     Graph tab (Apache AGE)
 src/renderer/databrowser.js data tabs and filters
 src/renderer/assistant.js Assistant tab and AI provider settings
-src/renderer/xlui.js      Excel / CSV and Entity Framework / JSON import dialog
+src/renderer/xlui.js      Excel / CSV, Entity Framework / JSON and SQLite import dialog
 src/renderer/importdesigner.js Import tabs (Excel -> PostgreSQL import designer)
 src/renderer/lib/pgerd.js .pgerd parsing and serialization
 src/renderer/lib/efimport.js Entity Framework Core (C#) and JSON readers for the import dialog
+src/renderer/lib/sqliteimport.js SQLite catalog -> table specs for the import dialog
+src/main/database/sqlite.cjs reads the schema of a SQLite file (node:sqlite, read-only)
 src/renderer/lib/sql.js   PostgreSQL DDL generation
 src/renderer/lib/layout.js table geometry, relationship routing, auto layout
 src/renderer/lib/catalog.js catalog rows -> diagram model

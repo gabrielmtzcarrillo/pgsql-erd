@@ -77,6 +77,12 @@ Lee las clases de entidad y el `DbContext` de un modelo de EF Core (o una descri
 
 ![Importar desde Entity Framework](docs/screenshots/es/ef-import.png)
 
+### Importar desde SQLite
+
+Lee las tablas de un archivo de base de datos SQLite y las agrega al diagrama como tablas de PostgreSQL.
+
+![Importar desde SQLite](docs/screenshots/es/sqlite-import.png)
+
 ### Comparar / sincronizar
 
 Las diferencias con la base de datos y el SQL de migración.
@@ -206,6 +212,19 @@ Una vista dirigida por fuerzas; haz doble clic en un vértice para expandir sus 
   El diálogo permite elegir y renombrar las tablas, establecer el esquema y ver el SQL. Los nombres se
   convierten a snake_case salvo que lo desactives. Las tablas que ya están en el diagrama se actualizan y
   conservan su posición. Los archivos `.xls` antiguos no se admiten; guárdalos antes como `.xlsx`.
+- Importa tablas desde una **base de datos SQLite** con **Archivo → Importar desde base de datos SQLite…** o soltando en la
+  ventana un archivo `.db`, `.sqlite`, `.sqlite3`, `.db3`, `.s3db` o `.sl3`. El archivo se abre en solo lectura y solo se lee
+  su esquema; no se copian filas:
+  - Los tipos declarados pasan a tipos de PostgreSQL (`DATETIME` → `timestamp`, `BLOB` → `bytea`, `REAL` → `double precision`,
+    `VARCHAR(100)`, `DECIMAL(10,2)`, etc.). Un tipo que PostgreSQL no tiene se sustituye por el de su afinidad en SQLite, y
+    una columna sin tipo pasa a `text`. Un `INTEGER PRIMARY KEY` pasa a `serial`.
+  - Se conservan las claves primarias, `NOT NULL`, las restricciones `UNIQUE` e índices únicos de una sola columna y las
+    claves foráneas.
+  - Los valores por defecto se traducen (`datetime('now')` → `CURRENT_TIMESTAMP`, `1` → `true` en una columna booleana); un
+    valor por defecto que llama a una función exclusiva de SQLite se descarta.
+  - No se importan las vistas, las tablas virtuales, las restricciones `CHECK`, las restricciones únicas de varias columnas
+    ni los índices no únicos.
+  - El mismo diálogo de la importación de Excel permite elegir y renombrar las tablas, establecer el esquema y ver el SQL.
 - Importa tablas desde **clases de Entity Framework Core o JSON** con **Archivo → Importar desde Entity Framework / JSON…** o
   soltando archivos `.cs` en la ventana. Elige juntas las clases de entidad y el `DbContext`; se leen como texto, no se compila nada:
   - **Entidades:** las propiedades públicas (también las heredadas) se convierten en columnas. Se respetan los nombres de los
@@ -643,10 +662,12 @@ src/renderer/dbtree.js    explorador de la base de datos
 src/renderer/graph.js     pestaña Grafo (Apache AGE)
 src/renderer/databrowser.js pestañas de datos y filtros
 src/renderer/assistant.js pestaña Asistente y configuración de los proveedores de IA
-src/renderer/xlui.js      diálogo de importación de Excel / CSV y Entity Framework / JSON
+src/renderer/xlui.js      diálogo de importación de Excel / CSV, Entity Framework / JSON y SQLite
 src/renderer/importdesigner.js pestañas Importación (diseñador de importación Excel -> PostgreSQL)
 src/renderer/lib/pgerd.js lectura y escritura de .pgerd
 src/renderer/lib/efimport.js lectores de Entity Framework Core (C#) y JSON para el diálogo de importación
+src/renderer/lib/sqliteimport.js catálogo de SQLite -> especificaciones de tabla para el diálogo de importación
+src/main/database/sqlite.cjs lee el esquema de un archivo SQLite (node:sqlite, solo lectura)
 src/renderer/lib/sql.js   generación de DDL de PostgreSQL
 src/renderer/lib/layout.js geometría de las tablas, trazado de relaciones, organización automática
 src/renderer/lib/catalog.js filas del catálogo -> modelo del diagrama

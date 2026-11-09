@@ -7,6 +7,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { registerWorkbench } = require('./ipc/workbench-ipc.cjs');
 const { sharedDir } = require('./shared.cjs');
+const { readSqliteCatalog, SQLITE_EXTENSIONS } = require('./database/sqlite.cjs');
 
 const windows = new Set();
 let pendingOpen = []; // files requested before the app was ready (macOS open-file)
@@ -238,6 +239,22 @@ ipcMain.handle('open-model', async (e) => {
   }
   return files;
 });
+
+// Pick a SQLite database file for "Import from SQLite Database"; only its schema is read.
+ipcMain.handle('open-sqlite', async (e) => {
+  const res = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), {
+    title: tr('Import tables from a SQLite database'),
+    properties: ['openFile'],
+    filters: [
+      { name: tr('SQLite database'), extensions: SQLITE_EXTENSIONS },
+      { name: tr('All Files'), extensions: ['*'] },
+    ],
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  return { filePath: res.filePaths[0], catalog: readSqliteCatalog(res.filePaths[0]) };
+});
+// The same for a database file dropped on the window.
+ipcMain.handle('read-sqlite', (e, filePath) => ({ filePath: String(filePath), catalog: readSqliteCatalog(String(filePath)) }));
 
 // Pick an import template (.import.json) for the Import Designer tab.
 const MAX_TEMPLATE_FILE = 5 * 1024 * 1024;
@@ -475,6 +492,7 @@ function buildMenu() {
         { label: tr('Save'), icon: menuIcon('save'), accelerator: 'CmdOrCtrl+S', click: cmd('save') },
         { label: tr('Save As…'), icon: menuIcon('save-as'), accelerator: 'CmdOrCtrl+Shift+S', click: cmd('save-as') },
         { type: 'separator' },
+        { label: tr('Import from SQLite Database…'), icon: menuIcon('db-import'), click: cmd('import-sqlite') },
         { label: tr('Import from Entity Framework / JSON…'), icon: menuIcon('import-spreadsheet'), click: cmd('import-model') },
         { label: tr('Import from Excel / CSV…'), icon: menuIcon('import-spreadsheet'), accelerator: 'CmdOrCtrl+Alt+E', click: cmd('import-spreadsheet') },
         { type: 'separator' },

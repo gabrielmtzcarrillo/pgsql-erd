@@ -2,6 +2,7 @@
 // found in its sheets and add them to the diagram.
 
 import { parseModelSource, MODEL_EXT } from './lib/efimport.js';
+import { sqliteSpecs, SQLITE_EXT } from './lib/sqliteimport.js';
 import { readSpreadsheet, sheetTables, modelFromSpecs, importSpecs } from './lib/spreadsheet.js';
 import { tableKey } from './lib/catalog.js';
 import { generateSQL } from './lib/sql.js';
@@ -11,7 +12,7 @@ import { tr, trn } from '../shared/i18n.js';
 
 const $ = (sel) => document.querySelector(sel);
 export const SPREADSHEET_EXT = /\.(xlsx|xlsm|csv|tsv)$/i;
-export { MODEL_EXT };
+export { MODEL_EXT, SQLITE_EXT };
 
 export function setupSpreadsheetImport(ctx) {
   const { host, state, h, commit, computeSizes, fit, status } = ctx;
@@ -23,7 +24,8 @@ export function setupSpreadsheetImport(ctx) {
   const optSnake = $('#xl-snake');
   const optNotNull = $('#xl-notnull');
 
-  // { name, sheets }; for an EF Core / JSON model { name, sources: [{ name, text }], sheets: [] }
+  // { name, sheets }; for an EF Core / JSON model { name, sources: [{ name, text }], sheets: [] };
+  // for a SQLite database { name, sources: [{ name, catalog }], sheets: [] }
   let file = null;
   const title = dialog.querySelector('h3');
   const excelTitle = title.textContent;
@@ -31,10 +33,13 @@ export function setupSpreadsheetImport(ctx) {
   const excelHelp = help.innerHTML;
   const notNullOption = optNotNull.closest('label');
 
-  // The same dialog serves both imports; only its explanation and the Excel-only option differ.
+  // The same dialog serves every import; only its explanation and the Excel-only option differ.
+  // `model` is false (Excel / CSV), 'sqlite' or true (Entity Framework / JSON).
   function setMode(model) {
-    title.textContent = model ? tr('Import tables from Entity Framework / JSON') : excelTitle;
-    if (model) {
+    title.textContent = model === 'sqlite' ? tr('Import tables from a SQLite database') : model ? tr('Import tables from Entity Framework / JSON') : excelTitle;
+    if (model === 'sqlite') {
+      help.textContent = tr('Each table of the SQLite database becomes a table. Column types and defaults are translated to PostgreSQL, an INTEGER PRIMARY KEY becomes serial, and primary keys, NOT NULL, single-column unique constraints and foreign keys are kept. Views and virtual tables are skipped. The file is only read. Tables already in the diagram are updated; their position, color and note are kept.');
+    } else if (model) {
       help.textContent = tr('Each class becomes a table. Entity Framework Core classes (.cs files; choose the entities and the DbContext together) are read for their properties, data annotations, DbSet names and fluent configuration. A JSON file lists tables with their columns (name, type, pk, nullable, unique, default, references). Tables already in the diagram are updated; their position, color and note are kept.');
     } else help.innerHTML = excelHelp;
     notNullOption.style.display = model ? 'none' : '';
@@ -43,6 +48,7 @@ export function setupSpreadsheetImport(ctx) {
 
   // C# files are read together (entities, context and configurations refer to each other); each JSON file on its own.
   function modelSpecs(sources, opts) {
+    if (sources.some((f) => f.catalog)) return sources.flatMap((f) => sqliteSpecs(f.catalog, opts));
     const isJson = (f) => /\.json$/i.test(f.name);
     const cs = sources.filter((f) => !isJson(f));
     return [
@@ -182,6 +188,26 @@ export function setupSpreadsheetImport(ctx) {
     if (res) loadModel(res.map((f) => ({ name: f.filePath.split(/[\\/]/).pop(), text: f.text })));
   }
 
+  function loadSqlite(name, catalog) {
+    file = { name, sources: [{ name, catalog }], sheets: [] };
+    specs = [];
+    setMode('sqlite');
+    $('#xl-file').textContent = name;
+    analyze();
+  }
+
+  // `filePath` is a dropped file; without it the user picks one.
+  async function chooseSqlite(filePath = null) {
+    setMode('sqlite');
+    try {
+      const res = filePath ? await host.readSqlite(filePath) : await host.openSqlite();
+      if (res) loadSqlite(res.filePath.split(/[\\/]/).pop(), res.catalog);
+    } catch (err) {
+      const name = filePath ? filePath.split(/[\\/]/).pop() : tr('SQLite database');
+      setStatus(tr('Could not read {file}: {message}', { file: name, message: err.message.replace(/^Error invoking remote method '[^']*': (Error: )?/, '') }), 'error');
+    }
+  }
+
   async function choose() {
     setMode(false);
     const res = await host.openSpreadsheet();
@@ -199,7 +225,8 @@ export function setupSpreadsheetImport(ctx) {
     dialog.returnValue = '';
   }
 
-  $('#xl-choose').addEventListener('click', () => (file?.sources ? chooseModel() : choose()));
+  let mode = 'excel'; // what "Choose file…" picks: 'excel', 'model' or 'sqlite'
+  $('#xl-choose').addEventListener('click', () => (mode === 'sqlite' ? chooseSqlite() : mode === 'model' ? chooseModel() : choose()));
   optSchema.addEventListener('change', analyze);
   optSnake.addEventListener('change', analyze);
   optNotNull.addEventListener('change', analyze);
@@ -239,24 +266,38 @@ export function setupSpreadsheetImport(ctx) {
 
   function open() {
     reset();
+    mode = 'excel';
     dialog.showModal();
     return choose();
   }
 
   function openModel() {
     reset();
+    mode = 'model';
     dialog.showModal();
     return chooseModel();
   }
 
+  function openSqlite(filePath = null) {
+    if (!dialog.open) {
+      reset();
+      dialog.showModal();
+    }
+    mode = 'sqlite';
+    return chooseSqlite(filePath);
+  }
+
   return {
-    commands: { 'import-spreadsheet': open, 'import-model': openModel },
+    commands: { 'import-spreadsheet': open, 'import-model': openModel, 'import-sqlite': () => openSqlite() },
+    // Open the dialog on a dropped SQLite database file.
+    openSqliteFile: (filePath) => openSqlite(filePath),
     // Open the dialog on dropped .cs / .json files.
     openModelFiles(files) {
       if (!dialog.open) {
         reset();
         dialog.showModal();
       }
+      mode = 'model';
       loadModel(files);
     },
     // Open the dialog on a file dropped onto the window.
@@ -265,6 +306,8 @@ export function setupSpreadsheetImport(ctx) {
         reset();
         dialog.showModal();
       }
+      mode = 'excel';
+      setMode(false);
       await load(name, bytes);
     },
   };

@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('erdHost', {
   openDialog: () => ipcRenderer.invoke('open-dialog'),
   openSpreadsheet: () => ipcRenderer.invoke('open-spreadsheet'),
   openModel: () => ipcRenderer.invoke('open-model'),
+  openSqlite: () => ipcRenderer.invoke('open-sqlite'),
+  readSqlite: (filePath) => ipcRenderer.invoke('read-sqlite', filePath),
   openSql: () => ipcRenderer.invoke('open-sql'),
   openImportTemplate: () => ipcRenderer.invoke('open-import-template'),
   saveFile: (opts) => ipcRenderer.invoke('save-file', opts),

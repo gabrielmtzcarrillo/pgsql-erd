@@ -26,7 +26,16 @@ const wanted = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--l
 
 // ---------------------------------------------------------------- shots
 
-// Each shot gets the page's `cdp` helpers: eval(js), wait(ms), shot(file).
+// Each shot gets the page's `cdp` helpers: eval(js), wait(ms), shot(file), send(method, params) and tmp (a scratch folder).
+
+// A small shop database for the SQLite import shot.
+const SHOP_SQLITE = `
+CREATE TABLE Customer (Id INTEGER PRIMARY KEY AUTOINCREMENT, FullName VARCHAR(100) NOT NULL, Email TEXT UNIQUE, IsActive BOOLEAN NOT NULL DEFAULT 1, CreatedAt DATETIME DEFAULT (datetime('now')));
+CREATE TABLE Category (Id INTEGER PRIMARY KEY, Name TEXT NOT NULL UNIQUE, ParentId INTEGER REFERENCES Category(Id));
+CREATE TABLE Product (Id INTEGER PRIMARY KEY, CategoryId INTEGER NOT NULL REFERENCES Category(Id), Sku VARCHAR(40) NOT NULL UNIQUE, Name TEXT NOT NULL, Price DECIMAL(10,2) NOT NULL DEFAULT 0, Photo BLOB);
+CREATE TABLE "Order" (Id INTEGER PRIMARY KEY, CustomerId INTEGER NOT NULL REFERENCES Customer(Id), PlacedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, Status TEXT NOT NULL DEFAULT 'new', Total REAL);
+CREATE TABLE OrderItem (OrderId INTEGER NOT NULL REFERENCES "Order"(Id), ProductId INTEGER NOT NULL REFERENCES Product(Id), Quantity INTEGER NOT NULL DEFAULT 1, UnitPrice DECIMAL(10,2) NOT NULL, PRIMARY KEY (OrderId, ProductId));
+`;
 const SHOTS = {
   // Drop the example DbContext on the window: the import dialog opens with the tables read from it.
   async 'ef-import'({ eval: run, wait, shot }) {
@@ -39,6 +48,31 @@ const SHOTS = {
     })()`);
     await wait(800);
     await shot('ef-import.png');
+    await run(`document.querySelector('#xl-import-dialog').close()`);
+  },
+  // Drop a SQLite database on the window. The app reads it by path, so the dropped File has to be a real one:
+  // a file input filled in over the protocol provides it.
+  async 'sqlite-import'({ eval: run, wait, shot, send, tmp }) {
+    const { DatabaseSync } = await import('node:sqlite');
+    const file = path.join(tmp, 'shop.db');
+    rmSync(file, { force: true });
+    const db = new DatabaseSync(file);
+    db.exec(SHOP_SQLITE);
+    db.close();
+    await run(`document.body.append(Object.assign(document.createElement('input'), { type: 'file', id: 'shot-file', hidden: true }))`);
+    const { root: doc } = await send('DOM.getDocument');
+    const { nodeId } = await send('DOM.querySelector', { nodeId: doc.nodeId, selector: '#shot-file' });
+    await send('DOM.setFileInputFiles', { nodeId, files: [file] });
+    await run(`(() => {
+      const input = document.querySelector('#shot-file');
+      const dt = new DataTransfer();
+      dt.items.add(input.files[0]);
+      input.remove();
+      document.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    })()`);
+    await wait(800);
+    await shot('sqlite-import.png');
+    await run(`document.querySelector('#xl-import-dialog').close()`);
   },
 };
 
@@ -97,6 +131,8 @@ async function run(lang) {
     const helpers = {
       eval: (expression) => send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }),
       wait: sleep,
+      send,
+      tmp: data,
       shot: async (file) => {
         const { data: b64 } = await send('Page.captureScreenshot', { format: 'png' });
         writeFileSync(path.join(outDir, file), Buffer.from(b64, 'base64'));
