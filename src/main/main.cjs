@@ -549,8 +549,8 @@ function buildMenu() {
         { label: tr('Run'), icon: menuIcon('script-run'), accelerator: 'F5', click: cmd('script-run') },
         { label: tr('Stop'), icon: menuIcon('script-stop'), accelerator: 'Shift+F5', click: cmd('script-stop') },
         { type: 'separator' },
-        { label: tr('AI Assistant'), icon: menuIcon('ai-assistant'), accelerator: 'CmdOrCtrl+Alt+A', click: cmd('ai-assistant') },
-        { label: tr('AI Providers…'), icon: menuIcon('ai-settings'), click: cmd('ai-settings') },
+        // { label: tr('AI Assistant'), icon: menuIcon('ai-assistant'), accelerator: 'CmdOrCtrl+Alt+A', click: cmd('ai-assistant') },
+        // { label: tr('AI Providers…'), icon: menuIcon('ai-settings'), click: cmd('ai-settings') },
       ],
     },
     {

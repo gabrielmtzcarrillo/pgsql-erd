@@ -414,7 +414,7 @@ export function setupWorkbench(ctx) {
   }
 
   function describePermissions(p) {
-    const on = SCRIPT_PERMISSION_KEYS.filter((k) => p[k]).map((k) => tr(SCRIPT_PERMISSION_LABELS[k]));
+    const on = SCRIPT_PERMISSION_KEYS.filter((k) => k !== 'useAI' && p[k]).map((k) => tr(SCRIPT_PERMISSION_LABELS[k]));
     return on.join(', ') || tr('none');
   }
 
@@ -426,7 +426,7 @@ export function setupWorkbench(ctx) {
     const policy = db.info()?.profile?.policy;
     const eff = policy ? effectivePermissions(p, policy) : p;
     $('#script-perms-list').replaceChildren(
-      ...SCRIPT_PERMISSION_KEYS.map((k) => {
+      ...SCRIPT_PERMISSION_KEYS.filter((k) => k !== 'useAI').map((k) => {
         const cb = h('input', { type: 'checkbox', checked: p[k] });
         cb.addEventListener('change', () => {
           permsDraft = { ...permsDraft, [k]: cb.checked };
@@ -560,9 +560,8 @@ export function setupWorkbench(ctx) {
     await ensureEditor();
     if (!current.source.trim()) return status(tr('The script is empty.'));
     if (!db.connected()) return db.openConnect(() => run(mode));
-    const usesAI = resolveScriptPermissions(current.profile, current.overrides).useAI && /\bai\s*\.\s*(chat|structured)\b/.test(current.source);
-    const ai = (await ctx.aiConfig?.({ usesAI })) ?? null;
-    if (ai === false) return status(tr('Run cancelled.'));
+    // AI provider selection is disabled.
+    const ai = null;
     setOpen();
     showTab('results');
     // The script and results of the tab that ran it, should another come to the front.

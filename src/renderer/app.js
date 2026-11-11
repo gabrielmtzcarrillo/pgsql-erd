@@ -13,7 +13,7 @@ import { initTheme, diagramTheme } from './theme.js';
 import { setupDatabase } from './dbui.js';
 import { setupDbTree } from './dbtree.js';
 import { setupWorkbench } from './workbench.js';
-import { setupAssistant } from './assistant.js';
+// import { setupAssistant } from './assistant.js';
 import { setupTabs } from './tabs.js';
 import { setupDataBrowser } from './databrowser.js';
 import { setupQuery } from './query.js';
@@ -2283,7 +2283,7 @@ const workbenchCtx = {
   refreshSchema: () => db.refreshSchema(),
 };
 const workbench = setupWorkbench(workbenchCtx);
-const assistant = setupAssistant(workbenchCtx, workbench.api);
+// const assistant = setupAssistant(workbenchCtx, workbench.api);
 const dataBrowser = setupDataBrowser(workbenchCtx);
 const query = setupQuery(workbenchCtx);
 const graph = setupGraph(workbenchCtx);
@@ -2291,12 +2291,12 @@ const queryBuilder = setupQueryBuilder({ ...workbenchCtx, dbTree, openSql: query
 const importDesigner = setupImportDesigner({ ...workbenchCtx, dbTree });
 erdScripts = setupErdScripts({ ...workbenchCtx, el, measure, workbench: workbench.api, select, render, focusTable });
 Object.assign(workbenchCtx, {
-  aiConfig: assistant.aiConfig,
-  askAssistant: assistant.ask,
+  // aiConfig: assistant.aiConfig,
+  // askAssistant: assistant.ask,
   openData: dataBrowser.open,
   openSql: query.setSql,
 });
-Object.assign(commands, dbCommands, dbTree.commands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, queryBuilder.commands, importDesigner.commands, graph.commands, {
+Object.assign(commands, dbCommands, dbTree.commands, spreadsheet.commands, workbench.commands, /* assistant.commands, */ dataBrowser.commands, query.commands, queryBuilder.commands, importDesigner.commands, graph.commands, {
   'tab-erd': showDiagram,
   'toggle-erd-scripts': () => {
     showDiagram();

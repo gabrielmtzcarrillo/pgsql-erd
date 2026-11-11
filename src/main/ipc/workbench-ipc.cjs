@@ -11,8 +11,8 @@ const { ConnectionManager } = require('../database/connection-manager.cjs');
 const { SavedInstances } = require('../database/saved-instances.cjs');
 const { ProjectManager } = require('../projects/project-manager.cjs');
 const { ExecutionManager } = require('../scripting/execution-manager.cjs');
-const { ProviderManager } = require('../ai/provider-manager.cjs');
-const { Assistant } = require('../ai/assistant.cjs');
+// const { ProviderManager } = require('../ai/provider-manager.cjs');
+// const { Assistant } = require('../ai/assistant.cjs');
 const { AuditLog } = require('../audit.cjs');
 const dataBrowser = require('../database/data-browser.cjs');
 const { runImport } = require('../database/import-runner.cjs');
@@ -29,7 +29,7 @@ function registerWorkbench({ ipcMain, app, safeStorage, shell }) {
     encrypt: (text) => safeStorage.encryptString(text),
     decrypt: (buf) => safeStorage.decryptString(buf),
   };
-  const providers = new ProviderManager({ dir: userData, crypto });
+  // const providers = new ProviderManager({ dir: userData, crypto });
   const instances = new SavedInstances({ dir: userData, crypto });
 
   // Services need the shared ES modules, which load asynchronously.
@@ -53,6 +53,7 @@ function registerWorkbench({ ipcMain, app, safeStorage, shell }) {
       if (diagramSchema && Array.isArray(diagramSchema.schemas)) return { enums: [], ...diagramSchema, source: 'diagram' };
       return { source: 'diagram', schemas: [], enums: [] };
     };
+    /* AI disabled
     const assistant = new Assistant({
       shared,
       providers,
@@ -67,8 +68,9 @@ function registerWorkbench({ ipcMain, app, safeStorage, shell }) {
       },
     });
     executions.assistant = assistant;
+    */
     const age = new AgeService({ connections, audit, shared });
-    return { shared, connections, projects, executions, assistant, readOnly, schemaFor, age };
+    return { shared, connections, projects, executions, readOnly, schemaFor, age };
   });
 
   const handle = (channel, fn) =>
@@ -289,6 +291,7 @@ function registerWorkbench({ ipcMain, app, safeStorage, shell }) {
 
   // ------------------------------------------------------------ assistant
 
+  /* AI disabled
   handle('ai-providers', () => providers.list());
   handle('ai-provider-save', (_s, id, _sender, config, key) => {
     const pid = providers.upsert(config, key);
@@ -306,6 +309,8 @@ function registerWorkbench({ ipcMain, app, safeStorage, shell }) {
   );
   handle('ai-cancel', ({ assistant }, id) => assistant.cancel(id));
 
+  */
+
   // ------------------------------------------------------------ audit
 
   handle('audit-recent', (_s, _id, _sender, limit) => audit.recent(limit));
@@ -316,7 +321,7 @@ function registerWorkbench({ ipcMain, app, safeStorage, shell }) {
     // Release a closed window's connection and roll back its open runs.
     async windowClosed(id) {
       const s = await ready;
-      s.assistant.cancel(id);
+      // s.assistant.cancel(id);
       await s.executions.closeWindow(id);
       s.connections.disconnect(id);
       s.projects.set(id, null);
