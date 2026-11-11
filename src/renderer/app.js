@@ -13,7 +13,7 @@ import { initTheme, diagramTheme } from './theme.js';
 import { setupDatabase } from './dbui.js';
 import { setupDbTree } from './dbtree.js';
 import { setupWorkbench } from './workbench.js';
-import { setupAssistant } from './assistant.js';
+// import { setupAssistant } from './assistant.js';
 import { setupTabs } from './tabs.js';
 import { setupDataBrowser } from './databrowser.js';
 import { setupQuery } from './query.js';
@@ -22,7 +22,7 @@ import { setupImportDesigner } from './importdesigner.js';
 import { setupGraph } from './graph.js';
 import { setupErdScripts } from './erdscripts.js';
 import { tableKey } from './lib/catalog.js';
-import { setupSpreadsheetImport, SPREADSHEET_EXT, MODEL_EXT } from './xlui.js';
+import { setupSpreadsheetImport, SPREADSHEET_EXT, MODEL_EXT, SQLITE_EXT } from './xlui.js';
 import { highlightSQL } from './lib/highlight.js';
 import { vectorKind, vectorIndexSQL } from '../shared/pgvector.js';
 import { ICONS, TABLE_ICONS, decorateButton, decorateButtons, iconElement, tableIconElement } from './icons.js';
@@ -2283,7 +2283,7 @@ const workbenchCtx = {
   refreshSchema: () => db.refreshSchema(),
 };
 const workbench = setupWorkbench(workbenchCtx);
-const assistant = setupAssistant(workbenchCtx, workbench.api);
+// const assistant = setupAssistant(workbenchCtx, workbench.api);
 const dataBrowser = setupDataBrowser(workbenchCtx);
 const query = setupQuery(workbenchCtx);
 const graph = setupGraph(workbenchCtx);
@@ -2291,12 +2291,12 @@ const queryBuilder = setupQueryBuilder({ ...workbenchCtx, dbTree, openSql: query
 const importDesigner = setupImportDesigner({ ...workbenchCtx, dbTree });
 erdScripts = setupErdScripts({ ...workbenchCtx, el, measure, workbench: workbench.api, select, render, focusTable });
 Object.assign(workbenchCtx, {
-  aiConfig: assistant.aiConfig,
-  askAssistant: assistant.ask,
+  // aiConfig: assistant.aiConfig,
+  // askAssistant: assistant.ask,
   openData: dataBrowser.open,
   openSql: query.setSql,
 });
-Object.assign(commands, dbCommands, dbTree.commands, spreadsheet.commands, workbench.commands, assistant.commands, dataBrowser.commands, query.commands, queryBuilder.commands, importDesigner.commands, graph.commands, {
+Object.assign(commands, dbCommands, dbTree.commands, spreadsheet.commands, workbench.commands, /* assistant.commands, */ dataBrowser.commands, query.commands, queryBuilder.commands, importDesigner.commands, graph.commands, {
   'tab-erd': showDiagram,
   'toggle-erd-scripts': () => {
     showDiagram();
@@ -2428,6 +2428,12 @@ document.addEventListener('drop', async (e) => {
       const dropped = [...e.dataTransfer.files].filter((f) => MODEL_EXT.test(f.name));
       spreadsheet.openModelFiles(await Promise.all(dropped.map(async (f) => ({ name: f.name, text: await f.text() }))));
     }
+    return;
+  }
+  if (SQLITE_EXT.test(file.name)) {
+    const open = document.querySelector('dialog[open]');
+    const filePath = host.pathForFile(file);
+    if (filePath && (!open || open.id === 'xl-import-dialog')) await spreadsheet.openSqliteFile(filePath);
     return;
   }
   if (/\.(sql|pgsql|psql)$/i.test(file.name)) return query.loadFile(await file.text(), host.pathForFile(file) || file.name);

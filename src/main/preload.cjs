@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('erdHost', {
   openDialog: () => ipcRenderer.invoke('open-dialog'),
   openSpreadsheet: () => ipcRenderer.invoke('open-spreadsheet'),
   openModel: () => ipcRenderer.invoke('open-model'),
+  openSqlite: () => ipcRenderer.invoke('open-sqlite'),
+  readSqlite: (filePath) => ipcRenderer.invoke('read-sqlite', filePath),
   openModelFolder: () => ipcRenderer.invoke('open-model-folder'),
   openJsonFolder: () => ipcRenderer.invoke('open-json-folder'),
   readJsonFolderFiles: (folder, names) => ipcRenderer.invoke('read-json-folder-files', folder, names),

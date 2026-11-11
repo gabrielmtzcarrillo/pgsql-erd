@@ -355,6 +355,7 @@ export function setupQuery(ctx) {
 
     // ---------------------------------------------------------- assistant
 
+    /* AI disabled
     q('.q-ask').addEventListener('click', async () => {
       await ensureEditor();
       const sql = editor.getSelectedOrAll().trim();
@@ -368,6 +369,8 @@ export function setupQuery(ctx) {
       }
       ctx.askAssistant(prompt);
     });
+
+    */
 
     // ---------------------------------------------------------- files
 

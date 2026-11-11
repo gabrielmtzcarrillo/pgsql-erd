@@ -3,7 +3,7 @@
 For people and agents who need to retake or add a screenshot. The PNGs live in `docs/screenshots/` (English) and
 `docs/screenshots/es/` (Spanish, same file names); `README.md` and `README-es.md` embed them.
 
-**Status of this document.** Only `ef-import` is produced by a script in the repository, and the notes for it were
+**Status of this document.** Only `ef-import` and `sqlite-import` are produced by a script in the repository, and the notes for them were
 verified by running it. Everything else was reconstructed from the committed images, the README text and the git
 history; it was *not* re-run. Where a step is a guess it says so. When you retake one of these, replace the guess
 with what you actually did, and prefer adding it to `scripts/capture-screenshots.mjs`.
@@ -37,10 +37,12 @@ node scripts/capture-screenshots.mjs ef-import    # one shot
 node scripts/capture-screenshots.mjs --lang es    # one language
 ```
 
-Add a shot by adding an entry to `SHOTS` in that script. Each entry gets `eval(js)` (runs in the page), `wait(ms)` and
-`shot(fileName)`. Drive the app by calling its own commands or dispatching DOM events; native file dialogs cannot be
+Add a shot by adding an entry to `SHOTS` in that script. Each entry gets `eval(js)` (runs in the page), `wait(ms)`,
+`shot(fileName)`, `send(method, params)` (a raw DevTools protocol call) and `tmp` (a scratch folder). Drive the app by calling its own commands or dispatching DOM events; native file dialogs cannot be
 automated, so feed files in by dispatching a `drop` event with a `DataTransfer` that holds `File` objects (the window
-accepts dropped `.pgerd`, spreadsheet, `.sql`, `.cs` and `.json` files). Look at the PNG afterwards.
+accepts dropped `.pgerd`, spreadsheet, `.sql`, `.cs` and `.json` files). A SQLite database is read by its path, which a
+`File` made in the page does not have: the `sqlite-import` shot fills a file input with `DOM.setFileInputFiles` and drops
+that file. Close the dialog a shot opened so the next shot starts clean. Look at the PNG afterwards.
 
 Things learned while building it:
 
@@ -54,6 +56,7 @@ Things learned while building it:
 | File | What it shows | How |
 | --- | --- | --- |
 | `ef-import.png` | Import dialog on `docs/examples/ShopContext.cs`: six tables, SQL preview on the right | **Scripted** (`ef-import`). Drops the example file on an empty window, waits for the dialog |
+| `sqlite-import.png` | Import dialog on a SQLite database: five tables, SQL preview on the right | **Scripted** (`sqlite-import`). Creates `shop.db` in a temporary folder with Node's `node:sqlite` (Node 22.5 or later), drops it on the window, waits for the dialog |
 | `diagram.png` | Diagram tab with the shop tables, the database explorer open on the left, connected | Not scripted. Connect to `shopdb`, open `samples/shop.pgerd`, show **Explorer**, zoom 120%, select nothing |
 | `ribbon.png` | Top 118 px: the ribbon and the tab strip | Not scripted. Crop of a full window shot; ribbon with Database connected |
 | `table-sidebar.png` | A table selected with its sidebar open (properties, columns, relationships) | Not scripted. Open the sample, click the `customer` header, click a column |

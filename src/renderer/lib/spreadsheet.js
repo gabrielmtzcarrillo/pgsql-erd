@@ -401,7 +401,7 @@ const KNOWN_TYPES = new Set([
   'polygon', 'circle', 'tsvector', 'tsquery', 'oid', 'citext', 'hstore', 'geometry', 'geography',
   'vector', 'halfvec', 'sparsevec',
 ]);
-const isKnownType = (raw) => KNOWN_TYPES.has(normalizeType(raw).type.replace(/(\[\])+$/, ''));
+export const isKnownType = (raw) => KNOWN_TYPES.has(normalizeType(raw).type.replace(/(\[\])+$/, ''));
 
 const toInt = (v) => {
   const n = parseInt(String(v ?? '').trim(), 10);

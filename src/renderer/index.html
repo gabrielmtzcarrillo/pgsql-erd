@@ -37,7 +37,7 @@
     <button type="button" class="data-add" data-cmd="import-new" data-icon="plus" title="Map Excel worksheets onto PostgreSQL tables and export an import template">Import</button>
     <button type="button" class="data-add" data-cmd="graph-new" data-icon="plus" title="Apache AGE graphs: relationships, vertices, explorer and Cypher">Graph</button>
     <button type="button" id="data-tab-add" class="data-add" data-icon="plus" title="Browse the data of a table">Data</button>
-    <button type="button" data-main-tab="assistant" data-icon="ai-assistant">Assistant</button>
+    <!-- <button type="button" data-main-tab="assistant" data-icon="ai-assistant">Assistant</button> -->
   </nav>
 
   <main class="workspace tab-page" data-page="erd" hidden>
@@ -169,7 +169,7 @@
         <button type="button" class="q-open" data-icon="open" title="Open a .sql file in the editor (Ctrl+Alt+O); you can also drop one on the window">Open…</button>
         <button type="button" class="q-save" data-icon="save" title="Save the editor's SQL to a file">Save…</button>
         <select class="q-history" title="Recent queries"><option value="">History…</option></select>
-        <button type="button" class="q-ask" data-icon="ai-assistant" title="Ask the assistant about this query and its plan">Ask assistant</button>
+    <!-- <button type="button" class="q-ask" data-icon="ai-assistant" title="Ask the assistant about this query and its plan">Ask assistant</button> -->
       </div>
       <div class="q-editor"></div>
       <div class="q-resize" title="Drag to resize"></div>
@@ -312,7 +312,8 @@
     </section>
   </section>
 
-  <section id="assistant-page" class="tab-page assistant-page" data-page="assistant" hidden>
+  <!-- AI disabled
+<section id="assistant-page" class="tab-page assistant-page" data-page="assistant" hidden>
     <aside class="ai-sidebar">
       <div class="ai-config">
         <label>Provider<select id="ai-provider"></select></label>
@@ -341,6 +342,8 @@
       </div>
     </section>
   </section>
+
+-->
 
   <div id="data-pages"></div>
 
@@ -555,6 +558,7 @@
     </form>
   </dialog>
 
+<!-- AI disabled
   <dialog id="ai-settings-dialog" class="medium">
     <form method="dialog" id="ai-settings-form">
       <h3>AI providers</h3>
@@ -585,6 +589,8 @@
       </menu>
     </form>
   </dialog>
+
+-->
 
   <dialog id="data-pick-dialog">
     <form method="dialog">
