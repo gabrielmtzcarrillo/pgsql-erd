@@ -3,7 +3,7 @@
 A *block* is a small node of the Import designer that sits between the worksheet and a table column and changes the
 value on the way (split, case, replace, convert, join, clean, extract, default, lookup, distinct, ...). This page
 explains the pieces a block is made of, so a new one can be added. The exported file format is described in
-[import-template-spec.md](import-template-spec.md); this page is about the code.
+[import-template-spec.md](../docs/import-template-spec.md); this page is about the code.
 
 ## Two shapes of the same thing
 

@@ -6,8 +6,9 @@ Una herramienta de escritorio de diagramas ER (entidad–relación) y banco de t
 PostgreSQL, hecha con Node.js y Electron. Abre y guarda **archivos `.pgerd` de pgAdmin 4**, así que los
 diagramas pueden ir y venir entre la herramienta ERD de pgAdmin y esta aplicación. Además incluye scripts de
 TypeScript que conocen el esquema (validadores, generadores de datos de prueba, migraciones) con simulaciones,
-un analizador de consultas, un explorador de datos con filtros al estilo de Excel y un asistente de IA que
-funciona con Ollama, vLLM, OpenAI y otros servidores compatibles con OpenAI.
+un analizador de consultas, un explorador de datos con filtros al estilo de Excel, grafos de Apache AGE e
+importaciones desde Excel, Entity Framework, SQLite, SQL Server, MySQL / MariaDB y Oracle que también pueden
+copiar las filas a PostgreSQL.
 
 ![Diagrama](docs/screenshots/es/diagram.png)
 
@@ -15,11 +16,11 @@ funciona con Ollama, vLLM, OpenAI y otros servidores compatibles con OpenAI.
 
 ### Cinta de opciones y pestañas
 
-Los comandos se agrupan al estilo de Office (Archivo, Base de datos)
-con iconos a dos colores; los menús nativos usan los mismos iconos. Debajo de la cinta están las pestañas: una
-ventana empieza con un diagrama, y los botones **+ Diagrama**, **+ Scripts**, **+ Consulta**, **+ Generador**,
-**+ Grafo** y **+ Datos** abren tantas más como quieras (**+ Diagrama** también es <kbd>Ctrl</kbd>+<kbd>N</kbd>);
-el **Asistente** queda al final. Abrir un archivo `.pgerd` lo muestra en una pestaña de diagrama propia (o en la
+Los comandos se agrupan al estilo de Office (Archivo: Abrir, Guardar, Guardar como…; Base de datos: Conectar,
+Explorador, Importar Excel, Diseñador de importación) con iconos a dos colores; los menús nativos usan los mismos
+iconos. Debajo de la cinta están las pestañas: una ventana empieza con un diagrama, y los botones **+ Diagrama**,
+**+ Scripts**, **+ Consulta**, **+ Generador**, **+ Importar**, **+ Grafo** y **+ Datos** abren tantas más como
+quieras (**+ Diagrama** también es <kbd>Ctrl</kbd>+<kbd>N</kbd>). Abrir un archivo `.pgerd` lo muestra en una pestaña de diagrama propia (o en la
 vacía con la que empezaste). **Guardar** y **Guardar como…** trabajan con la pestaña al frente: un diagrama
 guarda su `.pgerd` (Guardar como también puede escribir SQL, SVG o PNG), las pestañas Consulta y Generador
 guardan su SQL en un archivo `.sql`, una pestaña Scripts guarda su script en el proyecto (Guardar como escribe
@@ -132,12 +133,6 @@ EXPLAIN ANALYZE como árbol, con el tiempo de cada nodo y sugerencias de índice
 Filtros al estilo de Excel con listas de valores, celdas vacías y condiciones.
 
 ![Filtro de datos](docs/screenshots/es/data-filter.png)
-
-### Asistente
-
-Propone scripts que se abren sin guardar para que los revises; se comprueban contra los tipos del esquema.
-
-![Asistente](docs/screenshots/es/assistant.png)
 
 ### Scripts en el diagrama
 
@@ -362,13 +357,16 @@ PostgreSQL 10+ en vivo:
   - claves primarias, restricciones únicas y claves foráneas (incluidos los cambios de `ON DELETE`/`ON UPDATE`)
   - comentarios de las tablas
 
-  Después genera el SQL de migración que hace que la base de datos coincida con el diagrama. Puedes copiarlo o
+  Cada cambio tiene una casilla, así que puedes dejar algunos fuera. Después genera el SQL de migración que hace que la base de datos coincida con el diagrama. Puedes copiarlo o
   guardarlo, o ejecutarlo en la base de datos en una sola transacción; si alguna sentencia falla, no se aplica
   nada.
   - Las sentencias se ordenan para que funcionen: las claves foráneas dependientes se eliminan antes que la
     clave a la que hacen referencia y se vuelven a crear después.
   - Las sentencias destructivas (`DROP COLUMN`, `DROP TABLE`) solo se incluyen si marcas la opción
     correspondiente. Si no, aparecen como comentarios al final del script.
+  - Un cambio de tipo convierte los valores con una conversión (cast); **Eliminar y volver a crear las columnas
+    cuyo tipo cambió** elimina la columna y la vuelve a agregar, para tipos que una conversión no puede cambiar
+    (sus datos se pierden y pasa al final de la tabla).
   - No se pueden detectar tablas o columnas renombradas: aparecen como una eliminación más una adición.
 
 ## pgvector
@@ -451,17 +449,13 @@ puedan estar en el control de versiones. La primera línea guarda sus metadatos
     `log()`
   - `faker` (datos ficticios con semilla), `seed.row(tabla)`, `seed.fill(tabla, n)` (valores verosímiles,
     claves foráneas válidas, valores únicos que no chocan con las filas existentes), `seed.check(tabla, fila)`
-  - `ai.chat(prompt)`, `ai.structured({ table | schema, prompt })` (JSON validado, ver abajo), para generar
-    datos o revisarlos (p. ej. un validador que pide al modelo señalar valores sospechosos). Usa el proveedor
-    y el modelo elegidos en la pestaña Asistente; con un proveedor remoto se pide confirmación antes de la
-    primera ejecución que llame a `ai.*`, porque el script puede enviarle filas.
 - **Simular** (F6) ejecuta el script en una transacción que siempre se revierte e informa de las inserciones,
   actualizaciones, eliminaciones y filas leídas por tabla. **Ejecutar** (F5) mantiene la transacción abierta si
   el script modificó datos y te pide confirmar o descartar (se revierte automáticamente a los 10 minutos).
 - **Permisos** por script, a partir de perfiles (Solo lectura, Validador, Generador de datos, Carga de datos,
   Migración, Acceso completo) más ajustes individuales: leer filas, SELECT directo, INSERT, UPDATE, DELETE, DDL,
-  escrituras con SQL directo, IA. Los scripts sin permisos de escritura se ejecutan en una transacción
-  `READ ONLY`, así que PostgreSQL también lo impone. Todos los perfiles salvo Migración permiten la IA.
+  escrituras con SQL directo. Los scripts sin permisos de escritura se ejecutan en una transacción
+  `READ ONLY`, así que PostgreSQL también lo impone.
 - **Validadores:** listan cada `validate()` como correcto o fallido; al hacer clic en un error se muestra la
   fila afectada, la validación en el editor y enlaces a la tabla en el diagrama y en una pestaña de datos.
 
@@ -490,8 +484,7 @@ cambios**, una confirmación y una conexión que permita escrituras, y se confir
 el plan estimado y **Explicar y analizar** (Ctrl+Mayús+Intro) el real (siempre se revierte), como un árbol con
 filas, tiempo propio y una barra por nodo. Las sugerencias señalan recorridos secuenciales que descartan la
 mayoría de las filas, estimaciones de filas erróneas, ordenaciones y hashes que se vuelcan a disco y claves
-foráneas sin índice, con la sentencia `CREATE INDEX` / `ANALYZE` lista para insertar. **Preguntar al
-asistente** envía la consulta, su plan y las sugerencias a la pestaña Asistente.
+foráneas sin índice, con la sentencia `CREATE INDEX` / `ANALYZE` lista para insertar.
 
 El explorador de la base de datos está junto al editor (**Explorador**): arrastra una tabla al SQL, o haz doble
 clic, para insertar su nombre. **+ Consulta** junto a **+ Datos** abre más pestañas de consulta, cada una con su
@@ -573,8 +566,8 @@ copian como texto, sin búsquedas, claves generadas ni transformaciones. Consult
 
 **Datos**, en la barra de pestañas (o **Ver datos** en la barra lateral de una tabla, o **Base de datos →
 Explorar datos de una tabla…**), abre una tabla en su propia pestaña: una cuadrícula con
-paginación (100/500/1000 filas), encabezados fijos y **Copiar** (separado por tabulaciones, se pega en una hoja
-de cálculo). Cada encabezado de columna tiene un menú de filtro al estilo de Excel:
+paginación (100/500/1000 filas), encabezados fijos, **Copiar** (separado por tabulaciones, se pega en una hoja
+de cálculo) y **Markdown** (la página como tabla de Markdown). Cada encabezado de columna tiene un menú de filtro al estilo de Excel:
 
 - ordenar de forma ascendente / descendente (según el tipo de la columna: los números y las fechas se ordenan
   como tales)
@@ -595,35 +588,10 @@ primaria, así que en las tablas sin ella solo se pueden agregar filas; las colu
 y las generadas son de solo lectura. La edición solo se ofrece cuando la política de la conexión permite
 escrituras, y fuera de desarrollo se pide confirmación antes de guardar.
 
-### Asistente
-
-Conversa con un modelo sobre el esquema y deja que escriba scripts. Ve las tablas seleccionadas en el diagrama
-o nombradas en la pregunta, sus tablas relacionadas, relaciones y restricciones, el script actual y los últimos
-errores de validación; cada uno se puede desactivar. Con las herramientas activadas puede consultar tablas,
-comprobar un script contra los tipos, validar SQL y proponer scripts nuevos o cambios; las propuestas se abren
-**sin guardar** en el editor, indicando si pasan la comprobación de tipos. Nada de lo que escribe el asistente
-se ejecuta por sí solo.
-
-- **Proveedores:** Ollama, vLLM / LM Studio / llama.cpp / cualquier servidor compatible con OpenAI, y OpenAI.
-  Se configuran en **Proveedores de IA**; la lista de modelos viene del servidor. Las claves de API se guardan
-  cifradas con el almacén de credenciales del sistema operativo (`safeStorage` de Electron: Keychain, DPAPI,
-  libsecret) y nunca llegan a la ventana; sin almacén de credenciales solo se guardan en memoria. Si está
-  definida, se usa `OPENAI_API_KEY`.
-- **Permisos** (guardados en el proyecto): leer el esquema, leer filas, ejecutar SELECT, crear/modificar
-  scripts, ejecutar validadores y simulaciones. Las escrituras y el DDL nunca están disponibles para el
-  asistente.
-- **Los datos de filas** solo se envían si se permite (muestras, resultados de consultas, salida de
-  validadores); con proveedores remotos lo confirmas antes, y el panel muestra si la conversación es de *solo
-  esquema* o incluye datos.
-- **Salida estructurada** (`ai.structured`) pide JSON que cumpla un JSON Schema (para una tabla, derivado de
-  sus columnas insertables) y después comprueba el análisis del JSON, el esquema, los tipos de columna, NOT NULL
-  y las longitudes, y devuelve los errores al modelo para que lo reintente. Al script solo le llegan valores
-  válidos.
-
 ## Modelo de seguridad
 
 - La página (renderer) nunca ejecuta scripts ni ve credenciales: la contraseña de la base de datos se envía
-  una vez al conectar y se queda en el proceso principal; lo mismo con las claves de API. Las contraseñas
+  una vez al conectar y se queda en el proceso principal. Las contraseñas
   guardadas se cifran con el almacén de credenciales del sistema operativo y nunca se devuelven a la página.
 - Los scripts se ejecutan en un proceso aparte (el Node de Electron) con un entorno vacío, un límite de
   memoria, un tiempo máximo y el modelo de permisos de Node: sin escritura de archivos, sin lecturas fuera de
@@ -635,8 +603,7 @@ se ejecuta por sí solo.
 - Las escrituras se revisan antes de confirmarse; `BEGIN`/`COMMIT` dentro de los scripts se rechazan.
 - Un registro de auditoría (**Base de datos → Abrir registro de auditoría**, y la pestaña Actividad) guarda las
   conexiones, las actualizaciones de esquema y las migraciones, las ejecuciones y confirmaciones de scripts, las
-  escrituras de la pestaña Consulta, las peticiones al asistente (y si llevaban datos de filas) y los cambios de
-  configuración.
+  escrituras de la pestaña Consulta y los cambios de configuración.
 
 ## Idiomas
 
@@ -651,179 +618,20 @@ los resúmenes de comparación / migración y las sugerencias del plan de consul
 propio PostgreSQL y los nombres de los nodos del plan (`Seq Scan`, `Hash Join`) se quedan como los informa el
 servidor.
 
-### Agregar un idioma
-
-El texto en inglés es la clave: el código llama a `tr('Save')` o a `trn(n, '{n} table', '{n} tables')`
-(`src/shared/i18n.js`), y la página estática se traduce a partir de su texto al cargarse. Para agregar un
-idioma:
-
-1. Copia `src/shared/locales/es.js` en `src/shared/locales/<código>.js` y traduce los valores. Conserva los
-   `{marcadores}` y los espacios al principio o al final.
-2. Impórtalo en `src/shared/i18n.js` y agrégalo a `CATALOGS` y a `LOCALES` (el nombre que se muestra en
-   Ver → Idioma, en su propio idioma).
-3. Agrégalo a `CATALOGS` en `tests/i18n.test.js` y ejecuta `npm test`. La prueba lista cada texto usado en el
-   código o en la página que falta en el catálogo, las entradas que ya no se usan y las traducciones cuyos
-   marcadores no coinciden.
-
-El texto nuevo de la interfaz pasa por `tr()` / `trn()` de la misma manera; la prueba falla hasta que cada
-catálogo lo tenga.
-
 ## Primeros pasos
 
 ```bash
 npm install
 npm start                          # diagrama vacío
 npm start -- samples/shop.pgerd    # abrir un archivo
-npm test                           # pruebas unitarias
-# pruebas de integración contra un servidor real (crea y elimina bases de datos temporales):
-PGERD_TEST_HOST=127.0.0.1 PGERD_TEST_PORT=5432 PGERD_TEST_USER=postgres PGERD_TEST_PASSWORD=… npm test
 ```
 
-Los iconos están en `src/renderer/icons.js`. Después de cambiarlos, ejecuta `npm run menu-icons` para volver a
-generar los iconos PNG de los menús nativos en `src/main/menu-icons/`.
+## Desarrollo
 
-Para crear instaladores (AppImage/deb, NSIS, dmg) con la asociación de archivos `.pgerd`:
-
-```bash
-npm run dist
-```
-
-### Windows (.exe)
-
-En Windows, con Node.js 20+ instalado, ejecuta desde la raíz del repositorio:
-
-```bat
-scripts\build-windows.bat
-```
-
-Es un archivo por lotes normal, así que se ejecuta desde el Símbolo del sistema o con doble clic, sin cambiar
-la directiva de ejecución de PowerShell.
-
-Instala las dependencias, ejecuta las pruebas y escribe en `dist\`:
-
-| Archivo | Qué es |
-| --- | --- |
-| `pgsql-erd-Setup-<versión>.exe` | Instalador: permite elegir la carpeta de instalación, agrega accesos directos al menú Inicio y al escritorio y registra los archivos `.pgerd` |
-| `pgsql-erd-<versión>-portable.exe` | Un solo ejecutable que funciona sin instalar |
-| `win-unpacked\pgsql-erd.exe` | La aplicación sin empaquetar a partir de la que se crean los otros dos |
-
-Para crear solo uno, pasa `installer`, `portable` o `dir` (por defecto `all`), p. ej.
-`scripts\build-windows.bat portable`. Opciones: `--skip-tests`, `--skip-install`, `--clean` (elimina antes
-`dist\`). Las mismas compilaciones están disponibles como scripts de npm: `npm run dist:win` (instalador +
-portable), `dist:win:installer`, `dist:win:portable` y `dist:win:dir`.
-
-La aplicación, el instalador y el desinstalador usan `build/icon.ico`. Los ejecutables no están firmados, así
-que Windows SmartScreen avisa la primera vez que se ejecutan. Crearlos en Linux o macOS también funciona, pero
-necesita [Wine](https://www.winehq.org/) (con soporte de 32 bits para el instalador).
-
-## Estructura del proyecto
-
-```
-src/main/main.cjs         proceso principal de Electron: ventanas, menús, diálogos de archivos, E/S de archivos
-src/main/db.cjs           conexión a PostgreSQL, introspección del catálogo, ejecución de migraciones (pg)
-src/main/preload.cjs      API de contextBridge expuesta al renderer (window.erdHost)
-src/main/ipc/             IPC para conexiones, scripts, consultas, pestañas de datos, el asistente, la auditoría
-src/main/database/        conexiones y políticas por ventana, ejecución de la pestaña Consulta, consultas del
-                          explorador de datos, grafos de Apache AGE (age.cjs)
-src/main/scripting/       comprobación de tipos y transpilación (TypeScript), ejecución de scripts, la API de
-                          base de datos de los scripts
-src/main/ai/              proveedores (Ollama, compatibles con OpenAI, OpenAI), claves, herramientas, salida
-                          estructurada
-src/main/projects/        scripts y configuración en la carpeta del proyecto
-src/runner/               el proceso aislado de los scripts
-src/shared/               modelo del esquema, generador de tipos, permisos, constructor de contexto, esquema
-                          JSON, datos ficticios, analizador de planes, utilidades de pgvector y Apache AGE
-                          (usados por el proceso principal, el runner y la página)
-src/shared/i18n.js        traducciones: tr(), trn(), selección del idioma
-src/shared/locales/       catálogos de traducción (es.js)
-src/renderer/index.html   estructura de la interfaz
-src/renderer/app.js       dibujo, interacción, panel de propiedades, comandos
-src/renderer/dbui.js      diálogos de conexión / importación / comparación
-src/renderer/tabs.js      pestañas principales
-src/renderer/workbench.js pestaña Scripts
-src/renderer/query.js     pestaña Consulta
-src/renderer/querybuilder.js pestaña Generador (generador visual de consultas)
-src/renderer/dbtree.js    explorador de la base de datos
-src/renderer/graph.js     pestaña Grafo (Apache AGE)
-src/renderer/databrowser.js pestañas de datos y filtros
-src/renderer/assistant.js pestaña Asistente y configuración de los proveedores de IA
-src/renderer/xlui.js      diálogo de importación de Excel / CSV, Entity Framework / JSON, SQLite y SQL Server
-src/renderer/importdesigner.js pestañas Importación (diseñador de importación Excel -> PostgreSQL)
-src/renderer/lib/pgerd.js lectura y escritura de .pgerd
-src/renderer/lib/efimport.js lectores de Entity Framework Core (C#) y JSON para el diálogo de importación
-src/renderer/lib/sqliteimport.js catálogo de SQLite -> especificaciones de tabla para el diálogo de importación
-src/main/database/sqlite.cjs lee el esquema de un archivo SQLite (node:sqlite, solo lectura)
-src/renderer/lib/mssqlimport.js catálogo de SQL Server y lector de scripts T-SQL -> especificaciones de tabla para el diálogo de importación
-src/main/database/mssql.cjs lee el esquema de una base de datos SQL Server (mssql / tedious, solo lectura)
-src/renderer/lib/mysqlimport.js catálogo de MySQL / MariaDB -> especificaciones de tabla para el diálogo de importación
-src/shared/mysql-dump.js  lector de volcados de MySQL: instrucciones, CREATE TABLE, filas de INSERT
-src/main/database/mysql.cjs lee el esquema de una base de datos MySQL / MariaDB (mysql2, solo lectura)
-src/renderer/lib/oracleimport.js catálogo de Oracle -> especificaciones de tabla para el diálogo de importación
-src/main/database/oracle.cjs lee un esquema de Oracle (node-oracledb en modo Thin, solo lectura)
-src/renderer/lib/fktypes.js las columnas de clave foránea toman el tipo de la columna referenciada
-src/renderer/copyui.js    «Copiar filas»: la opción del diálogo de importación y su progreso
-src/main/database/data-copy.cjs copia filas de MySQL, SQL Server, Oracle, SQLite o un volcado a PostgreSQL
-src/main/database/source-sheets.cjs tablas de una base de datos como hojas para el Diseñador de importación
-src/renderer/lib/sql.js   generación de DDL de PostgreSQL
-src/renderer/lib/layout.js geometría de las tablas, trazado de relaciones, organización automática
-src/renderer/lib/catalog.js filas del catálogo -> modelo del diagrama
-src/renderer/lib/diff.js  comparación entre base de datos y diagrama, y SQL de migración
-src/renderer/lib/sync.js  importar / actualizar tablas del diagrama desde la base de datos
-src/renderer/lib/spreadsheet.js lectura de .xlsx / CSV y conversión de hoja -> tabla
-src/renderer/lib/highlight.js resaltado de sintaxis SQL
-src/renderer/lib/querybuilder.js uniones y SELECT del generador de consultas
-samples/shop.pgerd        diagrama de ejemplo
-build/icon.svg            origen del icono de la aplicación; icon.ico (Windows) e icon.png se generan a partir de él
-scripts/build-windows.bat script de compilación para Windows
-scripts/capture-screenshots.mjs vuelve a tomar las capturas del README que no necesitan base de datos (ver docs/screenshots.md)
-tests/                    suites de node:test
-```
-
-El renderer se ejecuta en un sandbox con aislamiento de contexto y sin integración de Node. Todo el acceso a
-archivos pasa por el puente de preload.
-
-Una carpeta de proyecto tiene este aspecto; todo es texto plano y no se guarda ninguna contraseña ni clave de
-API:
-
-```
-proyecto/
-├── diagram.pgerd
-├── pgsql-erd.json            configuración del proyecto (proveedor del asistente, modelo, permisos)
-├── scripts/
-│   ├── validators/*.ts
-│   ├── generators/*.ts
-│   └── migrations/*.ts
-└── generated/database.d.ts   tipos para otros editores
-```
-
-## El formato .pgerd
-
-Un archivo `.pgerd` es el modelo serializado de react-diagrams de pgAdmin:
-
-```json
-{
-  "version": 80900,
-  "data": {
-    "offsetX": 0, "offsetY": 0, "zoom": 100, "gridSize": 15,
-    "layers": [
-      { "type": "diagram-links", "models": { "<link id>": { "data": {
-          "local_table_uuid": "…", "local_column_attnum": 1,
-          "referenced_table_uuid": "…", "referenced_column_attnum": 0 } } } },
-      { "type": "diagram-nodes", "models": { "<table id>": {
-          "type": "table", "x": 40, "y": 40,
-          "otherInfo": { "note": "", "data": {
-            "name": "orders", "schema": "public",
-            "columns": [{ "name": "id", "cltype": "bigint", "attnum": 0, "is_primary_key": true }],
-            "primary_key": [{ "columns": [{ "column": "id" }] }],
-            "foreign_key": [{ "name": "…", "columns": [{ "local_column": "customer_id",
-              "references": "<table id>", "referenced": "id" }] }] } } } } }
-    ]
-  }
-}
-```
-
-La aplicación lee las relaciones de la lista `foreign_key` de cada tabla y de la capa de enlaces. Al guardar,
-reconstruye ambas, junto con los puertos que pgAdmin usa para unir los enlaces a las columnas.
+Las notas técnicas para quien trabaja en el código están en [devlog/](devlog/): compilar y probar, convenciones
+de código, la estructura del proyecto, el [formato de archivo .pgerd](devlog/pgerd-format.md), cómo se toman
+las capturas y las notas de diseño de funciones como el asistente de IA desactivado. Empieza por
+[devlog/DEVELOPMENT-es.md](devlog/DEVELOPMENT-es.md).
 
 ## Licencia
 
