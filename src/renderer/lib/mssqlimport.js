@@ -22,6 +22,7 @@
 
 import { snakeCase } from './spreadsheet.js';
 import { parseJsonModel } from './efimport.js';
+import { alignForeignKeyTypes } from './fktypes.js';
 
 export const TSQL_EXT = /\.sql$/i;
 
@@ -120,7 +121,11 @@ export function mssqlDefault(value, pgType = '') {
   return ''; // a function call, CONVERT, CAST… without a PostgreSQL equivalent
 }
 
-/** Table specs for a catalog. Options: schema (for dbo), snakeCase (convert names). */
+/**
+ * Table specs for a catalog. Options: schema (for dbo), snakeCase (convert
+ * names). Each spec carries `source` for "Copy rows":
+ * { kind: 'mssql', schema, table, columns: [{ name, type }] }.
+ */
 export function mssqlSpecs(catalog, options = {}) {
   const target = options.schema || 'public';
   const snake = options.snakeCase !== false;
@@ -152,7 +157,12 @@ export function mssqlSpecs(catalog, options = {}) {
     }));
     return { name: t.name, schema: mapSchema(t.schema), description: t.description ?? '', columns, primaryKey: t.primaryKey, foreignKeys };
   });
-  return parseJsonModel({ tables }, { schema: target, snakeCase: snake }).map((spec) => ({ ...spec, sheet: 'SQL Server' }));
+  alignForeignKeyTypes(tables, target);
+  // `source` tells "Copy rows" where the rows come from.
+  return parseJsonModel({ tables }, { schema: target, snakeCase: snake }).map((spec, k) => {
+    const t = catalog.tables[k];
+    return { ...spec, sheet: 'SQL Server', source: { kind: 'mssql', schema: t.schema || 'dbo', table: t.name, columns: t.columns.map((c) => ({ name: c.name, type: c.type })) } };
+  });
 }
 
 // ---------------------------------------------------------------------------

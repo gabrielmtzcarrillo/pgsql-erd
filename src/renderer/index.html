@@ -269,6 +269,14 @@
       <div class="imp-right-head">
         <button type="button" id="imp-wb-open" data-icon="open" title="Open the example workbook (.xlsx). It is only used to design and preview; the template does not keep it.">Open workbook…</button>
         <button type="button" id="imp-json-open" data-icon="open" title="Use a folder of JSON files as the source. The reference file (the first one) gives the columns; the records of all the files are the rows. It is only used to design and preview; the template does not keep it.">Open JSON folder…</button>
+        <select id="imp-db-open" title="Use the tables of another database as the sources: each table is a worksheet whose first row holds the column names. The rows are read when you open it (up to 100,000 per table) and imported from there; the template does not keep the connection.">
+          <option value="" selected disabled>Open database…</option>
+          <option value="mysql">MySQL / MariaDB…</option>
+          <option value="mssql">SQL Server…</option>
+          <option value="oracle">Oracle Database…</option>
+          <option value="sqlite">SQLite file…</option>
+          <option value="mysql-dump">MySQL / MariaDB dump…</option>
+        </select>
         <span id="imp-wb-name" class="muted small grow"></span>
         <button type="button" id="imp-add-source" data-icon="plus" title="Add the worksheet shown below as an Excel source on the canvas">Add as source</button>
       </div>
@@ -626,6 +634,11 @@
         <pre id="xl-sql" class="db-sql"></pre>
       </div>
       <p id="xl-status" class="db-status"></p>
+      <div class="db-toolbar" id="xl-copy-options" hidden>
+        <label class="check"><input type="checkbox" id="xl-copy"> Copy the rows into the connected database</label>
+        <label class="check"><input type="checkbox" id="xl-truncate"> Delete the rows already in those tables first</label>
+        <span id="xl-copy-target" class="muted small"></span>
+      </div>
       <menu>
         <button value="cancel" formnovalidate data-icon="close">Cancel</button>
         <button value="ok" class="primary" id="xl-import-ok" data-icon="import-spreadsheet">Import selected</button>
@@ -659,6 +672,66 @@
       <menu>
         <button value="cancel" formnovalidate data-icon="close">Cancel</button>
         <button type="submit" value="ok" class="primary" id="mssql-connect-ok" data-icon="db-connect">Read schema</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="mysql-connect-dialog" class="medium">
+    <form method="dialog" id="mysql-connect-form">
+      <h3>Connect to MySQL / MariaDB</h3>
+      <p class="muted">Only the schema of the database is read: tables, columns, keys and comments. Nothing is written.</p>
+      <div class="grid2">
+        <label>Host<input name="host" placeholder="localhost" autocomplete="off" spellcheck="false"></label>
+        <label>Port<input name="port" placeholder="3306" inputmode="numeric"></label>
+        <label>Database<input name="database" autocomplete="off" spellcheck="false" required></label>
+        <label>User<input name="user" placeholder="root" autocomplete="off" spellcheck="false"></label>
+        <label>Password<input name="password" type="password" autocomplete="off"></label>
+        <label>SSL
+          <select name="ssl">
+            <option value="disable">disable</option>
+            <option value="require">require (no certificate check)</option>
+            <option value="verify">verify-full</option>
+          </select>
+        </label>
+      </div>
+      <p class="db-status"></p>
+      <menu>
+        <button value="cancel" formnovalidate data-icon="close">Cancel</button>
+        <button type="submit" value="ok" class="primary" data-icon="db-connect">Read schema</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="oracle-connect-dialog" class="medium">
+    <form method="dialog" id="oracle-connect-form">
+      <h3>Connect to Oracle Database</h3>
+      <p class="muted">Only the schema is read: tables, columns, keys and comments. Nothing is written. No Oracle Client is needed (Oracle Database 12.1 or later).</p>
+      <div class="grid2">
+        <label>Host<input name="host" placeholder="localhost" autocomplete="off" spellcheck="false"></label>
+        <label>Port<input name="port" placeholder="1521" inputmode="numeric"></label>
+        <label>Service name<input name="service" placeholder="FREEPDB1" autocomplete="off" spellcheck="false" required></label>
+        <label>Schema<input name="schema" placeholder="(the user's own)" autocomplete="off" spellcheck="false"></label>
+        <label>User<input name="user" autocomplete="off" spellcheck="false" required></label>
+        <label>Password<input name="password" type="password" autocomplete="off"></label>
+      </div>
+      <p class="db-status"></p>
+      <menu>
+        <button value="cancel" formnovalidate data-icon="close">Cancel</button>
+        <button type="submit" value="ok" class="primary" data-icon="db-connect">Read schema</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="copy-dialog" class="medium">
+    <form method="dialog">
+      <h3>Copy rows</h3>
+      <p id="copy-target" class="muted"></p>
+      <progress id="copy-progress" max="1" value="0"></progress>
+      <div id="copy-tables" class="db-list copy-tables"></div>
+      <p id="copy-status" class="db-status"></p>
+      <menu>
+        <button type="button" id="copy-stop" class="danger" data-icon="close">Stop</button>
+        <button value="close" id="copy-close" class="primary" data-icon="check-all" disabled>Close</button>
       </menu>
     </form>
   </dialog>

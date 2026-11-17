@@ -95,7 +95,7 @@ function labelKeys() {
 // terms and examples.
 const HTML_KEEP = new Set([
   'pgsql-erd', '100%', 'SSL', 'disable', 'verify-full', 'localhost', '5432', 'postgres', 'SQL', 'Cypher',
-  'API key', 'Base URL', 'public', 'Excel', 'PNG', 'SVG', 'localhost\\SQLEXPRESS', 'master', 'sa',
+  'API key', 'Base URL', 'public', 'Excel', 'PNG', 'SVG', 'localhost\\SQLEXPRESS', 'master', 'sa', 'root', 'FREEPDB1',
 ]);
 
 // Texts of index.html, as translateDom() finds them.

@@ -113,6 +113,127 @@ const SHOTS = {
   },
 };
 
+// The copy shots need PostgreSQL (PGERD_TEST_HOST…, as tests/copy.integration.test.js) and MySQL (PGERD_MYSQL_HOST…);
+// oracle-import needs Oracle (PGERD_ORACLE_HOST…). See that test for containers that work.
+const env = process.env;
+const pgTarget = { host: env.PGERD_TEST_HOST, port: env.PGERD_TEST_PORT || '5432', user: env.PGERD_TEST_USER || 'postgres', password: env.PGERD_TEST_PASSWORD || '', database: 'shop_copy' };
+const mysqlSource = { host: env.PGERD_MYSQL_HOST, port: env.PGERD_MYSQL_PORT || '3306', user: env.PGERD_MYSQL_USER || 'root', password: env.PGERD_MYSQL_PASSWORD || '', database: 'shop_demo' };
+const oracleSource = { host: env.PGERD_ORACLE_HOST, port: env.PGERD_ORACLE_PORT || '1521', service: env.PGERD_ORACLE_SERVICE || 'FREEPDB1', user: env.PGERD_ORACLE_USER || 'shop', password: env.PGERD_ORACLE_PASSWORD || '' };
+
+const SHOP_MYSQL = [
+  `CREATE TABLE Customer (Id int AUTO_INCREMENT PRIMARY KEY, FullName varchar(100) NOT NULL, Email varchar(200) UNIQUE,
+     IsActive tinyint(1) NOT NULL DEFAULT 1, CreatedAt datetime NOT NULL DEFAULT CURRENT_TIMESTAMP) COMMENT 'People who buy'`,
+  `CREATE TABLE Product (Id int AUTO_INCREMENT PRIMARY KEY, Sku varchar(40) NOT NULL UNIQUE, Name varchar(200) NOT NULL,
+     Price decimal(10,2) NOT NULL DEFAULT 0, Kind enum('book','tool','toy') NOT NULL DEFAULT 'book', Photo blob)`,
+  `CREATE TABLE \`Order\` (Id bigint unsigned AUTO_INCREMENT PRIMARY KEY, CustomerId int NOT NULL, PlacedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     Status varchar(20) NOT NULL DEFAULT 'new', Notes json, FOREIGN KEY (CustomerId) REFERENCES Customer (Id))`,
+  `CREATE TABLE OrderItem (OrderId bigint unsigned NOT NULL, ProductId int NOT NULL, Quantity smallint NOT NULL DEFAULT 1, UnitPrice decimal(10,2) NOT NULL,
+     PRIMARY KEY (OrderId, ProductId), FOREIGN KEY (OrderId) REFERENCES \`Order\` (Id), FOREIGN KEY (ProductId) REFERENCES Product (Id))`,
+  `INSERT INTO Customer (FullName, Email, IsActive) VALUES ('Ana López', 'ana@example.com', 1), ('Bo Chen', 'bo@example.com', 1), ('Zoë O''Brien', NULL, 0)`,
+  `INSERT INTO Product (Sku, Name, Price, Kind) VALUES ('BK-1', 'Data modeling', 39.90, 'book'), ('TL-7', 'Torque wrench', 120.00, 'tool'), ('TY-3', 'Puzzle 1000', 15.50, 'toy')`,
+  `INSERT INTO \`Order\` (CustomerId, Status, Notes) VALUES (1, 'paid', '{"gift": true}'), (2, 'new', NULL), (1, 'shipped', NULL)`,
+  'INSERT INTO OrderItem VALUES (1, 1, 2, 39.90), (1, 3, 1, 15.50), (2, 2, 1, 120.00), (3, 1, 1, 39.90)',
+];
+
+async function createShopMysql() {
+  const { mysqlConnection } = createRequire(import.meta.url)('../src/main/database/mysql.cjs');
+  const c = await mysqlConnection({ ...mysqlSource, database: '' });
+  try {
+    await c.query(`DROP DATABASE IF EXISTS ${mysqlSource.database}`);
+    await c.query(`CREATE DATABASE ${mysqlSource.database} CHARACTER SET utf8mb4`);
+    await c.query(`USE ${mysqlSource.database}`);
+    for (const sql of SHOP_MYSQL) await c.query(sql);
+  } finally {
+    await c.end();
+  }
+}
+
+async function freshPgDatabase() {
+  const db = createRequire(import.meta.url)('../src/main/db.cjs');
+  const admin = { ...pgTarget, database: 'postgres' };
+  await db.execute(admin, `DROP DATABASE IF EXISTS ${pgTarget.database} WITH (FORCE)`);
+  await db.execute(admin, `CREATE DATABASE ${pgTarget.database}`);
+}
+
+// Click a hidden button for `cmd`, as the menu or ribbon would.
+const command = (cmd) => `(() => {
+  const b = Object.assign(document.createElement('button'), { hidden: true });
+  b.dataset.cmd = ${JSON.stringify(cmd)};
+  document.body.append(b);
+  b.click();
+  b.remove();
+})()`;
+// Fill named fields of a form: { name: value | boolean }.
+const fill = (formSel, values) => `(() => {
+  const f = document.querySelector(${JSON.stringify(formSel)}).elements;
+  for (const [k, v] of Object.entries(${JSON.stringify(values)})) {
+    const el = f.namedItem(k);
+    if (el.type === 'checkbox') el.checked = v; else el.value = v;
+  }
+})()`;
+async function until(run, wait, expression, tries = 100) {
+  for (let n = 0; n < tries; n++) {
+    if ((await run(expression)).result.value) return true;
+    await wait(200);
+  }
+  return false;
+}
+
+Object.assign(SHOTS, {
+  // Import a MySQL database and copy its rows into PostgreSQL; also shows the Import Designer reading it.
+  async 'mysql-copy'({ eval: run, wait, shot }) {
+    if (!pgTarget.host || !mysqlSource.host) return console.log('mysql-copy: skipped, set PGERD_TEST_HOST and PGERD_MYSQL_HOST');
+    await createShopMysql();
+    await freshPgDatabase();
+    await run(command('db-connect'));
+    await wait(300);
+    await run(fill('#db-connect-form', { ...pgTarget, sslmode: 'disable', profileName: 'shop_copy', environment: 'development', allowWrites: true, allowDDL: true, saveInstance: false }));
+    await run(`document.querySelector('#db-connect-form button[value="ok"]').click()`);
+    await until(run, wait, `!document.querySelector('#db-connect-dialog').open`);
+    await wait(800);
+    await run(command('import-mysql'));
+    await wait(300);
+    await run(fill('#mysql-connect-form', { ...mysqlSource, ssl: 'disable' }));
+    await shot('mysql-connect.png');
+    await run(`document.querySelector('#mysql-connect-form button[value="ok"]').click()`);
+    await until(run, wait, `!document.querySelector('#mysql-connect-dialog').open`);
+    await until(run, wait, `!document.querySelector('#xl-copy').disabled`);
+    await run(`document.querySelector('#xl-copy').click()`);
+    await wait(400);
+    await shot('mysql-import.png');
+    await run(`document.querySelector('#xl-import-ok').click()`);
+    await until(run, wait, `!document.querySelector('#copy-close').disabled`);
+    await wait(300);
+    await shot('copy-rows.png');
+    await run(`document.querySelector('#copy-close').click()`);
+    // The same database as the sources of the Import Designer.
+    await run(command('import-designer'));
+    await wait(800);
+    await run(`(() => { const s = document.querySelector('#imp-db-open'); s.value = 'mysql'; s.dispatchEvent(new Event('change')); })()`);
+    await wait(300);
+    await run(fill('#mysql-connect-form', { password: mysqlSource.password }));
+    await run(`document.querySelector('#mysql-connect-form button[value="ok"]').click()`);
+    await until(run, wait, `!document.querySelector('#mysql-connect-dialog').open`);
+    await until(run, wait, `document.querySelectorAll('#imp-sheets .imp-sheet').length > 0`);
+    await run(`[...document.querySelectorAll('#imp-sheets .imp-sheet')].find((b) => b.textContent === 'Order')?.click()`);
+    await wait(300);
+    await run(`document.querySelector('#imp-add-source').click()`);
+    await wait(800);
+    await shot('import-db-source.png');
+  },
+  async 'oracle-import'({ eval: run, wait, shot }) {
+    if (!oracleSource.host) return console.log('oracle-import: skipped, set PGERD_ORACLE_HOST');
+    await run(command('import-oracle'));
+    await wait(300);
+    await run(fill('#oracle-connect-form', oracleSource));
+    await run(`document.querySelector('#oracle-connect-form button[value="ok"]').click()`);
+    await until(run, wait, `!document.querySelector('#oracle-connect-dialog').open`);
+    await wait(600);
+    await shot('oracle-import.png');
+    await run(`document.querySelector('#xl-import-dialog').close()`);
+  },
+});
+
 // The ShopDemo database of the mssql-import shot.
 const SHOP_MSSQL = `
 CREATE SCHEMA Sales

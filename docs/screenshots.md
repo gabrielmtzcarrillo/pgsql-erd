@@ -3,7 +3,7 @@
 For people and agents who need to retake or add a screenshot. The PNGs live in `docs/screenshots/` (English) and
 `docs/screenshots/es/` (Spanish, same file names); `README.md` and `README-es.md` embed them.
 
-**Status of this document.** Only `ef-import`, `sqlite-import` and `mssql-import` are produced by a script in the repository, and the notes for them were
+**Status of this document.** Only `ef-import`, `sqlite-import`, `mssql-import`, `mysql-copy` and `oracle-import` are produced by a script in the repository, and the notes for them were
 verified by running it. Everything else was reconstructed from the committed images, the README text and the git
 history; it was *not* re-run. Where a step is a guess it says so. When you retake one of these, replace the guess
 with what you actually did, and prefer adding it to `scripts/capture-screenshots.mjs`.
@@ -59,6 +59,8 @@ Things learned while building it:
 | `sqlite-import.png` | Import dialog on a SQLite database: five tables, SQL preview on the right | **Scripted** (`sqlite-import`). Creates `shop.db` in a temporary folder with Node's `node:sqlite` (Node 22.5 or later), drops it on the window, waits for the dialog |
 | `mssql-connect.png` | The SQL Server connection dialog filled in over the SQL Server import dialog | **Scripted** (`mssql-import`, see below) |
 | `mssql-import.png` | Import dialog on the `ShopDemo` SQL Server database: four tables in `public` and `sales`, SQL preview on the right | **Scripted** (`mssql-import`). Needs a SQL Server: set `PGERD_MSSQL_HOST` (and `PGERD_MSSQL_PORT`, `PGERD_MSSQL_USER`, `PGERD_MSSQL_PASSWORD`); a `mcr.microsoft.com/mssql/server:2022-latest` container works. Recreates `ShopDemo`, opens the dialog with a hidden `data-cmd="import-mssql"` button, fills the form, shoots, clicks **Read schema**, waits for the dialog to close and shoots again. Skipped without `PGERD_MSSQL_HOST` |
+| `mysql-connect.png`, `mysql-import.png`, `copy-rows.png`, `import-db-source.png` | The MySQL connection dialog; the import dialog on the `shop_demo` MySQL database with **Copy rows** checked; the finished copy into PostgreSQL; the Import Designer with that database open and its `Order` table as a source | **Scripted** (`mysql-copy`). Needs PostgreSQL (`PGERD_TEST_HOST`, `PGERD_TEST_PORT`, `PGERD_TEST_USER`, `PGERD_TEST_PASSWORD`) and MySQL (`PGERD_MYSQL_HOST`, `PGERD_MYSQL_PORT`, `PGERD_MYSQL_USER`, `PGERD_MYSQL_PASSWORD`); containers as in `tests/copy.integration.test.js`. Recreates `shop_demo` in MySQL and `shop_copy` in PostgreSQL, connects to `shop_copy` with writes and schema changes allowed, then drives the dialogs. Skipped without both hosts |
+| `oracle-import.png` | Import dialog on an Oracle schema (run after `mysql-copy`, so its tables show as updates) | **Scripted** (`oracle-import`). Needs `PGERD_ORACLE_HOST` (and `_PORT`, `_SERVICE`, `_USER`, `_PASSWORD`) and a schema with tables, such as the one `tests/copy.integration.test.js` leaves |
 | `diagram.png` | Diagram tab with the shop tables, the database explorer open on the left, connected | Not scripted. Connect to `shopdb`, open `samples/shop.pgerd`, show **Explorer**, zoom 120%, select nothing |
 | `ribbon.png` | Top 118 px: the ribbon and the tab strip | Not scripted. Crop of a full window shot; ribbon with Database connected |
 | `table-sidebar.png` | A table selected with its sidebar open (properties, columns, relationships) | Not scripted. Open the sample, click the `customer` header, click a column |

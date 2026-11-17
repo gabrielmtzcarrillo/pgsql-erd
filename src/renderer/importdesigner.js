@@ -38,7 +38,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const ARROW = '<defs><marker id="imp-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--accent)"/></marker></defs>';
 
 export function setupImportDesigner(ctx) {
-  const { host, h, status, db, tabs, events, dbTree } = ctx;
+  const { host, h, status, db, tabs, events, dbTree, pickConnection } = ctx;
   const page = $('#import-page');
   const GRID_KEY = 'pgsql-erd.import-grid';
   const GRID = 20;
@@ -600,7 +600,7 @@ export function setupImportDesigner(ctx) {
     const node = h('div', { class: `imp-node source${sizedClass(s)}${sel ? ' selected' : ''}`, 'data-id': s.id, style: boxStyle(s) });
     node.addEventListener('pointerdown', () => !sel && selectLight({ type: 'source', id: s.id }));
     node.append(
-      nodeHead(s, 'import-spreadsheet', sheetLabel(s), () => removeSource(s.id)),
+      nodeHead(s, T.db ? 'db-import' : 'import-spreadsheet', sheetLabel(s), () => removeSource(s.id)),
       h('div', { class: `imp-sub${res && !res.ok ? ' error' : ''}`, title: res?.errors?.[0]?.message ?? '' }, `${headerLabel(s)}${res?.ok ? ` · ${trn(res.columns.length, '{n} column', '{n} columns')}` : ''}`),
     );
     const body = h('div', { class: 'imp-cols' }, rows.length ? rows : [h('div', { class: 'imp-note' }, T.wb ? tr('The columns appear when the worksheet is found.') : tr('Open the example workbook to list its columns.'))]);
@@ -1335,6 +1335,7 @@ export function setupImportDesigner(ctx) {
     await showSheets(name, async () => {
       const sheets = await parseWorkbook(name, bytes);
       rec.json = null;
+      rec.db = null;
       return sheets;
     });
   }
@@ -1345,6 +1346,7 @@ export function setupImportDesigner(ctx) {
     if (!res) return;
     if (!res.names.length) return status(tr('The folder has no JSON files.'));
     T.json = { folder: res.folder, names: res.names, ref: res.names[0] };
+    T.db = null;
     await loadJsonReference();
   }
 
@@ -1357,6 +1359,46 @@ export function setupImportDesigner(ctx) {
       if (failed.length) status(trn(failed.length, '{n} JSON file could not be read and was skipped: {file}', '{n} JSON files could not be read and were skipped, for example {file}', { file: failed[0].name }));
       return sheets;
     }, json.ref);
+  }
+
+  // The tables of another database as the example workbook: MySQL / MariaDB, SQL Server and Oracle
+  // through their connection dialogs (a failure shows there), SQLite and dumps from a file.
+  const remote = (err) => String(err?.message ?? err).replace(/^Error invoking remote method '[^']*': (\w*Error: )?/, '');
+  async function chooseDatabase(kind) {
+    const rec = T;
+    let read;
+    if (kind === 'sqlite' || kind === 'mysql-dump') {
+      let picked;
+      try {
+        picked = kind === 'sqlite' ? await host.openSqlite() : await host.openMysqlDump();
+      } catch (err) {
+        return status(tr('Could not read {file}: {message}', { file: kind === 'sqlite' ? tr('SQLite database') : tr('MySQL / MariaDB dump'), message: remote(err) }));
+      }
+      if (!picked) return;
+      read = () => host.readSourceSheets({ kind, filePath: picked.filePath });
+    } else {
+      const res = await pickConnection(kind, (conn) => host.readSourceSheets({ kind, conn }));
+      if (!res) return;
+      read = async () => res;
+    }
+    let found = null;
+    await showSheets(kind, async () => {
+      try {
+        found = await read();
+      } catch (err) {
+        throw new Error(remote(err));
+      }
+      rec.json = null;
+      rec.db = { kind, name: found.name };
+      return found.sheets;
+    }, tr('the database'));
+    if (found) {
+      rec.wb.name = found.name;
+      renderRight();
+      status(found.truncated
+        ? tr('Read {n} tables from {name}. Some tables have more rows than the designer keeps (100,000); only the first ones are imported.', { n: found.sheets.length, name: found.name })
+        : tr('Read {n} tables from {name}.', { n: found.sheets.length, name: found.name }));
+    }
   }
 
   async function showSheets(name, read, label = name) {
@@ -1973,6 +2015,11 @@ export function setupImportDesigner(ctx) {
   });
   $('#imp-wb-open').addEventListener('click', chooseWorkbook);
   $('#imp-json-open').addEventListener('click', chooseJsonFolder);
+  $('#imp-db-open').addEventListener('change', (e) => {
+    const kind = e.target.value;
+    e.target.value = '';
+    if (kind) chooseDatabase(kind);
+  });
   $('#imp-json-ref').addEventListener('change', (e) => {
     if (!T.json) return;
     T.json.ref = e.target.value;

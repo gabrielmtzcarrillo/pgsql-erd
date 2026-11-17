@@ -4,6 +4,9 @@
 import { parseModelSource, MODEL_EXT } from './lib/efimport.js';
 import { sqliteSpecs, SQLITE_EXT } from './lib/sqliteimport.js';
 import { mssqlSpecs, parseTsql } from './lib/mssqlimport.js';
+import { mysqlSpecs } from './lib/mysqlimport.js';
+import { oracleSpecs } from './lib/oracleimport.js';
+import { setupCopy } from './copyui.js';
 import { readSpreadsheet, sheetTables, modelFromSpecs, importSpecs } from './lib/spreadsheet.js';
 import { tableKey } from './lib/catalog.js';
 import { generateSQL } from './lib/sql.js';
@@ -18,6 +21,7 @@ export { MODEL_EXT, SQLITE_EXT };
 
 export function setupSpreadsheetImport(ctx) {
   const { host, state, h, commit, computeSizes, fit, status } = ctx;
+  const copy = setupCopy(ctx);
   const dialog = $('#xl-import-dialog');
   const list = $('#xl-list');
   const sqlBox = $('#xl-sql');
@@ -28,7 +32,10 @@ export function setupSpreadsheetImport(ctx) {
 
   // { name, sheets }; for an EF Core / JSON model { name, sources: [{ name, text }], sheets: [] };
   // for a SQLite database { name, sources: [{ name, catalog }], sheets: [] };
-  // for SQL Server (a database or a T-SQL script) { name, sources: [{ name, mssql }], sheets: [] }
+  // for SQL Server (a database or a T-SQL script) { name, sources: [{ name, mssql }], sheets: [] };
+  // for MySQL / MariaDB (a database or a dump) { name, sources: [{ name, mysql }], sheets: [] };
+  // for Oracle { name, sources: [{ name, oracle }], sheets: [] }.
+  // `copySource` is where "Copy rows" reads from: { kind, conn } or { kind, filePath }.
   let file = null;
   const title = dialog.querySelector('h3');
   const excelTitle = title.textContent;
@@ -37,7 +44,7 @@ export function setupSpreadsheetImport(ctx) {
   const notNullOption = optNotNull.closest('label');
 
   // The same dialog serves every import; only its explanation and the Excel-only option differ.
-  // `model` is false (Excel / CSV), 'sqlite', 'mssql', 'tsql' or true (Entity Framework / JSON).
+  // `model` is false (Excel / CSV), 'sqlite', 'mssql', 'tsql', 'mysql', 'mysql-dump', 'oracle' or true (Entity Framework / JSON).
   const chooseButton = $('#xl-choose');
   const chooseLabel = () => chooseButton.querySelector('.label') ?? chooseButton;
   let chooseText = null;
@@ -46,9 +53,16 @@ export function setupSpreadsheetImport(ctx) {
     title.textContent = model === 'sqlite' ? tr('Import tables from a SQLite database')
       : model === 'mssql' ? tr('Import tables from a SQL Server database')
       : model === 'tsql' ? tr('Import tables from a SQL Server script')
+      : model === 'mysql' ? tr('Import tables from a MySQL / MariaDB database')
+      : model === 'mysql-dump' ? tr('Import tables from a MySQL / MariaDB dump')
+      : model === 'oracle' ? tr('Import tables from an Oracle database')
       : model ? tr('Import tables from Entity Framework / JSON') : excelTitle;
-    chooseLabel().textContent = model === 'mssql' ? tr('Connect…') : chooseText;
-    if (model === 'mssql' || model === 'tsql') {
+    chooseLabel().textContent = model === 'mssql' || model === 'mysql' || model === 'oracle' ? tr('Connect…') : chooseText;
+    if (model === 'oracle') {
+      help.textContent = tr('Each table of the Oracle schema becomes a table. Column types and defaults are translated to PostgreSQL (NUMBER(9) becomes integer, NUMBER(10,2) numeric(10,2), VARCHAR2 character varying, CLOB text, BLOB bytea, RAW(16) uuid, DATE timestamp(0)), an identity column becomes serial, and primary keys, NOT NULL, single-column unique constraints, foreign keys and comments are kept. With snake_case on, CUSTOMER_ID becomes customer_id. The tables go to the schema below. Tables already in the diagram are updated; their position, color and note are kept.');
+    } else if (model === 'mysql' || model === 'mysql-dump') {
+      help.textContent = tr('Each MySQL / MariaDB table becomes a table. Column types and defaults are translated to PostgreSQL (tinyint(1) becomes boolean, int unsigned bigint, datetime timestamp, enum text, blob bytea, json jsonb), an AUTO_INCREMENT column becomes serial, and primary keys, NOT NULL, single-column unique keys, foreign keys and comments are kept. The tables go to the schema below. Tables already in the diagram are updated; their position, color and note are kept.');
+    } else if (model === 'mssql' || model === 'tsql') {
       help.textContent = tr('Each SQL Server table becomes a table. Column types and defaults are translated to PostgreSQL (nvarchar(max) becomes text, datetime2 timestamp, bit boolean, uniqueidentifier uuid), an IDENTITY column becomes serial, and primary keys, NOT NULL, single-column unique constraints, foreign keys and MS_Description comments are kept. Tables of the dbo schema go to the schema below; other schemas keep their name. Tables already in the diagram are updated; their position, color and note are kept.');
     } else if (model === 'sqlite') {
       help.textContent = tr('Each table of the SQLite database becomes a table. Column types and defaults are translated to PostgreSQL, an INTEGER PRIMARY KEY becomes serial, and primary keys, NOT NULL, single-column unique constraints and foreign keys are kept. Views and virtual tables are skipped. The file is only read. Tables already in the diagram are updated; their position, color and note are kept.');
@@ -65,6 +79,8 @@ export function setupSpreadsheetImport(ctx) {
   function modelSpecs(sources, opts, lenient = false) {
     if (sources.some((f) => f.catalog)) return { specs: sources.flatMap((f) => sqliteSpecs(f.catalog, opts)), skipped: 0 };
     if (sources.some((f) => f.mssql)) return { specs: sources.flatMap((f) => mssqlSpecs(f.mssql, opts)), skipped: 0 };
+    if (sources.some((f) => f.mysql)) return { specs: sources.flatMap((f) => mysqlSpecs(f.mysql, opts)), skipped: 0 };
+    if (sources.some((f) => f.oracle)) return { specs: sources.flatMap((f) => oracleSpecs(f.oracle, opts)), skipped: 0 };
     const isJson = (f) => /\.json$/i.test(f.name);
     const cs = sources.filter((f) => !isJson(f));
     let skipped = 0;
@@ -94,6 +110,7 @@ export function setupSpreadsheetImport(ctx) {
 
   // Re-read the sheets with the current options, keeping choices and renames.
   function analyze() {
+    copy.offer(file?.copySource ?? null);
     const prev = new Map(specs.map((s) => [s.id, s]));
     specs = [];
     skipped = 0;
@@ -215,8 +232,8 @@ export function setupSpreadsheetImport(ctx) {
     if (res) loadModel(res.map((f) => ({ name: f.filePath.split(/[\\/]/).pop(), text: f.text })));
   }
 
-  function loadSqlite(name, catalog) {
-    file = { name, sources: [{ name, catalog }], sheets: [] };
+  function loadSqlite(name, catalog, filePath) {
+    file = { name, sources: [{ name, catalog }], sheets: [], copySource: { kind: 'sqlite', filePath } };
     specs = [];
     setMode('sqlite');
     $('#xl-file').textContent = name;
@@ -228,15 +245,15 @@ export function setupSpreadsheetImport(ctx) {
     setMode('sqlite');
     try {
       const res = filePath ? await host.readSqlite(filePath) : await host.openSqlite();
-      if (res) loadSqlite(res.filePath.split(/[\\/]/).pop(), res.catalog);
+      if (res) loadSqlite(res.filePath.split(/[\\/]/).pop(), res.catalog, res.filePath);
     } catch (err) {
       const name = filePath ? filePath.split(/[\\/]/).pop() : tr('SQLite database');
       setStatus(tr('Could not read {file}: {message}', { file: name, message: remoteMessage(err) }), 'error');
     }
   }
 
-  function loadMssql(name, catalog, mode) {
-    file = { name, sources: [{ name, mssql: catalog }], sheets: [] };
+  function loadMssql(name, catalog, mode, copySource = null) {
+    file = { name, sources: [{ name, mssql: catalog }], sheets: [], copySource };
     specs = [];
     setMode(mode);
     $('#xl-file').textContent = name;
@@ -253,65 +270,120 @@ export function setupSpreadsheetImport(ctx) {
     }
   }
 
-  // The SQL Server connection dialog; the last settings but the password are remembered.
-  const connectDialog = $('#mssql-connect-dialog');
-  const connectForm = $('#mssql-connect-form');
-  const connectStatus = $('#mssql-connect-status');
-  const connectOk = $('#mssql-connect-ok');
-  const CONNECT_KEY = 'pgsql-erd.mssql-connection';
-  const field = (name) => connectForm.elements.namedItem(name);
-  const showDomain = () => ($('#mssql-domain').style.display = field('auth').value === 'ntlm' ? '' : 'none');
-  field('auth').addEventListener('change', showDomain);
+  // A connection dialog for a source database. The last settings but the
+  // password are remembered. On "Read schema" `read(conn)` runs; the dialog
+  // closes when it succeeds and shows the error when it does not.
+  function sourceDialog(id, key, defaultRead) {
+    const dlg = $(`#${id}`);
+    let read = defaultRead;
+    const form = dlg.querySelector('form');
+    const statusLine = dlg.querySelector('.db-status');
+    const ok = dlg.querySelector('button[value="ok"]');
+    const fields = [...form.elements].filter((el) => el.name);
+    const field = (name) => form.elements.namedItem(name);
+    const collect = () => {
+      const conn = Object.fromEntries(fields.map((el) => [el.name, el.type === 'checkbox' ? el.checked : el.type === 'password' ? el.value : el.value.trim()]));
+      for (const k of ['server', 'host']) if (k in conn && !conn[k]) conn[k] = 'localhost';
+      return conn;
+    };
+    form.addEventListener('submit', async (e) => {
+      if (e.submitter?.value !== 'ok') return;
+      e.preventDefault();
+      const conn = collect();
+      const { password, ...remembered } = conn;
+      try {
+        localStorage.setItem(key, JSON.stringify(remembered));
+      } catch {}
+      statusLine.textContent = tr('Reading the schema…');
+      statusLine.className = 'db-status';
+      ok.disabled = true;
+      try {
+        await read(conn);
+        dlg.close('ok');
+      } catch (err) {
+        statusLine.textContent = tr('Could not connect: {message}', { message: remoteMessage(err) });
+        statusLine.className = 'db-status error';
+      } finally {
+        ok.disabled = false;
+      }
+    });
+    return {
+      field,
+      // `onRead` replaces what "Read schema" does, for this opening only.
+      open(onOpen, onRead = null) {
+        read = onRead ?? defaultRead;
+        let saved = {};
+        try {
+          saved = JSON.parse(localStorage.getItem(key) || '{}');
+        } catch {}
+        for (const el of fields) {
+          if (el.type === 'password') el.value = '';
+          else if (el.type === 'checkbox') el.checked = el.name in saved ? !!saved[el.name] : el.defaultChecked;
+          else if (el.tagName === 'SELECT') el.value = saved[el.name] ?? el.options[0].value;
+          else el.value = saved[el.name] ?? '';
+        }
+        onOpen?.();
+        statusLine.textContent = '';
+        statusLine.className = 'db-status';
+        ok.disabled = false;
+        dlg.showModal();
+        const first = fields.find((el) => !el.value && el.type !== 'checkbox' && el.tagName !== 'SELECT' && el.closest('label')?.style.display !== 'none');
+        (first ?? field('password')).focus();
+      },
+    };
+  }
+
+  const mssqlDialog = sourceDialog('mssql-connect-dialog', 'pgsql-erd.mssql-connection', async (conn) => {
+    const res = await host.readMssql(conn);
+    loadMssql(`${conn.server}/${res.database}`, res.catalog, 'mssql', { kind: 'mssql', conn });
+  });
+  const showDomain = () => ($('#mssql-domain').style.display = mssqlDialog.field('auth').value === 'ntlm' ? '' : 'none');
+  mssqlDialog.field('auth').addEventListener('change', showDomain);
   function chooseMssql() {
     setMode('mssql');
-    let saved = {};
-    try {
-      saved = JSON.parse(localStorage.getItem(CONNECT_KEY) || '{}');
-    } catch {}
-    for (const name of ['server', 'port', 'database', 'user', 'domain']) field(name).value = saved[name] ?? '';
-    field('auth').value = saved.auth === 'ntlm' ? 'ntlm' : 'sql';
-    field('encrypt').checked = saved.encrypt !== false;
-    field('trustServerCertificate').checked = !!saved.trustServerCertificate;
-    field('password').value = '';
-    showDomain();
-    connectStatus.textContent = '';
-    connectStatus.className = 'db-status';
-    connectOk.disabled = false;
-    connectDialog.showModal();
-    (field('server').value ? field(field('database').value ? 'password' : 'database') : field('server')).focus();
+    mssqlDialog.open(showDomain);
   }
-  connectForm.addEventListener('submit', async (e) => {
-    if (e.submitter?.value !== 'ok') return;
-    e.preventDefault();
-    const conn = {
-      server: field('server').value.trim() || 'localhost',
-      port: field('port').value.trim(),
-      database: field('database').value.trim(),
-      auth: field('auth').value,
-      user: field('user').value.trim(),
-      password: field('password').value,
-      domain: field('domain').value.trim(),
-      encrypt: field('encrypt').checked,
-      trustServerCertificate: field('trustServerCertificate').checked,
-    };
-    const { password, ...remembered } = conn;
-    try {
-      localStorage.setItem(CONNECT_KEY, JSON.stringify(remembered));
-    } catch {}
-    connectStatus.textContent = tr('Reading the schema…');
-    connectStatus.className = 'db-status';
-    connectOk.disabled = true;
-    try {
-      const res = await host.readMssql(conn);
-      connectDialog.close('ok');
-      loadMssql(`${conn.server}/${res.database}`, res.catalog, 'mssql');
-    } catch (err) {
-      connectStatus.textContent = tr('Could not connect: {message}', { message: remoteMessage(err) });
-      connectStatus.className = 'db-status error';
-    } finally {
-      connectOk.disabled = false;
-    }
+
+  function loadMysql(name, catalog, mode, copySource) {
+    file = { name, sources: [{ name, mysql: catalog }], sheets: [], copySource };
+    specs = [];
+    setMode(mode);
+    $('#xl-file').textContent = name;
+    analyze();
+  }
+
+  const mysqlDialog = sourceDialog('mysql-connect-dialog', 'pgsql-erd.mysql-connection', async (conn) => {
+    const res = await host.readMysql(conn);
+    loadMysql(`${conn.host}/${res.database}`, res.catalog, 'mysql', { kind: 'mysql', conn });
   });
+  function chooseMysql() {
+    setMode('mysql');
+    mysqlDialog.open();
+  }
+
+  const oracleDialog = sourceDialog('oracle-connect-dialog', 'pgsql-erd.oracle-connection', async (conn) => {
+    const res = await host.readOracle(conn);
+    const name = `${conn.host}/${conn.service}: ${res.owner}`;
+    file = { name, sources: [{ name, oracle: res.catalog }], sheets: [], copySource: { kind: 'oracle', conn } };
+    specs = [];
+    setMode('oracle');
+    $('#xl-file').textContent = name;
+    analyze();
+  });
+  function chooseOracle() {
+    setMode('oracle');
+    oracleDialog.open();
+  }
+
+  async function chooseMysqlDump() {
+    setMode('mysql-dump');
+    try {
+      const res = await host.openMysqlDump();
+      if (res) loadMysql(res.filePath.split(/[\\/]/).pop(), res.catalog, 'mysql-dump', { kind: 'mysql-dump', filePath: res.filePath });
+    } catch (err) {
+      setStatus(tr('Could not read {file}: {message}', { file: tr('MySQL / MariaDB dump'), message: remoteMessage(err) }), 'error');
+    }
+  }
 
   // Every JSON file under a folder, each read on its own; names are relative to the folder.
   async function chooseModelFolder() {
@@ -329,6 +401,7 @@ export function setupSpreadsheetImport(ctx) {
 
   function reset() {
     file = null;
+    copy.offer(null);
     specs = [];
     $('#xl-file').textContent = tr('No file chosen');
     setMode(false);
@@ -338,8 +411,8 @@ export function setupSpreadsheetImport(ctx) {
     dialog.returnValue = '';
   }
 
-  let mode = 'excel'; // what "Choose file…" picks: 'excel', 'model', 'model-folder', 'sqlite', 'mssql' or 'tsql'
-  $('#xl-choose').addEventListener('click', () => (mode === 'mssql' ? chooseMssql() : mode === 'tsql' ? chooseTsql() : mode === 'sqlite' ? chooseSqlite() : mode === 'model-folder' || (mode === 'model' && file?.folder) ? chooseModelFolder() : mode === 'model' ? chooseModel() : choose()));
+  let mode = 'excel'; // what "Choose file…" picks: 'excel', 'model', 'model-folder', 'sqlite', 'mssql', 'tsql', 'mysql', 'mysql-dump' or 'oracle'
+  $('#xl-choose').addEventListener('click', () => (mode === 'oracle' ? chooseOracle() : mode === 'mysql' ? chooseMysql() : mode === 'mysql-dump' ? chooseMysqlDump() : mode === 'mssql' ? chooseMssql() : mode === 'tsql' ? chooseTsql() : mode === 'sqlite' ? chooseSqlite() : mode === 'model-folder' || (mode === 'model' && file?.folder) ? chooseModelFolder() : mode === 'model' ? chooseModel() : choose()));
   optSchema.addEventListener('change', analyze);
   optSnake.addEventListener('change', analyze);
   optNotNull.addEventListener('change', analyze);
@@ -375,6 +448,7 @@ export function setupSpreadsheetImport(ctx) {
     });
     if (wasEmpty || result.added.length) fit();
     status(tr('Imported {added} new and updated {updated} existing tables from {file}', { added: result.added.length, updated: result.updated.length, file: file.name }));
+    if (file.copySource && copy.wanted()) copy.run(chosen, file.copySource, file.name);
   });
 
   function open() {
@@ -414,6 +488,27 @@ export function setupSpreadsheetImport(ctx) {
     return chooseTsql();
   }
 
+  function openMysql() {
+    reset();
+    mode = 'mysql';
+    dialog.showModal();
+    return chooseMysql();
+  }
+
+  function openOracle() {
+    reset();
+    mode = 'oracle';
+    dialog.showModal();
+    return chooseOracle();
+  }
+
+  function openMysqlDump() {
+    reset();
+    mode = 'mysql-dump';
+    dialog.showModal();
+    return chooseMysqlDump();
+  }
+
   function openModelFolder() {
     reset();
     dialog.showModal();
@@ -421,8 +516,27 @@ export function setupSpreadsheetImport(ctx) {
     return chooseModelFolder();
   }
 
+  /**
+   * Open the connection dialog of a source database (`kind`: 'mysql', 'mssql'
+   * or 'oracle') for another feature: `use(conn)` runs on "Read schema" and
+   * its errors show in the dialog. Resolves with what `use` returned, or null
+   * when the dialog is cancelled.
+   */
+  function pickConnection(kind, use) {
+    const d = { mysql: mysqlDialog, mssql: mssqlDialog, oracle: oracleDialog }[kind];
+    const el = $(`#${kind}-connect-dialog`);
+    return new Promise((resolve) => {
+      let result = null;
+      el.addEventListener('close', () => resolve(result), { once: true });
+      d.open(kind === 'mssql' ? showDomain : null, async (conn) => {
+        result = await use(conn);
+      });
+    });
+  }
+
   return {
-    commands: { 'import-spreadsheet': open, 'import-model': openModel, 'import-sqlite': () => openSqlite(), 'import-model-folder': openModelFolder, 'import-mssql': openMssql, 'import-tsql': openTsql },
+    pickConnection,
+    commands: { 'import-spreadsheet': open, 'import-model': openModel, 'import-sqlite': () => openSqlite(), 'import-model-folder': openModelFolder, 'import-mssql': openMssql, 'import-tsql': openTsql, 'import-mysql': openMysql, 'import-mysql-dump': openMysqlDump, 'import-oracle': openOracle },
     // Open the dialog on a dropped SQLite database file.
     openSqliteFile: (filePath) => openSqlite(filePath),
     // Open the dialog on dropped .cs / .json files.

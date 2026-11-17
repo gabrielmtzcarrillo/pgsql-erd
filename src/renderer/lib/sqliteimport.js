@@ -17,6 +17,7 @@
 
 import { normalizeType, isKnownType } from './spreadsheet.js';
 import { parseJsonModel } from './efimport.js';
+import { alignForeignKeyTypes } from './fktypes.js';
 
 export const SQLITE_EXT = /\.(db|sqlite|sqlite3|db3|s3db|sl3)$/i;
 
@@ -112,5 +113,12 @@ export function sqliteSpecs(catalog, options = {}) {
     });
     return { name: t.name, columns, primaryKey: pk, foreignKeys };
   });
-  return parseJsonModel({ tables }, options).map((spec) => ({ ...spec, sheet: 'SQLite' }));
+  alignForeignKeyTypes(tables, options.schema || 'public');
+  // `source` tells "Copy rows" where the rows come from.
+  const kept = (catalog?.tables ?? []).map((t) => t.columns.filter((c) => c.hidden !== 1));
+  return parseJsonModel({ tables }, options).map((spec, k) => ({
+    ...spec,
+    sheet: 'SQLite',
+    source: { kind: 'sqlite', schema: null, table: catalog.tables[k].name, columns: kept[k].map((c) => ({ name: c.name, type: String(c.type ?? '') })) },
+  }));
 }

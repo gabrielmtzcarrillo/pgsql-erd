@@ -2288,7 +2288,7 @@ const dataBrowser = setupDataBrowser(workbenchCtx);
 const query = setupQuery(workbenchCtx);
 const graph = setupGraph(workbenchCtx);
 const queryBuilder = setupQueryBuilder({ ...workbenchCtx, dbTree, openSql: query.setSql, runQuery: query.commands['query-run'] });
-const importDesigner = setupImportDesigner({ ...workbenchCtx, dbTree });
+const importDesigner = setupImportDesigner({ ...workbenchCtx, dbTree, pickConnection: spreadsheet.pickConnection });
 erdScripts = setupErdScripts({ ...workbenchCtx, el, measure, workbench: workbench.api, select, render, focusTable });
 Object.assign(workbenchCtx, {
   // aiConfig: assistant.aiConfig,

@@ -1452,3 +1452,14 @@ dialog.medium { width: min(760px, 94vw); }
 .imp-edge-x { position: absolute; transform: translate(-50%, -50%); z-index: 4; width: 20px; height: 20px; padding: 0; line-height: 16px; border-radius: 10px; border-color: var(--danger); color: var(--danger); background: var(--surface); font-size: 15px; }
 .imp-edge-x:hover { background: var(--danger); color: #fff; }
 .imp-canvas:focus { outline: none; }
+
+/* Copy rows progress */
+#copy-dialog progress { width: 100%; height: 10px; }
+.db-list.copy-tables { height: auto; max-height: 40vh; margin-top: 10px; }
+.copy-tables .item .count { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); }
+.copy-tables .item.done .count { color: #1a7f37; }
+.copy-tables .item.current { background: var(--accent-soft); }
+#xl-copy-options { flex-wrap: wrap; }
+.copy-tables .item { display: flex; align-items: center; gap: 12px; padding: 3px 10px; font-size: 13px; }
+.imp-right-head { flex-wrap: wrap; }
+#imp-db-open { max-width: 170px; }
