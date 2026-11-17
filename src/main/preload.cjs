@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld('erdHost', {
   readSqlite: (filePath) => ipcRenderer.invoke('read-sqlite', filePath),
   readMssql: (conn) => ipcRenderer.invoke('read-mssql', conn),
   openTsql: () => ipcRenderer.invoke('open-tsql'),
+  readMysql: (conn) => ipcRenderer.invoke('read-mysql', conn),
+  openMysqlDump: () => ipcRenderer.invoke('open-mysql-dump'),
+  readOracle: (conn) => ipcRenderer.invoke('read-oracle', conn),
+  readSourceSheets: (source) => ipcRenderer.invoke('read-source-sheets', source),
   openModelFolder: () => ipcRenderer.invoke('open-model-folder'),
   openJsonFolder: () => ipcRenderer.invoke('open-json-folder'),
   readJsonFolderFiles: (folder, names) => ipcRenderer.invoke('read-json-folder-files', folder, names),
@@ -69,6 +73,12 @@ contextBridge.exposeInMainWorld('erdHost', {
   },
   import: {
     run: (req) => ipcRenderer.invoke('import-run', req),
+  },
+  // Copy rows of imported tables into the connected database.
+  copy: {
+    run: (req) => ipcRenderer.invoke('data-copy', req),
+    stop: () => ipcRenderer.invoke('data-copy-stop'),
+    onProgress: (cb) => ipcRenderer.on('data-copy-progress', (_e, payload) => cb(payload)),
   },
   query: {
     run: (req) => ipcRenderer.invoke('query-run', req),

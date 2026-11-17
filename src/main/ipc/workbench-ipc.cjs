@@ -16,6 +16,7 @@ const { ExecutionManager } = require('../scripting/execution-manager.cjs');
 const { AuditLog } = require('../audit.cjs');
 const dataBrowser = require('../database/data-browser.cjs');
 const { runImport } = require('../database/import-runner.cjs');
+const { copyRows } = require('../database/data-copy.cjs');
 const { runQuery } = require('../database/query-runner.cjs');
 const { AgeService } = require('../database/age.cjs');
 
@@ -234,6 +235,43 @@ function registerWorkbench({ ipcMain, app, safeStorage, shell }) {
     } finally {
       await client.end().catch(() => {});
     }
+  });
+  // Copy rows from another database (or a dump) into the connected one: creates the missing
+  // tables, so it needs a connection whose policy allows both writes and schema changes.
+  const copies = new Map(); // window id -> { stopped }
+  handle('data-copy', async (s, id, sender, req) => {
+    const session = s.connections.require(id);
+    if (!session.profile.policy.allowWrites || !session.profile.policy.allowDDL) {
+      throw new Error(`The "${session.profile.name}" connection (${session.profile.environment}) doesn't allow writes and schema changes. Edit the connection to change its policy.`);
+    }
+    if (copies.has(id)) throw new Error('A copy is already running in this window.');
+    const signal = { stopped: false };
+    copies.set(id, signal);
+    const details = {
+      windowId: id,
+      target: s.connections.describe(session.conn),
+      environment: session.profile.environment,
+      source: req?.source?.kind,
+      tables: (req?.tables ?? []).map((t) => `${t.target?.schema}.${t.target?.name}`).join(','),
+      truncate: !!req?.truncate,
+    };
+    const client = await s.connections.client(id);
+    try {
+      const r = await copyRows(client, req, { signal, onProgress: (p) => send(sender, 'data-copy-progress', p) });
+      audit.log('data-copy', { ...details, rows: r.total });
+      return r;
+    } catch (err) {
+      audit.log('data-copy-failed', { ...details, error: err.message });
+      throw err;
+    } finally {
+      copies.delete(id);
+      await client.end().catch(() => {});
+    }
+  });
+  handle('data-copy-stop', (_s, id) => {
+    const signal = copies.get(id);
+    if (signal) signal.stopped = true;
+    return !!signal;
   });
   handle('data-tables', async ({ connections, shared }, id) => shared.allTables(await connections.schema(id)).map((t) => t.id));
 

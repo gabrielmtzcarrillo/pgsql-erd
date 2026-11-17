@@ -9,6 +9,9 @@ const { registerWorkbench } = require('./ipc/workbench-ipc.cjs');
 const { sharedDir } = require('./shared.cjs');
 const { readSqliteCatalog, SQLITE_EXTENSIONS } = require('./database/sqlite.cjs');
 const { readMssqlCatalog } = require('./database/mssql.cjs');
+const { readMysqlCatalog, readMysqlDump } = require('./database/mysql.cjs');
+const { readOracleCatalog } = require('./database/oracle.cjs');
+const { readSourceSheets } = require('./database/source-sheets.cjs');
 
 const windows = new Set();
 let pendingOpen = []; // files requested before the app was ready (macOS open-file)
@@ -259,6 +262,12 @@ ipcMain.handle('read-sqlite', (e, filePath) => ({ filePath: String(filePath), ca
 
 // Read the schema of a SQL Server database for "Import from SQL Server Database"; nothing is written.
 ipcMain.handle('read-mssql', (e, conn) => readMssqlCatalog(conn ?? {}));
+// The same for MySQL / MariaDB.
+ipcMain.handle('read-mysql', (e, conn) => readMysqlCatalog(conn ?? {}));
+// And for Oracle.
+ipcMain.handle('read-oracle', (e, conn) => readOracleCatalog(conn ?? {}));
+// The tables of a database (or dump) as worksheets, for the Import Designer.
+ipcMain.handle('read-source-sheets', (e, source) => readSourceSheets(source ?? {}));
 
 // The .json files of a folder and its subfolders (8 levels), sorted; hidden folders and node_modules are skipped.
 const MAX_MODEL_FILES = 500;
@@ -374,12 +383,32 @@ ipcMain.handle('open-tsql', async (e) => {
   if (res.canceled || !res.filePaths.length) return null;
   const filePath = res.filePaths[0];
   if ((await fs.stat(filePath)).size > MAX_SQL_FILE) throw new Error(tr('The file is too large for the query editor (over 20 MB).'));
-  const data = await fs.readFile(filePath);
-  let text;
-  if (data[0] === 0xff && data[1] === 0xfe) text = data.subarray(2).toString('utf16le');
-  else if (data[0] === 0xfe && data[1] === 0xff) text = Buffer.from(data.subarray(2)).swap16().toString('utf16le');
-  else text = data.toString('utf8').replace(/^﻿/, '');
-  return { filePath, text };
+  return { filePath, text: decodeText(await fs.readFile(filePath)) };
+});
+
+// UTF-8, or UTF-16 with a byte order mark.
+function decodeText(data) {
+  if (data[0] === 0xff && data[1] === 0xfe) return data.subarray(2).toString('utf16le');
+  if (data[0] === 0xfe && data[1] === 0xff) return Buffer.from(data.subarray(2)).swap16().toString('utf16le');
+  return data.toString('utf8').replace(/^\uFEFF/, '');
+}
+
+// Pick a MySQL / MariaDB dump for "Import from MySQL / MariaDB Dump". Only the
+// schema goes to the page; "Copy rows" reads the INSERTs from the file again.
+const MAX_DUMP_FILE = 1024 * 1024 * 1024;
+ipcMain.handle('open-mysql-dump', async (e) => {
+  const res = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), {
+    title: tr('Import tables from a MySQL / MariaDB dump'),
+    properties: ['openFile'],
+    filters: [
+      { name: tr('MySQL / MariaDB dump'), extensions: ['sql', 'dump'] },
+      { name: tr('All Files'), extensions: ['*'] },
+    ],
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  const filePath = res.filePaths[0];
+  if ((await fs.stat(filePath)).size > MAX_DUMP_FILE) throw new Error(tr('The dump is too large to read (over 1 GB).'));
+  return { filePath, ...(await readMysqlDump(decodeText(await fs.readFile(filePath)))) };
 });
 
 ipcMain.handle('save-file', async (e, { filePath, text, saveAs, defaultName, kind }) => {
@@ -587,6 +616,9 @@ function buildMenu() {
         { label: tr('Import from SQLite Database…'), icon: menuIcon('db-import'), click: cmd('import-sqlite') },
         { label: tr('Import from SQL Server Database…'), icon: menuIcon('db-import'), click: cmd('import-mssql') },
         { label: tr('Import from SQL Server Script…'), icon: menuIcon('db-import'), click: cmd('import-tsql') },
+        { label: tr('Import from MySQL / MariaDB Database…'), icon: menuIcon('db-import'), click: cmd('import-mysql') },
+        { label: tr('Import from MySQL / MariaDB Dump…'), icon: menuIcon('db-import'), click: cmd('import-mysql-dump') },
+        { label: tr('Import from Oracle Database…'), icon: menuIcon('db-import'), click: cmd('import-oracle') },
         { label: tr('Import from Entity Framework / JSON…'), icon: menuIcon('import-spreadsheet'), click: cmd('import-model') },
         { label: tr('Import from a folder of JSON files…'), icon: menuIcon('import-spreadsheet'), click: cmd('import-model-folder') },
         { label: tr('Import from Excel / CSV…'), icon: menuIcon('import-spreadsheet'), accelerator: 'CmdOrCtrl+Alt+E', click: cmd('import-spreadsheet') },

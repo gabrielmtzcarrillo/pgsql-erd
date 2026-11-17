@@ -89,6 +89,18 @@ Read the tables of a Microsoft SQL Server database, or of a T-SQL script, and ad
 
 ![Import from SQL Server](docs/screenshots/mssql-import.png)
 
+### Import from MySQL / MariaDB and Oracle, and copy the rows
+
+Read the tables of a MySQL or MariaDB database (or a `mysqldump` file) or of an Oracle schema, add them to the diagram,
+and copy their rows into the connected PostgreSQL database in one transaction. The same copy works from SQL Server and
+SQLite.
+
+![Import from MySQL](docs/screenshots/mysql-import.png)
+
+![Copy rows](docs/screenshots/copy-rows.png)
+
+![Import from Oracle](docs/screenshots/oracle-import.png)
+
 ### Compare / sync
 
 Differences with the database and the migration SQL.
@@ -263,7 +275,42 @@ A force-directed view; double-click a vertex to expand its neighbours.
     are converted).
   - Views, computed column expressions (the column is kept), `CHECK` constraints, foreign key actions, multi-column unique
     constraints and non-unique indexes are not imported.
-- Live SQL preview with syntax highlighting, and export to PostgreSQL DDL (`CREATE TABLE`, primary keys, unique
+- Import tables from **MySQL** (5.7 or later) and **MariaDB** (10.2 or later):
+  - **File → Import from MySQL / MariaDB Database…** asks for the host, port, database, user, password and SSL mode
+    (off, required without a certificate check, or verified). Only `information_schema` is read.
+  - **File → Import from MySQL / MariaDB Dump…** reads a `.sql` file written by `mysqldump`, `mariadb-dump` or
+    `SHOW CREATE TABLE`: its `CREATE TABLE` statements give the tables, and its `INSERT` statements are the rows that
+    **Copy rows** copies (below). A dump of several databases (`USE` before each) keeps each one as a schema. The dump is
+    not run.
+  - Types: `tinyint(1)` → `boolean`, `int unsigned` → `bigint`, `bigint unsigned` → `numeric(20,0)`, `datetime` →
+    `timestamp`, `timestamp` → `timestamp with time zone` (MySQL stores it in UTC), `enum` / `set` → `text`, `blob` →
+    `bytea`, `json` → `jsonb` (MariaDB's JSON, a `LONGTEXT` with a `json_valid` check, too), `year` → `smallint`,
+    `bit(1)` → `boolean`, spatial types → `geometry` (needs PostGIS). An `AUTO_INCREMENT` integer becomes a serial type.
+  - Primary keys, `NOT NULL`, single-column unique keys (not prefix or functional ones), foreign keys and comments are
+    kept. Defaults are translated (`CURRENT_TIMESTAMP(3)`, `now()` → `CURRENT_TIMESTAMP`, `uuid()` →
+    `gen_random_uuid()`, `'1'` → `true` on a boolean, `b'0'` → `false`).
+- Import tables from **Oracle Database** (12.1 or later) with **File → Import from Oracle Database…**: host, port,
+  service name, user, password and, optionally, the schema to read (the user's own by default). node-oracledb runs in
+  Thin mode, so no Oracle Client is installed. Only the `ALL_*` dictionary views are read.
+  - Types: `NUMBER(p)` → `smallint` / `integer` / `bigint` / `numeric(p,0)` by size, `NUMBER(p,s)` → `numeric(p,s)`,
+    `NUMBER` → `numeric`, `VARCHAR2` / `NVARCHAR2` → `character varying` (in characters), `CLOB` → `text`, `BLOB` →
+    `bytea`, `RAW(16)` → `uuid`, `DATE` → `timestamp(0)` (an Oracle `DATE` has a time), `TIMESTAMP WITH [LOCAL] TIME ZONE`
+    → `timestamp with time zone`, `INTERVAL` → `interval`, `XMLTYPE` → `xml`, `JSON` → `jsonb`. An identity column
+    becomes a serial type. Upper-case names become snake_case (`CUSTOMER_ID` → `customer_id`).
+  - Primary keys, `NOT NULL`, single-column unique constraints and unique indexes, foreign keys (a key to another schema
+    points to a schema of that name) and comments are kept; `SYSDATE` / `SYSTIMESTAMP` → `CURRENT_TIMESTAMP`, `SYS_GUID()`
+    → `gen_random_uuid()`.
+- In every import a foreign key column takes the type of the column it references, so the key can be created.
+- **Copy rows**: after tables from MySQL / MariaDB, SQL Server, Oracle, SQLite or a MySQL dump are added to the diagram,
+  **Copy the rows into the connected database** creates the missing tables in the connected PostgreSQL database and
+  copies every row, optionally emptying the tables first. Everything runs in **one transaction**: the tables are created
+  without foreign keys, the rows go in batches with every value sent as a parameter, then the foreign keys are added and
+  each serial column's sequence is moved past the copied keys. If anything fails, or you press **Stop**, nothing is
+  changed. It needs a connection whose policy allows writes and schema changes, and it is written to the audit log.
+  Values arrive unchanged: numbers and decimals as text (no rounding), dates and times by their wall-clock value,
+  MySQL's zero dates as `NULL`, binary data as `bytea`, JSON as `jsonb`. The copy is a snapshot, not a running
+  replication.
+- Live SQL preview (`CREATE TABLE`, primary keys, unique
   constraints, foreign keys, comments), SVG or PNG. **Save As…** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>)
   writes any of these: the file type picked in the dialog (`.pgerd`, `.sql`, `.svg` or `.png`) decides the format.
 - An Office-style ribbon with labelled command groups and two-tone colour icons, which the
@@ -447,7 +494,11 @@ Maps the worksheets of an Excel workbook onto PostgreSQL tables and exports a re
 template** (Database → Excel Import Designer, Ctrl+Alt+M, or **Import** in the tab bar). Three panels:
 the database explorer, a mapping canvas and a read-only preview of an example workbook.
 
-- Open an example `.xlsx` on the right and **Add as source**: one Excel source per worksheet. Pick how it is
+- Open an example `.xlsx` on the right (or a folder of JSON files, or **Open database…**: the tables of a MySQL /
+  MariaDB, SQL Server, Oracle or SQLite database or of a MySQL dump, one worksheet per table with the column names in
+  its first row) and **Add as source**: one source block per worksheet. The rows of a database are read when it is
+  opened, up to 100,000 per table, and **Run** imports them through the blocks like the rows of a workbook; the template
+  keeps no connection. Pick how it is
   found: by name, position or its headers; at a **fixed position** (e.g. headers at `C4`, data from `C5`, with
   title rows above) or by **finding the header names** in a range of rows, so reordered columns and moved
   headers still work. Click a cell of the preview to move the header or the first data row.
@@ -651,6 +702,15 @@ src/renderer/lib/sqliteimport.js SQLite catalog -> table specs for the import di
 src/main/database/sqlite.cjs reads the schema of a SQLite file (node:sqlite, read-only)
 src/renderer/lib/mssqlimport.js SQL Server catalog and T-SQL script parser -> table specs for the import dialog
 src/main/database/mssql.cjs reads the schema of a SQL Server database (mssql / tedious, read-only)
+src/renderer/lib/mysqlimport.js MySQL / MariaDB catalog -> table specs for the import dialog
+src/shared/mysql-dump.js  MySQL dump reader: statements, CREATE TABLE, INSERT rows
+src/main/database/mysql.cjs reads the schema of a MySQL / MariaDB database (mysql2, read-only)
+src/renderer/lib/oracleimport.js Oracle catalog -> table specs for the import dialog
+src/main/database/oracle.cjs reads the schema of an Oracle schema (node-oracledb Thin mode, read-only)
+src/renderer/lib/fktypes.js foreign key columns take their referenced column's type
+src/renderer/copyui.js    "Copy rows": the option of the import dialog and its progress
+src/main/database/data-copy.cjs copies rows from MySQL, SQL Server, Oracle, SQLite or a dump into PostgreSQL
+src/main/database/source-sheets.cjs database tables as worksheets for the Import Designer
 src/renderer/lib/sql.js   PostgreSQL DDL generation
 src/renderer/lib/layout.js table geometry, relationship routing, auto layout
 src/renderer/lib/catalog.js catalog rows -> diagram model

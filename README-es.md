@@ -91,6 +91,18 @@ Lee las tablas de una base de datos Microsoft SQL Server, o de un script T-SQL, 
 
 ![Importar desde SQL Server](docs/screenshots/es/mssql-import.png)
 
+### Importar desde MySQL / MariaDB y Oracle, y copiar las filas
+
+Lee las tablas de una base de datos MySQL o MariaDB (o de un archivo de `mysqldump`) o de un esquema de Oracle, agrégalas
+al diagrama y copia sus filas a la base de datos PostgreSQL conectada en una sola transacción. La misma copia funciona
+desde SQL Server y SQLite.
+
+![Importar desde MySQL](docs/screenshots/es/mysql-import.png)
+
+![Copiar filas](docs/screenshots/es/copy-rows.png)
+
+![Importar desde Oracle](docs/screenshots/es/oracle-import.png)
+
 ### Comparar / sincronizar
 
 Las diferencias con la base de datos y el SQL de migración.
@@ -272,6 +284,44 @@ Una vista dirigida por fuerzas; haz doble clic en un vértice para expandir sus 
     `references` (`tabla.columna` o `esquema.tabla.columna`); una tabla también puede listar `primaryKey` y `foreignKeys`.
   - El mismo diálogo de la importación de Excel permite elegir y renombrar las tablas y ver el SQL. Hay un ejemplo en
     [docs/examples/ShopContext.cs](docs/examples/ShopContext.cs).
+- Importa tablas desde **MySQL** (5.7 o posterior) y **MariaDB** (10.2 o posterior):
+  - **Archivo → Importar desde base de datos MySQL / MariaDB…** pide el host, el puerto, la base de datos, el usuario, la
+    contraseña y el modo SSL (desactivado, obligatorio sin comprobar el certificado, o verificado). Solo se lee
+    `information_schema`.
+  - **Archivo → Importar desde volcado de MySQL / MariaDB…** lee un archivo `.sql` escrito por `mysqldump`, `mariadb-dump` o
+    `SHOW CREATE TABLE`: sus `CREATE TABLE` dan las tablas y sus `INSERT` son las filas que copia **Copiar filas** (abajo).
+    Un volcado de varias bases de datos (`USE` antes de cada una) conserva cada una como esquema. El volcado no se ejecuta.
+  - Tipos: `tinyint(1)` → `boolean`, `int unsigned` → `bigint`, `bigint unsigned` → `numeric(20,0)`, `datetime` →
+    `timestamp`, `timestamp` → `timestamp with time zone` (MySQL lo guarda en UTC), `enum` / `set` → `text`, `blob` →
+    `bytea`, `json` → `jsonb` (también el JSON de MariaDB, un `LONGTEXT` con una comprobación `json_valid`), `year` →
+    `smallint`, `bit(1)` → `boolean`, tipos espaciales → `geometry` (requiere PostGIS). Un entero `AUTO_INCREMENT` pasa a
+    un tipo serial.
+  - Se conservan las claves primarias, `NOT NULL`, las claves únicas de una sola columna (no las de prefijo ni las
+    funcionales), las claves foráneas y los comentarios. Los valores por defecto se traducen (`CURRENT_TIMESTAMP(3)`,
+    `now()` → `CURRENT_TIMESTAMP`, `uuid()` → `gen_random_uuid()`, `'1'` → `true` en un booleano, `b'0'` → `false`).
+- Importa tablas desde **Oracle Database** (12.1 o posterior) con **Archivo → Importar desde Oracle Database…**: host,
+  puerto, nombre del servicio, usuario, contraseña y, opcionalmente, el esquema a leer (por defecto el del usuario).
+  node-oracledb funciona en modo Thin, así que no se instala Oracle Client. Solo se leen las vistas `ALL_*` del diccionario.
+  - Tipos: `NUMBER(p)` → `smallint` / `integer` / `bigint` / `numeric(p,0)` según el tamaño, `NUMBER(p,s)` →
+    `numeric(p,s)`, `NUMBER` → `numeric`, `VARCHAR2` / `NVARCHAR2` → `character varying` (en caracteres), `CLOB` → `text`,
+    `BLOB` → `bytea`, `RAW(16)` → `uuid`, `DATE` → `timestamp(0)` (un `DATE` de Oracle tiene hora),
+    `TIMESTAMP WITH [LOCAL] TIME ZONE` → `timestamp with time zone`, `INTERVAL` → `interval`, `XMLTYPE` → `xml`, `JSON` →
+    `jsonb`. Una columna de identidad pasa a un tipo serial. Los nombres en mayúsculas pasan a snake_case
+    (`CUSTOMER_ID` → `customer_id`).
+  - Se conservan las claves primarias, `NOT NULL`, las restricciones únicas e índices únicos de una sola columna, las
+    claves foráneas (una clave a otro esquema apunta a un esquema con ese nombre) y los comentarios; `SYSDATE` /
+    `SYSTIMESTAMP` → `CURRENT_TIMESTAMP`, `SYS_GUID()` → `gen_random_uuid()`.
+- En todas las importaciones una columna de clave foránea toma el tipo de la columna a la que apunta, para que la clave
+  se pueda crear.
+- **Copiar filas**: después de agregar al diagrama tablas de MySQL / MariaDB, SQL Server, Oracle, SQLite o de un volcado de
+  MySQL, **Copiar las filas a la base de datos conectada** crea las tablas que faltan en la base de datos PostgreSQL
+  conectada y copia todas las filas, vaciando antes las tablas si se pide. Todo ocurre en **una sola transacción**: las
+  tablas se crean sin claves foráneas, las filas entran por lotes con cada valor enviado como parámetro, luego se agregan
+  las claves foráneas y la secuencia de cada columna serial se mueve después de las claves copiadas. Si algo falla, o
+  pulsas **Detener**, no se cambia nada. Requiere una conexión cuya política permita escrituras y cambios de esquema, y
+  queda en el registro de auditoría. Los valores llegan sin cambios: números y decimales como texto (sin redondeo), fechas
+  y horas por su valor de reloj, las fechas cero de MySQL como `NULL`, los datos binarios como `bytea` y el JSON como
+  `jsonb`. La copia es una instantánea, no una replicación continua.
 - Vista previa SQL en vivo con resaltado de sintaxis, y exportación a DDL de PostgreSQL (`CREATE TABLE`, claves
   primarias, restricciones únicas, claves foráneas, comentarios), SVG o PNG. **Guardar como…**
   (<kbd>Ctrl</kbd>+<kbd>Mayús</kbd>+<kbd>S</kbd>) escribe cualquiera de ellos: el tipo de archivo elegido en el
@@ -474,7 +524,11 @@ reutilizable y portátil (Base de datos → Diseñador de importación desde Exc
 barra de pestañas). Tres paneles: el explorador de la base de datos, un lienzo de mapeo y una vista de solo
 lectura de un libro de ejemplo.
 
-- Abre un `.xlsx` de ejemplo a la derecha y usa **Agregar como origen**: un origen de Excel por hoja. Elige cómo
+- Abre un `.xlsx` de ejemplo a la derecha (o una carpeta de archivos JSON, o **Abrir base de datos…**: las tablas de una
+  base de datos MySQL / MariaDB, SQL Server, Oracle o SQLite o de un volcado de MySQL, una hoja por tabla con los nombres de
+  las columnas en su primera fila) y usa **Agregar como origen**: un bloque de origen por hoja. Las filas de una base de
+  datos se leen al abrirla, hasta 100 000 por tabla, y **Ejecutar** las importa a través de los bloques como las filas de
+  un libro; la plantilla no guarda ninguna conexión. Elige cómo
   se encuentra: por nombre, posición o sus encabezados; en una **posición fija** (p. ej. encabezados en `C4`,
   datos desde `C5`, con filas de título arriba) o **buscando los nombres de encabezado** en un rango de filas,
   de modo que columnas reordenadas y encabezados desplazados sigan funcionando. Haz clic en una celda de la
@@ -701,6 +755,15 @@ src/renderer/lib/sqliteimport.js catálogo de SQLite -> especificaciones de tabl
 src/main/database/sqlite.cjs lee el esquema de un archivo SQLite (node:sqlite, solo lectura)
 src/renderer/lib/mssqlimport.js catálogo de SQL Server y lector de scripts T-SQL -> especificaciones de tabla para el diálogo de importación
 src/main/database/mssql.cjs lee el esquema de una base de datos SQL Server (mssql / tedious, solo lectura)
+src/renderer/lib/mysqlimport.js catálogo de MySQL / MariaDB -> especificaciones de tabla para el diálogo de importación
+src/shared/mysql-dump.js  lector de volcados de MySQL: instrucciones, CREATE TABLE, filas de INSERT
+src/main/database/mysql.cjs lee el esquema de una base de datos MySQL / MariaDB (mysql2, solo lectura)
+src/renderer/lib/oracleimport.js catálogo de Oracle -> especificaciones de tabla para el diálogo de importación
+src/main/database/oracle.cjs lee un esquema de Oracle (node-oracledb en modo Thin, solo lectura)
+src/renderer/lib/fktypes.js las columnas de clave foránea toman el tipo de la columna referenciada
+src/renderer/copyui.js    «Copiar filas»: la opción del diálogo de importación y su progreso
+src/main/database/data-copy.cjs copia filas de MySQL, SQL Server, Oracle, SQLite o un volcado a PostgreSQL
+src/main/database/source-sheets.cjs tablas de una base de datos como hojas para el Diseñador de importación
 src/renderer/lib/sql.js   generación de DDL de PostgreSQL
 src/renderer/lib/layout.js geometría de las tablas, trazado de relaciones, organización automática
 src/renderer/lib/catalog.js filas del catálogo -> modelo del diagrama
