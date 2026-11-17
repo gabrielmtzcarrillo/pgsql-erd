@@ -87,6 +87,7 @@ export function setupCopy({ host, h, status }) {
   /** Show the option for a source that has rows (null hides it), checking the connection again. */
   async function offer(source) {
     options.hidden = !source;
+    options.style.display = source ? '' : 'none'; // .db-toolbar's display: flex would override [hidden]
     if (!source) return;
     let info = null;
     try {
