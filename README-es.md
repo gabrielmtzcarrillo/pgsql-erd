@@ -83,6 +83,14 @@ Lee las tablas de un archivo de base de datos SQLite y las agrega al diagrama co
 
 ![Importar desde SQLite](docs/screenshots/es/sqlite-import.png)
 
+### Importar desde SQL Server
+
+Lee las tablas de una base de datos Microsoft SQL Server, o de un script T-SQL, y las agrega al diagrama como tablas de PostgreSQL.
+
+![Conectar a SQL Server](docs/screenshots/es/mssql-connect.png)
+
+![Importar desde SQL Server](docs/screenshots/es/mssql-import.png)
+
 ### Comparar / sincronizar
 
 Las diferencias con la base de datos y el SQL de migración.
@@ -225,6 +233,29 @@ Una vista dirigida por fuerzas; haz doble clic en un vértice para expandir sus 
   - No se importan las vistas, las tablas virtuales, las restricciones `CHECK`, las restricciones únicas de varias columnas
     ni los índices no únicos.
   - El mismo diálogo de la importación de Excel permite elegir y renombrar las tablas, establecer el esquema y ver el SQL.
+- Importa tablas desde **Microsoft SQL Server** (2008 o posterior, incluida Azure SQL Database):
+  - **Archivo → Importar desde base de datos SQL Server…** pide el servidor (`host`, `host\instancia` o `host` y un puerto),
+    la base de datos y un inicio de sesión de SQL Server o una cuenta de Windows (NTLM: usuario, contraseña y dominio), con
+    el cifrado activado por defecto y una opción para confiar en un certificado autofirmado. Solo se leen las vistas del
+    catálogo; no se escribe nada ni se copian filas. La configuración, salvo la contraseña, se recuerda para la próxima vez.
+  - **Archivo → Importar desde script de SQL Server…** lee en su lugar un archivo `.sql`, como el que escribe SQL Server
+    Management Studio con *Incluir tabla como → CREATE en* o *Generar scripts* (UTF-8 o UTF-16). Se entienden `CREATE TABLE`
+    con restricciones de columna y de tabla, `ALTER TABLE … ADD` (restricciones, `DEFAULT … FOR`, columnas),
+    `ALTER TABLE … DROP COLUMN`, `CREATE UNIQUE INDEX`, tipos alias (`CREATE TYPE … FROM`) y las descripciones de
+    `sp_addextendedproperty`; las demás instrucciones se omiten. El script no se ejecuta.
+  - Los tipos pasan a sus equivalentes de PostgreSQL: `nvarchar(50)` → `character varying(50)`, `nvarchar(max)` → `text`,
+    `datetime` / `datetime2` → `timestamp`, `datetimeoffset` → `timestamp with time zone`, `bit` → `boolean`,
+    `uniqueidentifier` → `uuid`, `money` → `numeric(19,4)`, `varbinary` / `image` / `rowversion` → `bytea`,
+    `tinyint` → `smallint`; `sql_variant` y `hierarchyid` pasan a `text`. Una columna `IDENTITY` de tipo entero pasa a
+    `serial`, `bigserial` o `smallserial`.
+  - Se conservan las claves primarias, `NOT NULL`, las restricciones únicas e índices únicos de una sola columna (no los
+    filtrados), las claves foráneas y los comentarios `MS_Description`. Los valores por defecto se traducen
+    (`getdate()` / `sysdatetime()` → `CURRENT_TIMESTAMP`, `newid()` → `gen_random_uuid()`, `N'…'` → `'…'`, `((1))` → `true`
+    en una columna `bit`); uno que llama a otra función se descarta.
+  - Las tablas del esquema `dbo` van al esquema indicado en el diálogo; los demás esquemas conservan su nombre (en
+    snake_case cuando se convierten los nombres).
+  - No se importan las vistas, las expresiones de columnas calculadas (la columna se conserva), las restricciones `CHECK`,
+    las acciones de las claves foráneas, las restricciones únicas de varias columnas ni los índices no únicos.
 - Importa tablas desde **clases de Entity Framework Core o JSON** con **Archivo → Importar desde Entity Framework / JSON…** o
   soltando archivos `.cs` en la ventana. Elige juntas las clases de entidad y el `DbContext`; se leen como texto, no se compila nada:
   - **Entidades:** las propiedades públicas (también las heredadas) se convierten en columnas. Se respetan los nombres de los
@@ -662,12 +693,14 @@ src/renderer/dbtree.js    explorador de la base de datos
 src/renderer/graph.js     pestaña Grafo (Apache AGE)
 src/renderer/databrowser.js pestañas de datos y filtros
 src/renderer/assistant.js pestaña Asistente y configuración de los proveedores de IA
-src/renderer/xlui.js      diálogo de importación de Excel / CSV, Entity Framework / JSON y SQLite
+src/renderer/xlui.js      diálogo de importación de Excel / CSV, Entity Framework / JSON, SQLite y SQL Server
 src/renderer/importdesigner.js pestañas Importación (diseñador de importación Excel -> PostgreSQL)
 src/renderer/lib/pgerd.js lectura y escritura de .pgerd
 src/renderer/lib/efimport.js lectores de Entity Framework Core (C#) y JSON para el diálogo de importación
 src/renderer/lib/sqliteimport.js catálogo de SQLite -> especificaciones de tabla para el diálogo de importación
 src/main/database/sqlite.cjs lee el esquema de un archivo SQLite (node:sqlite, solo lectura)
+src/renderer/lib/mssqlimport.js catálogo de SQL Server y lector de scripts T-SQL -> especificaciones de tabla para el diálogo de importación
+src/main/database/mssql.cjs lee el esquema de una base de datos SQL Server (mssql / tedious, solo lectura)
 src/renderer/lib/sql.js   generación de DDL de PostgreSQL
 src/renderer/lib/layout.js geometría de las tablas, trazado de relaciones, organización automática
 src/renderer/lib/catalog.js filas del catálogo -> modelo del diagrama

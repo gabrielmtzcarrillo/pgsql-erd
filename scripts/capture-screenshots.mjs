@@ -74,7 +74,99 @@ const SHOTS = {
     await shot('sqlite-import.png');
     await run(`document.querySelector('#xl-import-dialog').close()`);
   },
+  // Read a SQL Server database through File > Import from SQL Server Database. Needs a server, e.g. a container:
+  //   docker run -d -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='Pgerd_Test_2026!' -p 14333:1433 mcr.microsoft.com/mssql/server:2022-latest
+  //   PGERD_MSSQL_HOST=127.0.0.1 PGERD_MSSQL_PORT=14333 PGERD_MSSQL_PASSWORD='Pgerd_Test_2026!' node scripts/capture-screenshots.mjs mssql-import
+  // The ShopDemo database is created on the first run.
+  async 'mssql-import'({ eval: run, wait, shot }) {
+    if (!process.env.PGERD_MSSQL_HOST) return console.log('mssql-import: skipped, set PGERD_MSSQL_HOST');
+    const conn = {
+      server: process.env.PGERD_MSSQL_HOST,
+      port: process.env.PGERD_MSSQL_PORT || '1433',
+      user: process.env.PGERD_MSSQL_USER || 'sa',
+      password: process.env.PGERD_MSSQL_PASSWORD || '',
+      trustServerCertificate: true,
+    };
+    await createShopMssql(conn);
+    await run(`(() => {
+      const b = Object.assign(document.createElement('button'), { hidden: true });
+      b.dataset.cmd = 'import-mssql';
+      document.body.append(b);
+      b.click();
+      b.remove();
+      const f = document.querySelector('#mssql-connect-form').elements;
+      Object.assign(f.namedItem('server'), { value: ${JSON.stringify(conn.server)} });
+      f.namedItem('port').value = ${JSON.stringify(String(conn.port))};
+      f.namedItem('database').value = 'ShopDemo';
+      f.namedItem('user').value = ${JSON.stringify(conn.user)};
+      f.namedItem('password').value = ${JSON.stringify(conn.password)};
+      f.namedItem('trustServerCertificate').checked = true;
+    })()`);
+    await wait(300);
+    await shot('mssql-connect.png');
+    await run(`document.querySelector('#mssql-connect-ok').click()`);
+    const done = async () => (await run(`!document.querySelector('#mssql-connect-dialog').open`)).result.value;
+    for (let n = 0; n < 75 && !(await done()); n++) await wait(200);
+    await wait(500);
+    await shot('mssql-import.png');
+    await run(`document.querySelector('#xl-import-dialog').close()`);
+  },
 };
+
+// The ShopDemo database of the mssql-import shot.
+const SHOP_MSSQL = `
+CREATE SCHEMA Sales
+GO
+CREATE TABLE dbo.Customer (
+  CustomerId int IDENTITY(1,1) NOT NULL CONSTRAINT PK_Customer PRIMARY KEY,
+  FullName nvarchar(100) NOT NULL,
+  Email nvarchar(320) NULL CONSTRAINT UQ_Customer_Email UNIQUE,
+  IsActive bit NOT NULL CONSTRAINT DF_Customer_IsActive DEFAULT ((1)),
+  CreatedAt datetime2(3) NOT NULL CONSTRAINT DF_Customer_CreatedAt DEFAULT (sysdatetime())
+)
+GO
+CREATE TABLE dbo.Product (
+  ProductId int IDENTITY(1,1) NOT NULL CONSTRAINT PK_Product PRIMARY KEY,
+  Sku varchar(40) NOT NULL CONSTRAINT UQ_Product_Sku UNIQUE,
+  Name nvarchar(200) NOT NULL,
+  Price money NOT NULL CONSTRAINT DF_Product_Price DEFAULT ((0)),
+  Photo varbinary(max) NULL
+)
+GO
+CREATE TABLE Sales.[Order] (
+  OrderId bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_Order PRIMARY KEY,
+  CustomerId int NOT NULL CONSTRAINT FK_Order_Customer REFERENCES dbo.Customer (CustomerId),
+  PlacedAt datetime NOT NULL CONSTRAINT DF_Order_PlacedAt DEFAULT (getdate()),
+  Status nvarchar(20) NOT NULL CONSTRAINT DF_Order_Status DEFAULT (N'new'),
+  Token uniqueidentifier NOT NULL CONSTRAINT DF_Order_Token DEFAULT (newid())
+)
+GO
+CREATE TABLE Sales.OrderItem (
+  OrderId bigint NOT NULL CONSTRAINT FK_OrderItem_Order REFERENCES Sales.[Order] (OrderId),
+  ProductId int NOT NULL CONSTRAINT FK_OrderItem_Product REFERENCES dbo.Product (ProductId),
+  Quantity smallint NOT NULL CONSTRAINT DF_OrderItem_Quantity DEFAULT ((1)),
+  UnitPrice decimal(10, 2) NOT NULL,
+  CONSTRAINT PK_OrderItem PRIMARY KEY (OrderId, ProductId)
+)
+GO
+EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'People who buy', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'Customer'
+`;
+
+async function createShopMssql(conn) {
+  const sql = createRequire(import.meta.url)('mssql');
+  const { mssqlConfig } = createRequire(import.meta.url)('../src/main/database/mssql.cjs');
+  const run = async (database, script) => {
+    const pool = new sql.ConnectionPool(mssqlConfig({ ...conn, database }));
+    await pool.connect();
+    try {
+      for (const batch of script.split(/^\s*GO\s*$/im)) if (batch.trim()) await pool.request().batch(batch);
+    } finally {
+      await pool.close();
+    }
+  };
+  await run('master', "IF DB_ID('ShopDemo') IS NOT NULL BEGIN ALTER DATABASE ShopDemo SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE ShopDemo END\nGO\nCREATE DATABASE ShopDemo");
+  await run('ShopDemo', SHOP_MSSQL);
+}
 
 // ---------------------------------------------------------------- CDP
 

@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('erdHost', {
   openModel: () => ipcRenderer.invoke('open-model'),
   openSqlite: () => ipcRenderer.invoke('open-sqlite'),
   readSqlite: (filePath) => ipcRenderer.invoke('read-sqlite', filePath),
+  readMssql: (conn) => ipcRenderer.invoke('read-mssql', conn),
+  openTsql: () => ipcRenderer.invoke('open-tsql'),
   openModelFolder: () => ipcRenderer.invoke('open-model-folder'),
   openJsonFolder: () => ipcRenderer.invoke('open-json-folder'),
   readJsonFolderFiles: (folder, names) => ipcRenderer.invoke('read-json-folder-files', folder, names),

@@ -633,6 +633,36 @@
     </form>
   </dialog>
 
+  <dialog id="mssql-connect-dialog" class="medium">
+    <form method="dialog" id="mssql-connect-form">
+      <h3>Connect to SQL Server</h3>
+      <p class="muted">Only the schema of the database is read: tables, columns, keys and descriptions. Nothing is written.</p>
+      <div class="grid2">
+        <label>Server<input name="server" placeholder="localhost\SQLEXPRESS" autocomplete="off" spellcheck="false"></label>
+        <label>Port<input name="port" placeholder="1433" inputmode="numeric"></label>
+        <label>Database<input name="database" placeholder="master" autocomplete="off" spellcheck="false" required></label>
+        <label>Authentication
+          <select name="auth">
+            <option value="sql">SQL Server login</option>
+            <option value="ntlm">Windows (NTLM)</option>
+          </select>
+        </label>
+        <label>User<input name="user" placeholder="sa" autocomplete="off" spellcheck="false"></label>
+        <label>Password<input name="password" type="password" autocomplete="off"></label>
+        <label id="mssql-domain">Domain<input name="domain" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <div class="db-toolbar">
+        <label class="check"><input type="checkbox" name="encrypt" checked> Encrypt the connection</label>
+        <label class="check"><input type="checkbox" name="trustServerCertificate"> Trust the server certificate</label>
+      </div>
+      <p id="mssql-connect-status" class="db-status"></p>
+      <menu>
+        <button value="cancel" formnovalidate data-icon="close">Cancel</button>
+        <button type="submit" value="ok" class="primary" id="mssql-connect-ok" data-icon="db-connect">Read schema</button>
+      </menu>
+    </form>
+  </dialog>
+
   <div id="filter-popup" class="filter-popup" hidden></div>
 
   <script type="module" src="app.js"></script>
