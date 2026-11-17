@@ -6,7 +6,8 @@ A desktop ERD (entity–relationship diagram) tool and database workbench for Po
 Node.js and Electron. It opens and saves **pgAdmin 4 `.pgerd` files**, so diagrams can move back and
 forth between pgAdmin's ERD tool and this app, and adds schema-aware TypeScript scripts (validators,
 test-data generators, migrations) with dry runs, a query analyzer, a data browser with Excel-style
-filters, and an AI assistant that works with Ollama, vLLM, OpenAI and other OpenAI-compatible servers.
+filters, Apache AGE graphs, and imports from Excel, Entity Framework, SQLite, SQL Server, MySQL / MariaDB
+and Oracle that can also copy the rows into PostgreSQL.
 
 ![Diagram](docs/screenshots/diagram.png)
 
@@ -14,11 +15,11 @@ filters, and an AI assistant that works with Ollama, vLLM, OpenAI and other Open
 
 ### Ribbon and tabs
 
-Commands are grouped Office-style (File, Database) with two-tone
-colour icons; the native menus use the same icons. Below the ribbon are the tabs: a window starts with
-one diagram, and the **+ Diagram**, **+ Scripts**, **+ Query**, **+ Builder**, **+ Graph** and **+ Data**
-buttons open as many more as you like (**+ Diagram** is also <kbd>Ctrl</kbd>+<kbd>N</kbd>); the
-**Assistant** sits at the far end. Opening a `.pgerd` file shows it in a diagram tab of its own (or the
+Commands are grouped Office-style (File: Open, Save, Save As…; Database: Connect, Explorer, Import Excel,
+Import designer) with two-tone colour icons; the native menus use the same icons. Below the ribbon are the
+tabs: a window starts with one diagram, and the **+ Diagram**, **+ Scripts**, **+ Query**, **+ Builder**,
+**+ Import**, **+ Graph** and **+ Data** buttons open as many more as you like (**+ Diagram** is also
+<kbd>Ctrl</kbd>+<kbd>N</kbd>). Opening a `.pgerd` file shows it in a diagram tab of its own (or the
 empty one you started with). **Save** and **Save As…** work on the tab in front: a diagram saves its
 `.pgerd` (Save As can also write SQL, SVG or PNG), Query and Builder tabs save their SQL to a `.sql`
 file, a Scripts tab saves its script to the project (Save As writes its code to a `.ts` file) and a
@@ -130,12 +131,6 @@ EXPLAIN ANALYZE as a tree, with time per node and index hints.
 Excel-style filters with value lists, blanks and conditions.
 
 ![Data filter](docs/screenshots/data-filter.png)
-
-### Assistant
-
-Proposes scripts that open unsaved for review; they type-check against the schema.
-
-![Assistant](docs/screenshots/assistant.png)
 
 ### Scripts in the diagram
 
@@ -347,12 +342,16 @@ PostgreSQL 10+ server:
   - primary keys, unique constraints and foreign keys (including `ON DELETE`/`ON UPDATE` changes)
   - table comments
 
-  It then generates the migration SQL that makes the database match the diagram. You can copy or save it,
+  Each change has a tick box, so you can leave some out. It then generates the migration SQL that makes the
+  database match the diagram. You can copy or save it,
   or run it on the database in a single transaction; if any statement fails, nothing is applied.
   - Statements are ordered so they work: dependent foreign keys are dropped before a key they reference and
     re-created afterwards.
   - Destructive statements (`DROP COLUMN`, `DROP TABLE`) are only included when you tick the matching
     option. Otherwise they appear as comments at the end of the script.
+  - A type change converts the values with a cast; **Drop and re-create columns whose type changed** drops the
+    column and adds it again instead, for types a cast can't convert (its data is lost and it moves to the end of
+    the table).
   - Renamed tables or columns can't be detected: they show up as a drop plus an add.
 
 ## pgvector
@@ -427,17 +426,12 @@ first line holds their metadata (`// @pgsql-erd {"type":"validator"}`).
   - `validate(name, async () => { report.error({ table, row, column, message }) })`, `report.warning/info`, `log()`
   - `faker` (seeded fake data), `seed.row(table)`, `seed.fill(table, n)` (plausible values, valid foreign keys,
     unique values that don't collide with existing rows), `seed.check(table, row)`
-  - `ai.chat(prompt)`, `ai.structured({ table | schema, prompt })` (validated JSON, see below), to generate
-    data or review it (e.g. a validator that asks the model to flag suspicious values). Uses the provider and
-    model chosen in the Assistant tab; with a remote provider you confirm before the first run that calls
-    `ai.*`, since the script may send it rows.
 - **Dry run** (F6) runs the script in a transaction that is always rolled back and reports inserts, updates,
   deletes and rows read per table. **Run** (F5) keeps the transaction open when the script changed data and
   asks you to commit or discard (rolled back automatically after 10 minutes).
 - **Permissions** per script, from profiles (Read only, Validator, Data generator, Seeder, Migration, Full
-  access) plus overrides: read rows, raw SELECT, INSERT, UPDATE, DELETE, DDL, raw SQL writes, AI. Scripts
-  without write permissions run in a `READ ONLY` transaction, so PostgreSQL enforces it as well. Every
-  profile except Migration allows AI.
+  access) plus overrides: read rows, raw SELECT, INSERT, UPDATE, DELETE, DDL, raw SQL writes. Scripts
+  without write permissions run in a `READ ONLY` transaction, so PostgreSQL enforces it as well.
 - **Validators** list each `validate()` with pass/fail; clicking an error shows the offending row, the
   validation in the editor, and links to the table in the diagram and in a data tab.
 
@@ -464,7 +458,7 @@ and a connection that allows writes, and are committed together. **Explain** sho
 **Explain analyze** (Ctrl+Shift+Enter) the actual one (always rolled back), as a tree with rows, self time
 and a bar per node. Hints point out sequential scans that discard most rows, bad row estimates, sorts and
 hashes that spill to disk and foreign keys without an index, with the `CREATE INDEX` / `ANALYZE` statement
-to insert. **Ask assistant** sends the query, its plan and the hints to the Assistant tab.
+to insert.
 
 The database explorer sits beside the editor (**Explorer**): drag a table into the SQL, or double-click it,
 to insert its name. **+ Query** next to **+ Data** opens more query tabs, each with its own SQL, results
@@ -536,8 +530,8 @@ lookups, generated keys or transformations. See [docs/import-template-spec.md](d
 ### Data tabs
 
 **Data** in the tab bar (or **Browse data** in a table's sidebar, or **Database → Browse Table Data…**)
-opens a table in its own tab: a grid with paging (100/500/1000 rows), sticky headers and **Copy**
-(tab-separated, pastes into a spreadsheet). Each column header has an Excel-style filter menu:
+opens a table in its own tab: a grid with paging (100/500/1000 rows), sticky headers, **Copy**
+(tab-separated, pastes into a spreadsheet) and **Markdown** (the page as a Markdown table). Each column header has an Excel-style filter menu:
 
 - sort ascending / descending (by the column's type: numbers and dates sort as such)
 - a checklist of the column's distinct values with their counts, **(Blanks)**, **(Select all)** and a search box;
@@ -555,30 +549,10 @@ Rows are found by their primary key, so tables without one only accept new rows;
 ALWAYS`) and generated columns are read-only. Editing is only offered when the connection's policy allows
 writes, and outside development the save is confirmed first.
 
-### Assistant
-
-Chat with a model about the schema, and let it write scripts. It sees the tables selected in the diagram
-or named in the question, their related tables, relationships and constraints, the current script and
-the last validation errors — each can be switched off. With tools enabled it can look up tables, check a
-script against the typings, validate SQL, and propose new scripts or changes; proposals open **unsaved**
-in the editor, labelled with whether they type-check. Nothing the assistant writes runs by itself.
-
-- **Providers:** Ollama, vLLM / LM Studio / llama.cpp / any OpenAI-compatible server, and OpenAI. Configure
-  them in **AI setup**; the model list comes from the server. API keys are stored encrypted with the
-  operating system's credential store (Electron `safeStorage`: Keychain, DPAPI, libsecret) and never reach the
-  window; without a credential store they are kept in memory only. `OPENAI_API_KEY` is used when set.
-- **Permissions** (saved in the project): read schema, read rows, run SELECT, create/modify scripts, run
-  validators and dry runs. Writes and DDL are never available to the assistant.
-- **Row data** is only sent when allowed (samples, query results, validator output); for remote providers
-  you confirm it first, and the panel shows whether the conversation is *schema only* or includes data.
-- **Structured output** (`ai.structured`) asks for JSON matching a JSON Schema (for a table, derived from
-  its insertable columns), then checks JSON parsing, the schema, column types, NOT NULL and lengths, and sends
-  the errors back to the model for a retry. Only valid values are returned to the script.
-
 ## Safety model
 
 - The page (renderer) never runs scripts or sees credentials: the database password is sent once when
-  connecting and stays in the main process; API keys likewise. Saved passwords are encrypted with the
+  connecting and stays in the main process. Saved passwords are encrypted with the
   operating system's credential store and never sent back to the page.
 - Scripts run in a separate process (Electron's Node) with an empty environment, a memory limit, a
   timeout and Node's permission model: no file writes, no reads outside the app, no child processes. The
@@ -588,8 +562,7 @@ in the editor, labelled with whether they type-check. Nothing the assistant writ
   is read-only by default, shown in red, and blocks DDL including migrations from the compare dialog.
 - Writes are reviewed before they are committed; `BEGIN`/`COMMIT` inside scripts are refused.
 - An audit log (**Database → Open Audit Log**, and the Activity tab) records connections, schema refreshes
-  and migrations, script runs and commits, query-tab writes, assistant requests (and whether they carried
-  row data) and settings changes.
+  and migrations, script runs and commits, query-tab writes and settings changes.
 
 ## Languages
 
@@ -602,174 +575,20 @@ Translations cover the whole interface: menus, dialogs, the diagram sidebar, eve
 summaries and query-plan hints. Messages that come from PostgreSQL itself, and the names of plan nodes
 (`Seq Scan`, `Hash Join`), stay as the server reports them.
 
-### Adding a language
-
-The English text is the key: code calls `tr('Save')` or `trn(n, '{n} table', '{n} tables')`
-(`src/shared/i18n.js`), and the static page is translated from its text when it loads. To add a language:
-
-1. Copy `src/shared/locales/es.js` to `src/shared/locales/<code>.js` and translate the values. Keep the
-   `{placeholders}` and any leading or trailing spaces.
-2. Import it in `src/shared/i18n.js` and add it to `CATALOGS` and `LOCALES` (the name shown in
-   View → Language, in its own language).
-3. Add it to `CATALOGS` in `tests/i18n.test.js` and run `npm test`. The test lists every string used in the
-   code or the page that is missing from the catalog, entries that are no longer used, and translations whose
-   placeholders don't match.
-
-New interface text goes through `tr()` / `trn()` in the same way; the test fails until each catalog has it.
-
 ## Getting started
 
 ```bash
 npm install
 npm start                          # empty diagram
 npm start -- samples/shop.pgerd    # open a file
-npm test                           # unit tests
-# integration tests against a real server (creates and drops temporary databases):
-PGERD_TEST_HOST=127.0.0.1 PGERD_TEST_PORT=5432 PGERD_TEST_USER=postgres PGERD_TEST_PASSWORD=… npm test
 ```
 
-Icons live in `src/renderer/icons.js`. After changing them, run `npm run menu-icons` to re-render
-the PNG icons of the native menus into `src/main/menu-icons/`.
+## Development
 
-To build installers (AppImage/deb, NSIS, dmg) with the `.pgerd` file association:
-
-```bash
-npm run dist
-```
-
-### Windows (.exe)
-
-On Windows, with Node.js 20+ installed, run from the repository root:
-
-```bat
-scripts\build-windows.bat
-```
-
-It is a plain batch file, so it runs from Command Prompt or by double-clicking, without changing the
-PowerShell execution policy.
-
-This installs dependencies, runs the tests and writes to `dist\`:
-
-| File | What it is |
-| --- | --- |
-| `pgsql-erd-Setup-<version>.exe` | Installer: choose the install folder, adds Start menu and desktop shortcuts, registers `.pgerd` files |
-| `pgsql-erd-<version>-portable.exe` | Single executable that runs without installing |
-| `win-unpacked\pgsql-erd.exe` | The unpacked app the other two are made from |
-
-To build only one target, pass `installer`, `portable` or `dir` (default `all`), e.g.
-`scripts\build-windows.bat portable`. Options: `--skip-tests`, `--skip-install`, `--clean` (delete
-`dist\` first). The same builds are available as npm scripts:
-`npm run dist:win` (installer + portable), `dist:win:installer`, `dist:win:portable` and `dist:win:dir`.
-
-The app, installer and uninstaller use `build/icon.ico`. The executables are unsigned, so Windows SmartScreen warns the first time they run. Building them on
-Linux or macOS also works but needs [Wine](https://www.winehq.org/) (with 32-bit support for the
-installer).
-
-## Project layout
-
-```
-src/main/main.cjs         Electron main process: windows, menus, file dialogs, file I/O
-src/main/db.cjs           PostgreSQL connection, catalog introspection, migration execution (pg)
-src/main/preload.cjs      contextBridge API exposed to the renderer (window.erdHost)
-src/main/ipc/             IPC for connections, scripts, queries, data tabs, the assistant, the audit log
-src/main/database/        per-window connections and policies, query tab runner, data browser queries,
-                          Apache AGE graphs (age.cjs)
-src/main/scripting/       type checking and transpiling (TypeScript), script runs, the script-side database API
-src/main/ai/              providers (Ollama, OpenAI-compatible, OpenAI), keys, tools, structured output
-src/main/projects/        scripts and settings in the project folder
-src/runner/               the isolated script process
-src/shared/               schema model, typings generator, permissions, context builder, JSON schema,
-                          fake data, plan analyzer, pgvector and Apache AGE helpers (used by the main
-                          process, the runner and the page)
-src/shared/i18n.js        translations: tr(), trn(), locale selection
-src/shared/locales/       translation catalogs (es.js)
-src/renderer/index.html   UI shell
-src/renderer/app.js       rendering, interaction, properties panel, commands
-src/renderer/dbui.js      connect / import / compare dialogs
-src/renderer/tabs.js      main tabs
-src/renderer/workbench.js Scripts tab
-src/renderer/query.js     Query tab
-src/renderer/querybuilder.js Builder tab (visual query builder)
-src/renderer/dbtree.js    database explorer
-src/renderer/graph.js     Graph tab (Apache AGE)
-src/renderer/databrowser.js data tabs and filters
-src/renderer/assistant.js Assistant tab and AI provider settings
-src/renderer/xlui.js      Excel / CSV, Entity Framework / JSON, SQLite and SQL Server import dialog
-src/renderer/importdesigner.js Import tabs (Excel -> PostgreSQL import designer)
-src/renderer/lib/pgerd.js .pgerd parsing and serialization
-src/renderer/lib/efimport.js Entity Framework Core (C#) and JSON readers for the import dialog
-src/renderer/lib/sqliteimport.js SQLite catalog -> table specs for the import dialog
-src/main/database/sqlite.cjs reads the schema of a SQLite file (node:sqlite, read-only)
-src/renderer/lib/mssqlimport.js SQL Server catalog and T-SQL script parser -> table specs for the import dialog
-src/main/database/mssql.cjs reads the schema of a SQL Server database (mssql / tedious, read-only)
-src/renderer/lib/mysqlimport.js MySQL / MariaDB catalog -> table specs for the import dialog
-src/shared/mysql-dump.js  MySQL dump reader: statements, CREATE TABLE, INSERT rows
-src/main/database/mysql.cjs reads the schema of a MySQL / MariaDB database (mysql2, read-only)
-src/renderer/lib/oracleimport.js Oracle catalog -> table specs for the import dialog
-src/main/database/oracle.cjs reads the schema of an Oracle schema (node-oracledb Thin mode, read-only)
-src/renderer/lib/fktypes.js foreign key columns take their referenced column's type
-src/renderer/copyui.js    "Copy rows": the option of the import dialog and its progress
-src/main/database/data-copy.cjs copies rows from MySQL, SQL Server, Oracle, SQLite or a dump into PostgreSQL
-src/main/database/source-sheets.cjs database tables as worksheets for the Import Designer
-src/renderer/lib/sql.js   PostgreSQL DDL generation
-src/renderer/lib/layout.js table geometry, relationship routing, auto layout
-src/renderer/lib/catalog.js catalog rows -> diagram model
-src/renderer/lib/diff.js  database vs diagram comparison and migration SQL
-src/renderer/lib/sync.js  import / update diagram tables from the database
-src/renderer/lib/spreadsheet.js .xlsx / CSV reading and sheet -> table conversion
-src/renderer/lib/highlight.js SQL syntax highlighting
-src/renderer/lib/querybuilder.js query builder joins and SELECT generation
-samples/shop.pgerd        example diagram
-build/icon.svg            app icon source; icon.ico (Windows) and icon.png are rendered from it
-scripts/build-windows.bat Windows build script
-scripts/capture-screenshots.mjs retakes the README screenshots that need no database (see docs/screenshots.md)
-tests/                    node:test suites
-```
-
-The renderer runs sandboxed with context isolation and no Node integration. All file access goes
-through the preload bridge.
-
-A project folder looks like this; everything is plain text, and no passwords or API keys are stored in it:
-
-```
-project/
-├── diagram.pgerd
-├── pgsql-erd.json            project settings (assistant provider, model, permissions)
-├── scripts/
-│   ├── validators/*.ts
-│   ├── generators/*.ts
-│   └── migrations/*.ts
-└── generated/database.d.ts   typings for other editors
-```
-
-## The .pgerd format
-
-A `.pgerd` file is pgAdmin's serialized react-diagrams model:
-
-```json
-{
-  "version": 80900,
-  "data": {
-    "offsetX": 0, "offsetY": 0, "zoom": 100, "gridSize": 15,
-    "layers": [
-      { "type": "diagram-links", "models": { "<link id>": { "data": {
-          "local_table_uuid": "…", "local_column_attnum": 1,
-          "referenced_table_uuid": "…", "referenced_column_attnum": 0 } } } },
-      { "type": "diagram-nodes", "models": { "<table id>": {
-          "type": "table", "x": 40, "y": 40,
-          "otherInfo": { "note": "", "data": {
-            "name": "orders", "schema": "public",
-            "columns": [{ "name": "id", "cltype": "bigint", "attnum": 0, "is_primary_key": true }],
-            "primary_key": [{ "columns": [{ "column": "id" }] }],
-            "foreign_key": [{ "name": "…", "columns": [{ "local_column": "customer_id",
-              "references": "<table id>", "referenced": "id" }] }] } } } } }
-    ]
-  }
-}
-```
-
-The app reads relationships from each table's `foreign_key` list and from the links layer. When
-saving, it rebuilds both, together with the ports pgAdmin uses to attach links to columns.
+Technical notes for people working on the code are in [devlog/](devlog/): building and testing, coding
+conventions, the project layout, the [.pgerd file format](devlog/pgerd-format.md), how the screenshots are
+taken, and the design notes of features such as the disabled AI assistant. Start with
+[devlog/DEVELOPMENT.md](devlog/DEVELOPMENT.md).
 
 ## License
 
