@@ -81,6 +81,14 @@ Read the tables of a SQLite database file and add them to the diagram as Postgre
 
 ![Import from SQLite](docs/screenshots/sqlite-import.png)
 
+### Import from SQL Server
+
+Read the tables of a Microsoft SQL Server database, or of a T-SQL script, and add them to the diagram as PostgreSQL tables.
+
+![Connect to SQL Server](docs/screenshots/mssql-connect.png)
+
+![Import from SQL Server](docs/screenshots/mssql-import.png)
+
 ### Compare / sync
 
 Differences with the database and the migration SQL.
@@ -232,6 +240,29 @@ A force-directed view; double-click a vertex to expand its neighbours.
     a function only SQLite has is dropped.
   - Views, virtual tables, `CHECK` constraints, multi-column unique constraints and non-unique indexes are not imported.
   - The same dialog as the Excel import lets you pick and rename the tables, set the schema and preview the SQL.
+- Import tables from **Microsoft SQL Server** (2008 or later, Azure SQL Database included):
+  - **File → Import from SQL Server Database…** asks for the server (`host`, `host\instance` or `host` and a port), the
+    database and a SQL Server login or a Windows account (NTLM: user, password and domain), with encryption on by default
+    and an option to trust a self-signed certificate. Only the catalog views are read; nothing is written and no rows
+    are copied. The settings but the password are remembered for the next time.
+  - **File → Import from SQL Server Script…** reads a `.sql` file instead, such as the one SQL Server Management Studio
+    writes with *Script Table as → CREATE To* or *Generate Scripts* (UTF-8 or UTF-16). `CREATE TABLE` with inline and table
+    constraints, `ALTER TABLE … ADD` (constraints, `DEFAULT … FOR`, columns), `ALTER TABLE … DROP COLUMN`,
+    `CREATE UNIQUE INDEX`, alias types (`CREATE TYPE … FROM`) and `sp_addextendedproperty` descriptions are understood;
+    other statements are skipped. The script is not run.
+  - Types become their PostgreSQL equivalents: `nvarchar(50)` → `character varying(50)`, `nvarchar(max)` → `text`,
+    `datetime` / `datetime2` → `timestamp`, `datetimeoffset` → `timestamp with time zone`, `bit` → `boolean`,
+    `uniqueidentifier` → `uuid`, `money` → `numeric(19,4)`, `varbinary` / `image` / `rowversion` → `bytea`,
+    `tinyint` → `smallint`; `sql_variant` and `hierarchyid` become `text`. An `IDENTITY` column of an integer type becomes
+    `serial`, `bigserial` or `smallserial`.
+  - Primary keys, `NOT NULL`, single-column unique constraints and unique indexes (not filtered ones), foreign keys and
+    `MS_Description` comments are kept. Defaults are translated (`getdate()` / `sysdatetime()` → `CURRENT_TIMESTAMP`,
+    `newid()` → `gen_random_uuid()`, `N'…'` → `'…'`, `((1))` → `true` on a `bit` column); one that calls another function
+    is dropped.
+  - Tables of the `dbo` schema go to the schema set in the dialog; other schemas keep their name (in snake_case when names
+    are converted).
+  - Views, computed column expressions (the column is kept), `CHECK` constraints, foreign key actions, multi-column unique
+    constraints and non-unique indexes are not imported.
 - Live SQL preview with syntax highlighting, and export to PostgreSQL DDL (`CREATE TABLE`, primary keys, unique
   constraints, foreign keys, comments), SVG or PNG. **Save As…** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>)
   writes any of these: the file type picked in the dialog (`.pgerd`, `.sql`, `.svg` or `.png`) decides the format.
@@ -612,12 +643,14 @@ src/renderer/dbtree.js    database explorer
 src/renderer/graph.js     Graph tab (Apache AGE)
 src/renderer/databrowser.js data tabs and filters
 src/renderer/assistant.js Assistant tab and AI provider settings
-src/renderer/xlui.js      Excel / CSV, Entity Framework / JSON and SQLite import dialog
+src/renderer/xlui.js      Excel / CSV, Entity Framework / JSON, SQLite and SQL Server import dialog
 src/renderer/importdesigner.js Import tabs (Excel -> PostgreSQL import designer)
 src/renderer/lib/pgerd.js .pgerd parsing and serialization
 src/renderer/lib/efimport.js Entity Framework Core (C#) and JSON readers for the import dialog
 src/renderer/lib/sqliteimport.js SQLite catalog -> table specs for the import dialog
 src/main/database/sqlite.cjs reads the schema of a SQLite file (node:sqlite, read-only)
+src/renderer/lib/mssqlimport.js SQL Server catalog and T-SQL script parser -> table specs for the import dialog
+src/main/database/mssql.cjs reads the schema of a SQL Server database (mssql / tedious, read-only)
 src/renderer/lib/sql.js   PostgreSQL DDL generation
 src/renderer/lib/layout.js table geometry, relationship routing, auto layout
 src/renderer/lib/catalog.js catalog rows -> diagram model

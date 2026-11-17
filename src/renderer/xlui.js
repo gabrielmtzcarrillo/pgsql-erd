@@ -3,6 +3,7 @@
 
 import { parseModelSource, MODEL_EXT } from './lib/efimport.js';
 import { sqliteSpecs, SQLITE_EXT } from './lib/sqliteimport.js';
+import { mssqlSpecs, parseTsql } from './lib/mssqlimport.js';
 import { readSpreadsheet, sheetTables, modelFromSpecs, importSpecs } from './lib/spreadsheet.js';
 import { tableKey } from './lib/catalog.js';
 import { generateSQL } from './lib/sql.js';
@@ -11,6 +12,7 @@ import { highlightSQL } from './lib/highlight.js';
 import { tr, trn } from '../shared/i18n.js';
 
 const $ = (sel) => document.querySelector(sel);
+const remoteMessage = (err) => String(err?.message ?? err).replace(/^Error invoking remote method '[^']*': (\w*Error: )?/, '');
 export const SPREADSHEET_EXT = /\.(xlsx|xlsm|csv|tsv)$/i;
 export { MODEL_EXT, SQLITE_EXT };
 
@@ -25,7 +27,8 @@ export function setupSpreadsheetImport(ctx) {
   const optNotNull = $('#xl-notnull');
 
   // { name, sheets }; for an EF Core / JSON model { name, sources: [{ name, text }], sheets: [] };
-  // for a SQLite database { name, sources: [{ name, catalog }], sheets: [] }
+  // for a SQLite database { name, sources: [{ name, catalog }], sheets: [] };
+  // for SQL Server (a database or a T-SQL script) { name, sources: [{ name, mssql }], sheets: [] }
   let file = null;
   const title = dialog.querySelector('h3');
   const excelTitle = title.textContent;
@@ -34,10 +37,20 @@ export function setupSpreadsheetImport(ctx) {
   const notNullOption = optNotNull.closest('label');
 
   // The same dialog serves every import; only its explanation and the Excel-only option differ.
-  // `model` is false (Excel / CSV), 'sqlite' or true (Entity Framework / JSON).
+  // `model` is false (Excel / CSV), 'sqlite', 'mssql', 'tsql' or true (Entity Framework / JSON).
+  const chooseButton = $('#xl-choose');
+  const chooseLabel = () => chooseButton.querySelector('.label') ?? chooseButton;
+  let chooseText = null;
   function setMode(model) {
-    title.textContent = model === 'sqlite' ? tr('Import tables from a SQLite database') : model ? tr('Import tables from Entity Framework / JSON') : excelTitle;
-    if (model === 'sqlite') {
+    chooseText ??= chooseLabel().textContent;
+    title.textContent = model === 'sqlite' ? tr('Import tables from a SQLite database')
+      : model === 'mssql' ? tr('Import tables from a SQL Server database')
+      : model === 'tsql' ? tr('Import tables from a SQL Server script')
+      : model ? tr('Import tables from Entity Framework / JSON') : excelTitle;
+    chooseLabel().textContent = model === 'mssql' ? tr('Connect…') : chooseText;
+    if (model === 'mssql' || model === 'tsql') {
+      help.textContent = tr('Each SQL Server table becomes a table. Column types and defaults are translated to PostgreSQL (nvarchar(max) becomes text, datetime2 timestamp, bit boolean, uniqueidentifier uuid), an IDENTITY column becomes serial, and primary keys, NOT NULL, single-column unique constraints, foreign keys and MS_Description comments are kept. Tables of the dbo schema go to the schema below; other schemas keep their name. Tables already in the diagram are updated; their position, color and note are kept.');
+    } else if (model === 'sqlite') {
       help.textContent = tr('Each table of the SQLite database becomes a table. Column types and defaults are translated to PostgreSQL, an INTEGER PRIMARY KEY becomes serial, and primary keys, NOT NULL, single-column unique constraints and foreign keys are kept. Views and virtual tables are skipped. The file is only read. Tables already in the diagram are updated; their position, color and note are kept.');
     } else if (model) {
       help.textContent = tr('Each class becomes a table. Entity Framework Core classes (.cs files; choose the entities and the DbContext together) are read for their properties, data annotations, DbSet names and fluent configuration. A JSON file lists tables with their columns (name, type, pk, nullable, unique, default, references). Tables already in the diagram are updated; their position, color and note are kept.');
@@ -50,7 +63,8 @@ export function setupSpreadsheetImport(ctx) {
   // C# files are read together (entities, context and configurations refer to each other); each JSON file on its own.
   // In a folder, JSON files that are not table descriptions (package.json, settings…) are skipped and counted.
   function modelSpecs(sources, opts, lenient = false) {
-    if (sources.some((f) => f.catalog)) return sources.flatMap((f) => sqliteSpecs(f.catalog, opts));
+    if (sources.some((f) => f.catalog)) return { specs: sources.flatMap((f) => sqliteSpecs(f.catalog, opts)), skipped: 0 };
+    if (sources.some((f) => f.mssql)) return { specs: sources.flatMap((f) => mssqlSpecs(f.mssql, opts)), skipped: 0 };
     const isJson = (f) => /\.json$/i.test(f.name);
     const cs = sources.filter((f) => !isJson(f));
     let skipped = 0;
@@ -217,9 +231,87 @@ export function setupSpreadsheetImport(ctx) {
       if (res) loadSqlite(res.filePath.split(/[\\/]/).pop(), res.catalog);
     } catch (err) {
       const name = filePath ? filePath.split(/[\\/]/).pop() : tr('SQLite database');
-      setStatus(tr('Could not read {file}: {message}', { file: name, message: err.message.replace(/^Error invoking remote method '[^']*': (Error: )?/, '') }), 'error');
+      setStatus(tr('Could not read {file}: {message}', { file: name, message: remoteMessage(err) }), 'error');
     }
   }
+
+  function loadMssql(name, catalog, mode) {
+    file = { name, sources: [{ name, mssql: catalog }], sheets: [] };
+    specs = [];
+    setMode(mode);
+    $('#xl-file').textContent = name;
+    analyze();
+  }
+
+  async function chooseTsql() {
+    setMode('tsql');
+    try {
+      const res = await host.openTsql();
+      if (res) loadMssql(res.filePath.split(/[\\/]/).pop(), parseTsql(res.text), 'tsql');
+    } catch (err) {
+      setStatus(tr('Could not read {file}: {message}', { file: tr('T-SQL script'), message: remoteMessage(err) }), 'error');
+    }
+  }
+
+  // The SQL Server connection dialog; the last settings but the password are remembered.
+  const connectDialog = $('#mssql-connect-dialog');
+  const connectForm = $('#mssql-connect-form');
+  const connectStatus = $('#mssql-connect-status');
+  const connectOk = $('#mssql-connect-ok');
+  const CONNECT_KEY = 'pgsql-erd.mssql-connection';
+  const field = (name) => connectForm.elements.namedItem(name);
+  const showDomain = () => ($('#mssql-domain').style.display = field('auth').value === 'ntlm' ? '' : 'none');
+  field('auth').addEventListener('change', showDomain);
+  function chooseMssql() {
+    setMode('mssql');
+    let saved = {};
+    try {
+      saved = JSON.parse(localStorage.getItem(CONNECT_KEY) || '{}');
+    } catch {}
+    for (const name of ['server', 'port', 'database', 'user', 'domain']) field(name).value = saved[name] ?? '';
+    field('auth').value = saved.auth === 'ntlm' ? 'ntlm' : 'sql';
+    field('encrypt').checked = saved.encrypt !== false;
+    field('trustServerCertificate').checked = !!saved.trustServerCertificate;
+    field('password').value = '';
+    showDomain();
+    connectStatus.textContent = '';
+    connectStatus.className = 'db-status';
+    connectOk.disabled = false;
+    connectDialog.showModal();
+    (field('server').value ? field(field('database').value ? 'password' : 'database') : field('server')).focus();
+  }
+  connectForm.addEventListener('submit', async (e) => {
+    if (e.submitter?.value !== 'ok') return;
+    e.preventDefault();
+    const conn = {
+      server: field('server').value.trim() || 'localhost',
+      port: field('port').value.trim(),
+      database: field('database').value.trim(),
+      auth: field('auth').value,
+      user: field('user').value.trim(),
+      password: field('password').value,
+      domain: field('domain').value.trim(),
+      encrypt: field('encrypt').checked,
+      trustServerCertificate: field('trustServerCertificate').checked,
+    };
+    const { password, ...remembered } = conn;
+    try {
+      localStorage.setItem(CONNECT_KEY, JSON.stringify(remembered));
+    } catch {}
+    connectStatus.textContent = tr('Reading the schema…');
+    connectStatus.className = 'db-status';
+    connectOk.disabled = true;
+    try {
+      const res = await host.readMssql(conn);
+      connectDialog.close('ok');
+      loadMssql(`${conn.server}/${res.database}`, res.catalog, 'mssql');
+    } catch (err) {
+      connectStatus.textContent = tr('Could not connect: {message}', { message: remoteMessage(err) });
+      connectStatus.className = 'db-status error';
+    } finally {
+      connectOk.disabled = false;
+    }
+  });
 
   // Every JSON file under a folder, each read on its own; names are relative to the folder.
   async function chooseModelFolder() {
@@ -246,8 +338,8 @@ export function setupSpreadsheetImport(ctx) {
     dialog.returnValue = '';
   }
 
-  let mode = 'excel'; // what "Choose file…" picks: 'excel', 'model', 'model-folder' or 'sqlite'
-  $('#xl-choose').addEventListener('click', () => (mode === 'sqlite' ? chooseSqlite() : mode === 'model-folder' || (mode === 'model' && file?.folder) ? chooseModelFolder() : mode === 'model' ? chooseModel() : choose()));
+  let mode = 'excel'; // what "Choose file…" picks: 'excel', 'model', 'model-folder', 'sqlite', 'mssql' or 'tsql'
+  $('#xl-choose').addEventListener('click', () => (mode === 'mssql' ? chooseMssql() : mode === 'tsql' ? chooseTsql() : mode === 'sqlite' ? chooseSqlite() : mode === 'model-folder' || (mode === 'model' && file?.folder) ? chooseModelFolder() : mode === 'model' ? chooseModel() : choose()));
   optSchema.addEventListener('change', analyze);
   optSnake.addEventListener('change', analyze);
   optNotNull.addEventListener('change', analyze);
@@ -308,6 +400,20 @@ export function setupSpreadsheetImport(ctx) {
     return chooseSqlite(filePath);
   }
 
+  function openMssql() {
+    reset();
+    mode = 'mssql';
+    dialog.showModal();
+    return chooseMssql();
+  }
+
+  function openTsql() {
+    reset();
+    mode = 'tsql';
+    dialog.showModal();
+    return chooseTsql();
+  }
+
   function openModelFolder() {
     reset();
     dialog.showModal();
@@ -316,7 +422,7 @@ export function setupSpreadsheetImport(ctx) {
   }
 
   return {
-    commands: { 'import-spreadsheet': open, 'import-model': openModel, 'import-sqlite': () => openSqlite(), 'import-model-folder': openModelFolder },
+    commands: { 'import-spreadsheet': open, 'import-model': openModel, 'import-sqlite': () => openSqlite(), 'import-model-folder': openModelFolder, 'import-mssql': openMssql, 'import-tsql': openTsql },
     // Open the dialog on a dropped SQLite database file.
     openSqliteFile: (filePath) => openSqlite(filePath),
     // Open the dialog on dropped .cs / .json files.
