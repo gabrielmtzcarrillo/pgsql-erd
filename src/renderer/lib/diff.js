@@ -62,7 +62,9 @@ function alterType(col) {
 }
 
 // Normalize a default expression for comparison: drop trailing casts, case
-// and whitespace outside of string literals.
+// and whitespace outside of string literals. Bit-string literals become the
+// quoted digits PostgreSQL stores (B'101' and X'5' are kept as '101'::"bit"
+// and '0101'::"bit"), so a diagram default matches the database's.
 export function normalizeDefault(v) {
   if (v === null || v === undefined) return '';
   let s = String(v).trim();
@@ -72,10 +74,18 @@ export function normalizeDefault(v) {
     s = next;
   }
   while (/^\(.*\)$/.test(s) && balanced(s.slice(1, -1))) s = s.slice(1, -1).trim();
-  return s
-    .split(/('(?:[^']|'')*')/)
-    .map((part, i) => (i % 2 ? part : part.toLowerCase().replace(/\s+/g, '')))
-    .join('');
+  const parts = s.split(/('(?:[^']|'')*')/);
+  for (let i = 1; i < parts.length; i += 2) {
+    const prefix = parts[i - 1].match(/(^|[^a-z0-9_$])([bx])$/i);
+    if (!prefix) continue;
+    const body = parts[i].slice(1, -1);
+    const bits = prefix[2].toLowerCase() === 'b'
+      ? body
+      : [...body].map((h) => (/^[0-9a-f]$/i.test(h) ? parseInt(h, 16).toString(2).padStart(4, '0') : h)).join('');
+    parts[i - 1] = parts[i - 1].slice(0, -1);
+    parts[i] = `'${bits}'`;
+  }
+  return parts.map((part, i) => (i % 2 ? part : part.toLowerCase().replace(/\s+/g, ''))).join('');
 }
 
 function balanced(s) {

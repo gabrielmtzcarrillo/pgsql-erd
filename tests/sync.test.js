@@ -274,3 +274,12 @@ test('import brings in one link for duplicated foreign keys', () => {
   assert.equal(erd.links.length, 1);
   assert.equal(erd.links[0].fkName, 'orders_customer_id_fkey');
 });
+
+test('bit-string defaults compare equal to what PostgreSQL stores', () => {
+  // PostgreSQL keeps B'1' as '1'::"bit" and X'6' as '0110'::"bit".
+  assert.equal(normalizeDefault("B'1'"), normalizeDefault(`'1'::"bit"`));
+  assert.equal(normalizeDefault("b'00000101'"), normalizeDefault(`'00000101'::"bit"`));
+  assert.equal(normalizeDefault("X'6'"), normalizeDefault("'0110'::bit"));
+  assert.notEqual(normalizeDefault("B'1'"), normalizeDefault("B'0'"));
+  assert.equal(normalizeDefault("lower('B')"), "lower('B')");
+});
