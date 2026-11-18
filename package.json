@@ -1,7 +1,7 @@
 {
   "name": "pgsql-erd",
   "productName": "pgsql-erd",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Desktop ERD and scripting workbench for PostgreSQL: pgAdmin .pgerd files, schema sync, typed TypeScript scripts, validators and test data",
   "type": "module",
   "main": "src/main/main.cjs",

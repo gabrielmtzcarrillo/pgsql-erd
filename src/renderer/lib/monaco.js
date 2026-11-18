@@ -104,6 +104,25 @@ export async function createEditor(container, options = {}) {
     fixedOverflowWidgets: true,
     renderLineHighlight: 'line',
   });
+  // Monaco's default drop edit wraps text in a snippet and appends a $0 tab stop.
+  // Insert the explorer's SQL identifier verbatim at the pointer instead.
+  if (options.plainTextDropType) {
+    const dropText = (event) => {
+      if (!event.dataTransfer?.types.includes(options.plainTextDropType)) return;
+      const position = editor.getTargetAtClientPoint(event.clientX, event.clientY)?.position;
+      if (!position) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const text = event.dataTransfer.getData('text/plain');
+      editor.setPosition(position);
+      editor.pushUndoStop();
+      editor.executeEdits('pgsql-erd', [{ range: editor.getSelection(), text, forceMoveMarkers: true }]);
+      editor.pushUndoStop();
+      editor.focus();
+    };
+    container.addEventListener('drop', dropText, true);
+    editor.onDidDispose(() => container.removeEventListener('drop', dropText, true));
+  }
   editor.onDidChangeModelContent(() => options.onChange?.());
   // Actions rather than addCommand: with several editors, addCommand sends
   // the key to the last one created.

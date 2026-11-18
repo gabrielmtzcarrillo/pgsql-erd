@@ -54,14 +54,40 @@ export function mergeFromDb(erd, db, keys) {
     synced.add(key);
   }
 
-  // Relationships: DB foreign keys between tables that are in the diagram,
-  // where at least one side was just synced.
+  const wanted = catalogLinks(db, erdByKey, synced);
+
+  // For synced tables, drop outgoing relationships to database tables that
+  // the database no longer has.
+  const wantedSigs = new Set(wanted.map(sig));
+  const erdIdsInDb = new Set([...erdByKey].filter(([k]) => dbByKey.has(k)).map(([, t]) => t.id));
+  const syncedIds = new Set([...synced].map((k) => erdByKey.get(k).id));
+  erd.links = erd.links.filter(
+    (l) => !(syncedIds.has(l.localTable) && erdIdsInDb.has(l.refTable)) || wantedSigs.has(sig(l))
+  );
+  erd.links.push(...missingLinks(erd.links, wanted));
+
+  return { added, updated };
+}
+
+const sig = (l) => `${l.localTable}:${l.localCol}->${l.refTable}:${l.refCol}`;
+
+// Prepare the whole sidebar addition before committing it as one undo step.
+export function planSidebarTable(erd, db, key) {
+  const erdByKey = new Map(erd.tables.map((t) => [tableKey(t), t]));
+  const existing = erdByKey.get(key);
+  const source = db.tables.find((t) => tableKey(t) === key);
+  if (!source) return null;
+  const table = existing ?? { ...structuredClone(source), id: uuid() };
+  erdByKey.set(key, table);
+  return { table, existing, links: missingLinks(erd.links, catalogLinks(db, erdByKey)) };
+}
+
+function catalogLinks(db, erdByKey, synced) {
   const dbById = new Map(db.tables.map((t) => [t.id, t]));
   const erdAttnum = (dbTable, dbAttnum) => {
     const name = dbTable.columns.find((c) => c.attnum === dbAttnum)?.name;
     return erdByKey.get(tableKey(dbTable))?.columns.find((c) => c.name === name)?.attnum;
   };
-  const sig = (l) => `${l.localTable}:${l.localCol}->${l.refTable}:${l.refCol}`;
   const wanted = [];
   const groups = new Map();
   for (const l of db.links) {
@@ -69,7 +95,7 @@ export function mergeFromDb(erd, db, keys) {
     const dr = dbById.get(l.refTable);
     const el = erdByKey.get(tableKey(dl));
     const er = erdByKey.get(tableKey(dr));
-    if (!el || !er || !(synced.has(tableKey(dl)) || synced.has(tableKey(dr)))) continue;
+    if (!el || !er || (synced && !synced.has(tableKey(dl)) && !synced.has(tableKey(dr)))) continue;
     const localCol = erdAttnum(dl, l.localCol);
     const refCol = erdAttnum(dr, l.refCol);
     if (localCol === undefined || refCol === undefined) continue;
@@ -84,22 +110,24 @@ export function mergeFromDb(erd, db, keys) {
       refCol,
     });
   }
+  return wanted;
+}
 
-  // For synced tables, drop outgoing relationships to database tables that
-  // the database no longer has.
-  const wantedSigs = new Set(wanted.map(sig));
-  const erdIdsInDb = new Set([...erdByKey].filter(([k]) => dbByKey.has(k)).map(([, t]) => t.id));
-  const syncedIds = new Set([...synced].map((k) => erdByKey.get(k).id));
-  erd.links = erd.links.filter(
-    (l) => !(syncedIds.has(l.localTable) && erdIdsInDb.has(l.refTable)) || wantedSigs.has(sig(l))
-  );
-  const have = new Set(erd.links.map(sig));
-  // A database can hold several copies of one foreign key; bring in one.
+function missingLinks(existing, wanted) {
+  const have = new Map(existing.map((l) => [sig(l), l]));
+  // A composite key may already have some of its column pairs on the diagram.
+  const groups = new Map();
   for (const l of wanted) {
-    if (have.has(sig(l))) continue;
-    have.add(sig(l));
-    erd.links.push(l);
+    const match = have.get(sig(l));
+    if (match?.group) groups.set(l.group, match.group);
   }
-
-  return { added, updated };
+  const missing = [];
+  for (const l of wanted) {
+    const key = sig(l);
+    if (have.has(key)) continue;
+    l.group = groups.get(l.group) ?? l.group;
+    have.set(key, l);
+    missing.push(l);
+  }
+  return missing;
 }

@@ -13,6 +13,7 @@ import { decorateButtons } from './icons.js';
 import { tr, trn, formatNumber } from '../shared/i18n.js';
 import { envName } from './dbui.js';
 import { tableKey } from './lib/catalog.js';
+import { TABLE_DRAG_TYPE } from './dbtree.js';
 import { qualifiedName } from './lib/sql.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -112,6 +113,7 @@ export function setupQuery(ctx) {
       editorReady ??= createEditor(q('.q-editor'), {
         value,
         language: 'sql',
+        plainTextDropType: TABLE_DRAG_TYPE,
         onChange: () => {
           clearTimeout(textTimer);
           textTimer = setTimeout(() => onText(editor.getValue()), 500);

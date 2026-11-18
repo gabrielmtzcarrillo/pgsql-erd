@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { parsePgerd, newTable, newColumn, emptyModel } from '../src/renderer/lib/pgerd.js';
 import { modelFromCatalog, splitType, tableKey } from '../src/renderer/lib/catalog.js';
 import { diffModels, normalizeType, normalizeDefault, fkTypesCompatible } from '../src/renderer/lib/diff.js';
-import { mergeFromDb } from '../src/renderer/lib/sync.js';
+import { mergeFromDb, planSidebarTable } from '../src/renderer/lib/sync.js';
 
 const sample = () => parsePgerd(readFileSync(new URL('../samples/shop.pgerd', import.meta.url), 'utf8'));
 
@@ -33,6 +33,29 @@ function catalog() {
     ],
   };
 }
+
+test('sidebar drops restore catalog relationships among all displayed tables', () => {
+  const db = modelFromCatalog(catalog());
+  const erd = emptyModel();
+  const orders = planSidebarTable(erd, db, 'shop.orders');
+  assert.deepEqual(orders.links, []);
+  erd.tables.push(orders.table);
+  const customer = planSidebarTable(erd, db, 'public.customer');
+  assert.equal(customer.links.length, 1);
+  assert.equal(customer.links[0].localTable, orders.table.id);
+  assert.equal(customer.links[0].refTable, customer.table.id);
+  erd.tables.push(customer.table);
+  customer.table.columns[0].attnum = 7;
+  const legacy = planSidebarTable(erd, db, 'shop.legacy');
+  assert.equal(legacy.links.length, 1);
+  assert.equal(legacy.links[0].refCol, 7);
+  erd.tables.push(legacy.table);
+  const repeat = planSidebarTable(erd, db, 'shop.legacy');
+  assert.equal(repeat.existing, legacy.table);
+  assert.equal(repeat.links.length, 1);
+  erd.links.push(...repeat.links);
+  assert.deepEqual(planSidebarTable(erd, db, 'shop.legacy').links, []);
+});
 
 test('splits formatted types', () => {
   assert.deepEqual(splitType('character varying(255)'), { type: 'character varying', length: 255, precision: null });

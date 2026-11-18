@@ -5,7 +5,7 @@
 // the pane while their tab is shown (attach), and tables then go there instead.
 
 import { tableKey } from './lib/catalog.js';
-import { mergeFromDb } from './lib/sync.js';
+import { planSidebarTable } from './lib/sync.js';
 import { formatType, qualifiedName } from './lib/sql.js';
 import { iconElement } from './icons.js';
 import { tr, trn } from '../shared/i18n.js';
@@ -217,30 +217,29 @@ export function setupDbTree(ctx) {
   // or centered in the view. A table already in the diagram is shown instead.
   function addTable(key, at) {
     if (!dbModel) return;
-    const existing = state.model.tables.find((t) => tableKey(t) === key);
+    const plan = planSidebarTable(state.model, dbModel, key);
+    if (!plan) return;
+    const { table, existing, links } = plan;
+    if (!existing || links.length) {
+      commit(() => {
+        if (!existing) {
+          state.model.tables.push(table);
+          computeSizes();
+          const s = state.sizes.get(table.id);
+          const p = at ?? ctx.viewCenter();
+          table.x = snap(at ? p.x : p.x - s.width / 2);
+          table.y = snap(at ? p.y : p.y - s.height / 2);
+        }
+        state.model.links.push(...links);
+      }, { panel: false });
+    }
+    select({ type: 'table', id: table.id });
     if (existing) {
-      select({ type: 'table', id: existing.id });
-      centerOn(existing);
+      centerOn(table);
       return;
     }
-    let result;
-    const before = state.model.links.length;
-    commit(() => {
-      result = mergeFromDb(state.model, dbModel, [key]);
-      computeSizes();
-      const t = state.model.tables.find((x) => x.id === result.added[0]);
-      if (!t) return;
-      const s = state.sizes.get(t.id);
-      const p = at ?? ctx.viewCenter();
-      t.x = snap(at ? p.x : p.x - s.width / 2);
-      t.y = snap(at ? p.y : p.y - s.height / 2);
-    }, { panel: false });
-    const id = result?.added[0];
-    if (!id) return;
-    select({ type: 'table', id });
-    const links = state.model.links.length - before;
-    status(links
-      ? trn(links, 'Added {name} with {n} relationship', 'Added {name} with {n} relationships', { name: key })
+    status(links.length
+      ? trn(links.length, 'Added {name} with {n} relationship', 'Added {name} with {n} relationships', { name: key })
       : tr('Added {name}', { name: key }));
   }
 
