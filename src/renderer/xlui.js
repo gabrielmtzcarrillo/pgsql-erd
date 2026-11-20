@@ -4,6 +4,7 @@
 import { parseModelSource, MODEL_EXT } from './lib/efimport.js';
 import { sqliteSpecs, SQLITE_EXT } from './lib/sqliteimport.js';
 import { mssqlSpecs, parseTsql } from './lib/mssqlimport.js';
+import { parseMssqlConnectionString } from './lib/mssqlconnection.js';
 import { mysqlSpecs } from './lib/mysqlimport.js';
 import { oracleSpecs } from './lib/oracleimport.js';
 import { setupCopy } from './copyui.js';
@@ -338,6 +339,32 @@ export function setupSpreadsheetImport(ctx) {
     loadMssql(`${conn.server}/${res.database}`, res.catalog, 'mssql', { kind: 'mssql', conn });
   });
   const showDomain = () => ($('#mssql-domain').style.display = mssqlDialog.field('auth').value === 'ntlm' ? '' : 'none');
+  const serverField = mssqlDialog.field('server');
+  const mssqlStatus = $('#mssql-connect-status');
+  serverField.addEventListener('paste', (event) => {
+    const text = event.clipboardData.getData('text/plain');
+    if (!text.includes('=')) return;
+    event.preventDefault();
+    try {
+      const settings = parseMssqlConnectionString(text);
+      for (const [name, value] of Object.entries(settings)) {
+        const el = mssqlDialog.field(name);
+        if (el.type === 'checkbox') el.checked = value;
+        else el.value = value;
+      }
+      showDomain();
+      mssqlStatus.textContent = tr('Connection settings filled in. Review them before connecting.');
+      mssqlStatus.className = 'db-status';
+      serverField.setCustomValidity('');
+    } catch {
+      const message = tr('Could not apply the connection string. Check the server, options and quotation marks.');
+      serverField.setCustomValidity(message);
+      mssqlStatus.textContent = message;
+      mssqlStatus.className = 'db-status error';
+    }
+  });
+  serverField.addEventListener('input', () => serverField.setCustomValidity(''));
+  $('#mssql-connect-dialog').addEventListener('close', () => serverField.setCustomValidity(''));
   mssqlDialog.field('auth').addEventListener('change', showDomain);
   function chooseMssql() {
     setMode('mssql');

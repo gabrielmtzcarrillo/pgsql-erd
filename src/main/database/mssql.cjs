@@ -135,7 +135,7 @@ function mssqlConfig(conn = {}) {
       encrypt: conn.encrypt !== false,
       trustServerCertificate: !!conn.trustServerCertificate,
       appName: 'pgsql-erd',
-      ...(instanceName ? { instanceName } : {}),
+      ...(instanceName && !Number.isFinite(port) ? { instanceName } : {}),
     },
   };
   // A named instance is found through the SQL Browser service unless a port is given.

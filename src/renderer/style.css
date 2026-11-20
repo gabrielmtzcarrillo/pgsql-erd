@@ -285,7 +285,14 @@ textarea { resize: vertical; width: 100%; }
 .erd-table .t-col-handle:hover { fill: var(--erd-accent); }
 .erd-table .t-row.link-target .t-row-bg { fill: var(--accent-soft); }
 #canvas.linking, #canvas.linking .erd-table { cursor: crosshair; }
-#canvas.linking .t-link-handle, #canvas.linking .t-col-handle { opacity: 0; }
+.erd-table .t-fk-add { cursor: crosshair; opacity: 0; transition: opacity 0.12s; }
+.erd-table .t-fk-add circle { fill: var(--erd-table-bg); stroke: var(--erd-table-border); stroke-width: 1; }
+.erd-table .t-fk-add path { stroke: var(--erd-table-border); stroke-width: 1.5; pointer-events: none; }
+.erd-table.selected .t-fk-add circle { stroke: var(--erd-accent); stroke-width: 2; }
+.erd-table:hover .t-fk-add, .erd-table.selected .t-fk-add { opacity: 1; }
+.erd-table .t-fk-add:hover circle { fill: var(--erd-accent); stroke: var(--erd-accent); }
+.erd-table .t-fk-add:hover path { stroke: var(--erd-table-bg); }
+#canvas.linking .t-link-handle, #canvas.linking .t-col-handle, #canvas.linking .t-fk-add { opacity: 0; }
 .link-draft { stroke: var(--erd-accent); stroke-width: 2; stroke-dasharray: 6 4; pointer-events: none; }
 .marquee {
   fill: var(--accent-soft); stroke: var(--erd-accent); stroke-width: 1;

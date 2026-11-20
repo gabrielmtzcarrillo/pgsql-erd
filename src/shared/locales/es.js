@@ -1,6 +1,9 @@
 // Spanish. Keys are the English text; see ../i18n.js.
 
 export default {
+  "Paste a SQL Server connection string into the Server field to fill in the settings.": "Pega una cadena de conexión de SQL Server en el campo Servidor para completar los ajustes.",
+  "Connection settings filled in. Review them before connecting.": "Se completaron los ajustes de conexión. Revísalos antes de conectarte.",
+  "Could not apply the connection string. Check the server, options and quotation marks.": "No se pudo aplicar la cadena de conexión. Revisa el servidor, las opciones y las comillas.",
   "Save": "Guardar",
   "Don't Save": "No guardar",
   "Cancel": "Cancelar",
@@ -813,6 +816,8 @@ export default {
   "Add table here": "Agregar tabla aquí",
   "Drag to another table to add a relationship": "Arrastre hasta otra tabla para agregar una relación",
   "Drag to the referenced column to add a foreign key": "Arrastre hasta la columna referenciada para agregar una clave foránea",
+  "Drag to a column of another table to add a foreign key column that matches it": "Arrastre hasta una columna de otra tabla para agregar una columna de clave foránea igual a ella",
+  "Added {column} to {table} as a foreign key to {ref}": "Se agregó {column} a {table} como clave foránea a {ref}",
   "Drag to resize, double-click to fit the content": "Arrastre para cambiar el tamaño, doble clic para ajustarlo al contenido",
   "SQL preview": "Vista previa SQL",
   "SQL Preview": "Vista previa SQL",

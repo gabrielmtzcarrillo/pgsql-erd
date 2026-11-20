@@ -4,6 +4,7 @@ import {
 } from './lib/pgerd.js';
 import { generateSQL, formatType, uniqueConstraints } from './lib/sql.js';
 import { fkTypesCompatible } from './lib/diff.js';
+import { refColumnType, newFkColumn, singlePrimaryKey } from './lib/fkcolumn.js';
 import {
   HEADER_H, ROW_H, PAD_X, BADGE_W, tableSize, contentSize, routeLink, crowFoot, oneMarker, autoLayout,
   contentBounds, TITLE_ICON,
@@ -383,6 +384,13 @@ function renderTable(t) {
     }
     g.append(row);
   });
+  // Drag from the "+" node in the bottom padding onto another table's column
+  // to add a new column here with its name and type, as a foreign key to it.
+  g.append(el('g', { class: 't-fk-add', transform: `translate(${width / 2},${height})` }, [
+    el('circle', { r: 7 }),
+    el('path', { d: 'M-3.5,0H3.5M0,-3.5V3.5' }),
+    el('title', {}, tr('Drag to a column of another table to add a foreign key column that matches it')),
+  ]));
   // Drag the bottom right corner to resize the table; double-click it to fit
   // the table to its content again.
   g.append(el('path', {
@@ -1333,16 +1341,6 @@ function validateLinkTypes() {
   };
 }
 
-// Type, length and precision for a column that references refCol (serial
-// key columns are referenced with their underlying integer type).
-function refColumnType(refCol) {
-  return {
-    type: { serial: 'integer', bigserial: 'bigint', smallserial: 'smallint' }[refCol.type] ?? refCol.type,
-    length: refCol.length,
-    precision: refCol.precision,
-  };
-}
-
 function openLinkDialog({ localTable, localCol, refTable, refCol } = {}) {
   if (!state.model.tables.length) return status(tr('Add a table first.'));
   const f = linkForm.elements;
@@ -1496,15 +1494,39 @@ function tableAt(clientX, clientY) {
 // table opens the relationship dialog with both tables filled in. Dragging
 // from a column's handle does the same for that column (the foreign key),
 // and dropping it on a column picks that one as the referenced column.
+// Dragging from the "+" node at a table's bottom works the same, but the
+// dropped-on column (or the table's single-column primary key) gets a new
+// matching column in the dragged table, which becomes the foreign key.
 function startLinkDrag(t, handle) {
-  const col = handle?.classList.contains('t-col-handle') ? Number(handle.closest('.t-row').dataset.attnum) : undefined;
+  const newCol = handle.classList.contains('t-fk-add');
+  const col = handle.classList.contains('t-col-handle') ? Number(handle.closest('.t-row').dataset.attnum) : undefined;
   const s = state.sizes.get(t.id);
-  const x = t.x + (col === undefined ? s.width : Number(handle.getAttribute('cx')));
-  const y = t.y + (col === undefined ? HEADER_H / 2 : Number(handle.getAttribute('cy')));
+  let x, y;
+  if (newCol) [x, y] = [t.x + s.width / 2, t.y + s.height];
+  else if (col === undefined) [x, y] = [t.x + s.width, t.y + HEADER_H / 2];
+  else [x, y] = [t.x + Number(handle.getAttribute('cx')), t.y + Number(handle.getAttribute('cy'))];
   const line = el('line', { class: 'link-draft', x1: x, y1: y, x2: x, y2: y });
   viewport.append(line);
   svg.classList.add('linking');
-  return { kind: 'link', t, col, line, target: null, targetCol: undefined, targetEl: null };
+  return { kind: 'link', t, col, newCol, line, target: null, targetCol: undefined, targetEl: null };
+}
+
+// Adds a column to `local` that matches refCol of `ref` and a relationship
+// from it to refCol.
+function addFkColumnLink(local, ref, refCol) {
+  commit(() => {
+    const c = newFkColumn(local, ref, refCol);
+    local.columns.push(c);
+    const l = {
+      id: uuid(), type: 'onetomany', localTable: local.id, localCol: c.attnum, refTable: ref.id,
+      refCol: refCol.attnum, group: uuid(), fkName: '', rawFk: null, raw: null,
+    };
+    state.model.links.push(l);
+    state.selection = { type: 'link', id: l.id };
+  });
+  status(tr('Added {column} to {table} as a foreign key to {ref}', {
+    column: local.columns.at(-1).name, table: fullName(local), ref: `${fullName(ref)}.${refCol.name}`,
+  }));
 }
 
 function moveLinkDrag(e) {
@@ -1513,11 +1535,11 @@ function moveLinkDrag(e) {
   drag.line.setAttribute('y2', p.y);
   const hitEl = document.elementFromPoint(e.clientX, e.clientY);
   const hit = tableAt(e.clientX, e.clientY);
-  const rowEl = drag.col !== undefined ? hitEl?.closest?.('.t-row') : null;
+  const rowEl = drag.col !== undefined || drag.newCol ? hitEl?.closest?.('.t-row') : null;
   const hitCol = rowEl ? Number(rowEl.dataset.attnum) : undefined;
   // A column may reference another column of its own table (a self
   // reference); a whole table may only be linked to another table.
-  const target = hit && (hit !== drag.t || (hitCol !== undefined && hitCol !== drag.col)) ? hit : null;
+  const target = hit && (hit !== drag.t || (hitCol !== undefined && (drag.newCol || hitCol !== drag.col))) ? hit : null;
   const targetCol = target ? hitCol : undefined;
   if (target === drag.target && targetCol === drag.targetCol) return;
   drag.targetEl?.classList.remove('link-target');
@@ -1561,7 +1583,7 @@ svg.addEventListener('pointerdown', (e) => {
   const linkEl = e.target.closest('.erd-link');
   const scriptEl = e.target.closest('.erd-script');
   svg.setPointerCapture(e.pointerId);
-  const handle = e.target.closest('.t-link-handle, .t-col-handle');
+  const handle = e.target.closest('.t-link-handle, .t-col-handle, .t-fk-add');
   const additive = e.ctrlKey || e.metaKey;
   const grip = e.target.closest('.t-resize');
   if (e.button === 0 && e.shiftKey) {
@@ -1705,12 +1727,17 @@ function ensureVisible(t) {
 
 function endDrag(e) {
   if (drag?.kind === 'link') {
-    const { t, col, target, targetCol, line } = drag;
+    const { t, col, newCol, target, targetCol, line } = drag;
     line.remove();
     svg.classList.remove('linking');
     drag = null;
     render();
-    if (target && e.type === 'pointerup') {
+    if (target && e.type === 'pointerup' && newCol) {
+      const refCol = targetCol !== undefined ? colOf(target, targetCol) : singlePrimaryKey(target);
+      // A table without a single-column key: pick the column in the dialog.
+      if (refCol) addFkColumnLink(t, target, refCol);
+      else openLinkDialog({ localTable: t.id, localCol: 'new', refTable: target.id });
+    } else if (target && e.type === 'pointerup') {
       openLinkDialog({ localTable: t.id, localCol: col, refTable: target.id, refCol: targetCol });
     }
     return;
@@ -2092,7 +2119,7 @@ function buildExportSVG() {
   const clone = viewport.cloneNode(true);
   clone.removeAttribute('transform');
   clone.querySelectorAll('.selected, .related, .focused').forEach((n) => n.classList.remove('selected', 'related', 'focused'));
-  clone.querySelectorAll('title, .t-link-handle, .t-col-handle, .t-resize, .link-draft').forEach((n) => n.remove());
+  clone.querySelectorAll('title, .t-link-handle, .t-col-handle, .t-fk-add, .t-resize, .link-draft').forEach((n) => n.remove());
   const out =
     `<svg xmlns="${SVG_NS}" width="${Math.ceil(b.width)}" height="${Math.ceil(b.height)}" ` +
     `viewBox="${b.x} ${b.y} ${b.width} ${b.height}">` +
