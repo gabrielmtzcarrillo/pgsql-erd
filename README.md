@@ -42,7 +42,7 @@ Live PostgreSQL DDL with syntax highlighting.
 
 ### Relationships
 
-Add a foreign key, optionally creating the column. Drag from a column's handle (the foreign key) onto a column of another table (the referenced one) to open the dialog with both filled in.
+Add a foreign key, optionally creating the column. Drag from a column's handle (the foreign key) onto a column of another table (the referenced one) to open the dialog with both filled in. Or drag from the **+** at the bottom of a table onto a column of another table (or onto the table, for its primary key): the table gets a new column with that column's name and type, and the relationship is added with it as the foreign key.
 
 ![New relationship](docs/screenshots/relationship.png)
 

@@ -36,6 +36,8 @@ code lives. What the app does is in the [README](../README.md). Other notes in t
   connection's policy (writes, schema changes, environment) and is recorded in the audit log.
 - **Imports from other databases** read their catalog only and turn it into table specs in `src/renderer/lib/*import.js`;
   foreign key columns take the type of the column they reference (`fktypes.js`).
+- The SQL Server dialog parses pasted ADO.NET connection strings in the renderer before saving form settings.
+  Keep the raw string out of storage and error messages because it can contain credentials.
 - **Tests:** `node:test` suites in `tests/`. Unit tests run with `npm test`; integration tests run against real
   servers when their `PGERD_*` variables are set and are skipped otherwise.
 - **Icons:** `src/renderer/icons.js`; run `npm run menu-icons` after changing them.
@@ -133,6 +135,7 @@ src/main/database/mysql.cjs reads the schema of a MySQL / MariaDB database (mysq
 src/renderer/lib/oracleimport.js Oracle catalog -> table specs for the import dialog
 src/main/database/oracle.cjs reads the schema of an Oracle schema (node-oracledb Thin mode, read-only)
 src/renderer/lib/fktypes.js foreign key columns take their referenced column's type
+src/renderer/lib/fkcolumn.js the column made by a table's bottom "+" node: referenced column's name and type
 src/renderer/copyui.js    "Copy rows": the option of the import dialog and its progress
 src/main/database/data-copy.cjs copies rows from MySQL, SQL Server, Oracle, SQLite or a dump into PostgreSQL
 src/main/database/source-sheets.cjs database tables as worksheets for the Import Designer

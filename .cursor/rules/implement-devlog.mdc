@@ -1,0 +1,8 @@
+---
+description: Establish or reorganize repository devlog practices, development guides, agent instructions, and screenshot evidence conventions.
+alwaysApply: false
+---
+
+Read `.claude/skills/implement-devlog/SKILL.md` when asked to implement devlog organization or
+adapt it from another repository. Follow its workflow while preserving
+project-specific conventions and user-facing documentation.
